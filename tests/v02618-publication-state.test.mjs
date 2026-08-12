@@ -6,7 +6,7 @@ import test from "node:test";
 import { verifyPublicSitePublication, transitionSitePublication } from "../scripts/lib/site-publication-coordinator.mjs";
 import { writePublicationAssetManifest } from "../scripts/lib/publication-assets.mjs";
 
-test("v3 publication state reducer keeps failure out of propagating and enforces CAS", async () => {
+test("v4 publication state reducer keeps failure out of propagating and enforces CAS", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "xingbuild-v02618-state-"));
   const publication = path.join(root, "site-publication");
   try {
@@ -51,7 +51,7 @@ test("v3 publication state reducer keeps failure out of propagating and enforces
   }
 });
 
-test("v3 public verification keeps app and media evidence independent", async () => {
+test("v4 public verification keeps app and media evidence independent", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "xingbuild-v02618-evidence-"));
   try {
     await mkdir(path.join(root, "assets"), { recursive: true });
@@ -62,8 +62,8 @@ test("v3 public verification keeps app and media evidence independent", async ()
     await writeFile(path.join(root, "media", "demo.mp4"), "binary-media");
     const assetManifest = await writePublicationAssetManifest({ clientRoot: root, additionalPaths: ["/media/demo.mp4"] });
     const publication = {
-      sitePublicationId: "pub-v3-evidence", snapshotHash: "snapshot-v3-evidence", productVersion: "v0.26.18",
-      productCommit: "b".repeat(40), productArtifactId: "v0.26.18-bbbbbbbbbbbb", client: root, assetManifest,
+      sitePublicationId: "pub-v4-evidence", snapshotHash: "snapshot-v4-evidence", productVersion: "v0.26.19",
+      productCommit: "b".repeat(40), productArtifactId: "v0.26.19-bbbbbbbbbbbb", client: root, assetManifest,
       contentReleaseIds: [], contentManifest: { publishedSlugs: [], publishedArticleSlugs: [], practiceIds: [], profileIds: [], businessObservationIds: [], mediaPaths: ["/media/demo.mp4"], contentReleaseReceipts: [] },
     };
     const fetchImpl = async (url) => {
@@ -75,8 +75,19 @@ test("v3 public verification keeps app and media evidence independent", async ()
       const contentType = pathname.endsWith(".js") ? "text/javascript" : pathname.endsWith(".mp4") ? "video/mp4" : "text/html";
       return new Response(body, { status: 200, headers: { "content-type": contentType } });
     };
-    const browserRuntimeVerify = async ({ onEvidence }) => {
-      const app = { schemaVersion: "publication-runtime-evidence-v3", phase: "verifying-app", result: "verified", verified: true, routes: { "/": { appReady: true } } };
+    const browserRuntimeVerify = async ({ onEvidence, publicationIdentity, attemptId }) => {
+      const app = {
+        schemaVersion: "publication-runtime-evidence-v4",
+        publicationIdentity,
+        attemptId,
+        phase: "verifying-app",
+        startedAt: "2026-08-13T00:00:00.000Z",
+        finishedAt: "2026-08-13T00:00:01.000Z",
+        result: "verified",
+        verified: true,
+        routes: { "/": { appReady: true } },
+        lastEvidence: { "/": { appReady: true } },
+      };
       await onEvidence?.({ phase: "verifying-app", result: app });
       return app;
     };

@@ -11,7 +11,12 @@ import { compareAndSwapContentSlot, contentLogicalContentId, contentReceiptId, e
 import { activateContentSet, readActiveContentSet, restoreActiveContentSet } from "./content-set.mjs";
 import { markPublicationRecoverable, markPublicationReleased, markPublicationRolledBack, readPublicationRun, writePublicationRun } from "./publication-run.mjs";
 import { readPublicationAssetManifest, preparePortableUploadRoot, verifyPublicPublicationAssets } from "./publication-assets.mjs";
-import { PUBLICATION_RUNTIME_VERSION, verifyPublicBrowserRuntime } from "./publication-runtime.mjs";
+import { verifyPublicBrowserRuntime } from "./publication-runtime.mjs";
+import {
+  assertPublicationPhaseAggregate,
+  createPublicationEvidenceReducer,
+  createPublicationPhaseEvidence,
+} from "./publication-evidence.mjs";
 import { assertProductArtifactIdentityShape } from "./product-artifact.mjs";
 import {
   assertBindingCandidate,
@@ -164,14 +169,13 @@ export async function finalizeSitePublication({ publicationDirectory, publicVeri
   if (publicVerify.sitePublicationId !== current.sitePublicationId || publicVerify.snapshotHash !== current.snapshotHash) {
     throw new Error("SitePublication finalize evidence identity mismatch");
   }
-  if (publicVerify.verificationEvidence?.schemaVersion === PUBLICATION_RUNTIME_VERSION) {
-    const phases = publicVerify.verificationEvidence.phases || {};
-    if (publicVerify.verificationEvidence.result !== "verified"
-      || phases.assets?.result !== "verified"
-      || phases.media?.result !== "verified"
-      || (phases.app && phases.app.result !== "verified")) {
-      throw new Error("SitePublication finalize requires complete v3 assets/app/media evidence");
-    }
+  const requiresV4Evidence = Boolean(current.assetManifest || current.productVersion === "v0.26.19" || publicVerify.verificationEvidence);
+  if (requiresV4Evidence) {
+    if (!publicVerify.verificationEvidence) throw new Error("SitePublication finalize requires publication-runtime-evidence-v4 aggregate");
+    assertPublicationPhaseAggregate(publicVerify.verificationEvidence, {
+      expectedIdentity: sitePublicationIdentity(current),
+      expectedAttemptId: publicVerify.verificationEvidence.attemptId,
+    });
   }
   const resolvedSourceRoot = sourceRoot || path.resolve(publicationDirectory, "..", "..", "..");
   if (isContentSetPublication(current)) {
@@ -447,14 +451,13 @@ function assertExactArray(actual, expected, field) {
 }
 
 function phaseEnvelope(publication, attemptId, phase, extra = {}) {
-  return {
-    schemaVersion: PUBLICATION_RUNTIME_VERSION,
+  return createPublicationPhaseEvidence({
     publicationIdentity: sitePublicationIdentity(publication),
     attemptId,
     phase,
-    startedAt: new Date().toISOString(),
+    ...(phase === "verifying-assets" ? { assets: {} } : {}),
     ...extra,
-  };
+  });
 }
 
 function recoverablePhaseError(code, message, details = {}) {
@@ -466,19 +469,88 @@ function recoverablePhaseError(code, message, details = {}) {
   return error;
 }
 
-async function verifyMediaPhase({ publication, base, indexHtml, assetManifest, mediaPaths, fetchImpl, signal } = {}) {
+function phaseFailureEnvelope(publication, attemptId, phase, error) {
+  const lastEvidence = error.runtimeEvidence || error.details?.evidence || error.observedIdentity || {
+    code: error.code || "SITE_PUBLICATION_PHASE_FAILED",
+    message: error.message,
+  };
+  return createPublicationPhaseEvidence({
+    publicationIdentity: sitePublicationIdentity(publication),
+    attemptId,
+    phase: "recoverable",
+    startedAt: new Date().toISOString(),
+    finishedAt: new Date().toISOString(),
+    result: "recoverable",
+    verified: false,
+    lastEvidence,
+    failure: {
+      code: error.code || "SITE_PUBLICATION_PHASE_FAILED",
+      phase,
+      message: error.message,
+      lastEvidence,
+    },
+  });
+}
+
+async function recordPhaseFailure({ publication, attemptId, phase, error, onEvidence }) {
+  if (error.runtimeEvidence?.schemaVersion === "publication-runtime-evidence-v4") {
+    error.phase ||= phase;
+    error.lastEvidence ||= error.runtimeEvidence;
+    return error.runtimeEvidence;
+  }
+  const envelope = phaseFailureEnvelope(publication, attemptId, phase, error);
+  error.recoverable = true;
+  error.propagation = true;
+  error.phase = phase;
+  error.lastEvidence = envelope;
+  error.runtimeEvidence = envelope;
+  await onEvidence?.({ phase: "recoverable", result: envelope });
+  return envelope;
+}
+
+async function verifyMediaPhase({ publication, base, indexHtml, assetManifest, mediaPaths, fetchImpl, signal, attemptId } = {}) {
   if (signal?.aborted) throw recoverablePhaseError("SITE_PUBLICATION_MEDIA_ABORTED", "public media verification was aborted", { phase: "verifying-media" });
   const required = [...new Set(mediaPaths || [])];
   const startedAt = new Date().toISOString();
-  if (!required.length) return { schemaVersion: PUBLICATION_RUNTIME_VERSION, phase: "verifying-media", startedAt, finishedAt: new Date().toISOString(), media: {}, result: "verified", verified: true };
+  const identity = sitePublicationIdentity(publication);
+  if (!required.length) return createPublicationPhaseEvidence({
+    publicationIdentity: identity,
+    attemptId,
+    phase: "verifying-media",
+    startedAt,
+    finishedAt: new Date().toISOString(),
+    media: {},
+    result: "verified",
+    verified: true,
+    lastEvidence: { media: {} },
+  });
   if (assetManifest?.assets) {
     const entries = new Map(assetManifest.assets.map((item) => [item.path, item]));
     const missing = required.filter((item) => !entries.has(item));
     if (missing.length) throw recoverablePhaseError("SITE_PUBLICATION_MEDIA_ASSET_UNMANIFESTED", `public media is absent from the asset manifest: ${missing.join(", ")}`, { phase: "verifying-media", missing });
-    const verified = await verifyPublicPublicationAssets({ baseUrl: base, indexHtml, assetManifest, fetchImpl, onlyKinds: ["media"], signal });
+    const verified = await verifyPublicPublicationAssets({
+      baseUrl: base,
+      indexHtml,
+      assetManifest,
+      fetchImpl,
+      onlyKinds: ["media"],
+      signal,
+      publicationIdentity: identity,
+      attemptId,
+    });
     const media = {};
     for (const item of required) media[item] = { ...(verified.assets[item] || {}), browserProbe: "not-probed", verified: true };
-    return { schemaVersion: PUBLICATION_RUNTIME_VERSION, phase: "verifying-media", startedAt, finishedAt: new Date().toISOString(), media, result: "verified", verified: true };
+    return createPublicationPhaseEvidence({
+      publicationIdentity: identity,
+      attemptId,
+      phase: "verifying-media",
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      media,
+      result: "verified",
+      verified: true,
+      lastEvidence: { media },
+    });
   }
   const media = {};
   for (const mediaPath of required) {
@@ -490,7 +562,65 @@ async function verifyMediaPhase({ publication, base, indexHtml, assetManifest, m
     if (/text\/html/i.test(contentType) || bodyPrefix.startsWith("<!doctype html") || bodyPrefix.startsWith("<html")) throw recoverablePhaseError("SITE_PUBLICATION_MEDIA_MIME", `public media ${mediaPath} returned HTML`, { phase: "verifying-media", mediaPath, contentType });
     media[mediaPath] = { status: response.status, contentType, bytes: body.byteLength, browserProbe: "not-probed", verified: true };
   }
-  return { schemaVersion: PUBLICATION_RUNTIME_VERSION, phase: "verifying-media", startedAt, finishedAt: new Date().toISOString(), media, result: "verified", verified: true };
+  return createPublicationPhaseEvidence({
+    publicationIdentity: identity,
+    attemptId,
+    phase: "verifying-media",
+    startedAt,
+    finishedAt: new Date().toISOString(),
+    media,
+    result: "verified",
+    verified: true,
+    lastEvidence: { media },
+  });
+}
+
+async function verifyPublicationPhaseSet({ publication, base, indexHtml, assetManifest, routes, mediaPaths, fetchImpl, browserRuntimeVerify, onEvidence, signal, attemptId } = {}) {
+  const identity = sitePublicationIdentity(publication);
+  let assetsPhase;
+  try {
+    assetsPhase = await verifyPublicPublicationAssets({
+      baseUrl: base,
+      indexHtml,
+      assetManifest,
+      fetchImpl,
+      onlyKinds: ["script", "style", "icon"],
+      signal,
+      publicationIdentity: identity,
+      attemptId,
+    });
+  } catch (error) {
+    await recordPhaseFailure({ publication, attemptId, phase: "verifying-assets", error, onEvidence });
+    throw error;
+  }
+  if (!assetsPhase.skipped) await onEvidence?.({ phase: "verifying-assets", result: assetsPhase });
+  let appPhase = null;
+  if (browserRuntimeVerify) {
+    try {
+      appPhase = await browserRuntimeVerify({ baseUrl: base, routes: [...routes], taskId: "site-publication-public-verify", publicationIdentity: identity, attemptId, onEvidence, signal });
+    } catch (error) {
+      await recordPhaseFailure({ publication, attemptId, phase: "verifying-app", error, onEvidence });
+      throw error;
+    }
+  }
+  let mediaPhase;
+  try {
+    mediaPhase = await verifyMediaPhase({ publication, base, indexHtml, assetManifest, mediaPaths, fetchImpl, signal, attemptId });
+  } catch (error) {
+    await recordPhaseFailure({ publication, attemptId, phase: "verifying-media", error, onEvidence });
+    throw error;
+  }
+  await onEvidence?.({ phase: "verifying-media", result: mediaPhase });
+  let verificationEvidence = null;
+  if (!assetsPhase.skipped && appPhase) {
+    const reducer = createPublicationEvidenceReducer({ publicationIdentity: identity, attemptId });
+    reducer.add(assetsPhase);
+    reducer.add(appPhase);
+    reducer.add(mediaPhase);
+    verificationEvidence = reducer.aggregate();
+    await onEvidence?.({ phase: "verified", result: verificationEvidence });
+  }
+  return { assetsPhase, appPhase, mediaPhase, verificationEvidence };
 }
 
 export async function verifyPublicSitePublication({ publication, baseUrl = publicUrl, fetchImpl = fetch, browserRuntimeVerify = null, attemptId = null, onEvidence = null, signal = null } = {}) {
@@ -572,14 +702,19 @@ export async function verifyPublicSitePublication({ publication, baseUrl = publi
     }
     const assetManifest = await loadPublicationAssetManifest(publication);
     assertIndexIdentity(indexHtml, assetManifest);
-    const assetsStartedAt = new Date().toISOString();
-    const assets = await verifyPublicPublicationAssets({ baseUrl: base, indexHtml, assetManifest, fetchImpl, onlyKinds: ["script", "style", "icon"], signal });
-    await onEvidence?.({ phase: "verifying-assets", result: phaseEnvelope(publication, resolvedAttemptId, "verifying-assets", { startedAt: assetsStartedAt, finishedAt: new Date().toISOString(), assets, result: "verified", verified: assets.verified !== false }) });
-    const browserRuntime = browserRuntimeVerify
-      ? await browserRuntimeVerify({ baseUrl: base, routes: [...routes], taskId: "site-publication-public-verify", publicationIdentity: sitePublicationIdentity(publication), attemptId: resolvedAttemptId, onEvidence, signal })
-      : null;
-    const mediaPhase = await verifyMediaPhase({ publication, base, indexHtml, assetManifest, mediaPaths: publication.contentManifest?.mediaPaths || [], fetchImpl, signal });
-    await onEvidence?.({ phase: "verifying-media", result: mediaPhase });
+    const { assetsPhase, appPhase: browserRuntime, mediaPhase, verificationEvidence } = await verifyPublicationPhaseSet({
+      publication,
+      base,
+      indexHtml,
+      assetManifest,
+      routes,
+      mediaPaths: publication.contentManifest?.mediaPaths || [],
+      fetchImpl,
+      browserRuntimeVerify,
+      onEvidence,
+      signal,
+      attemptId: resolvedAttemptId,
+    });
     return {
       sitePublicationId: publication.sitePublicationId,
       snapshotHash: publication.snapshotHash,
@@ -595,16 +730,10 @@ export async function verifyPublicSitePublication({ publication, baseUrl = publi
       release: { version: release.version, commit: release.commit, baseSiteArtifactId: release.baseSiteArtifactId || null },
       contentManifest,
       pages,
-      assets,
+      assets: assetsPhase,
       browserRuntime,
       media: mediaPhase.media,
-      ...(assets.skipped ? {} : { verificationEvidence: {
-        schemaVersion: PUBLICATION_RUNTIME_VERSION,
-        publicationIdentity: sitePublicationIdentity(publication),
-        attemptId: resolvedAttemptId,
-        phases: { assets, app: browserRuntime || { result: "skipped", verified: true }, media: mediaPhase },
-        phase: "verified", result: "verified", verified: true,
-      } }),
+      ...(verificationEvidence ? { verificationEvidence } : {}),
       verifiedAt: new Date().toISOString(),
     };
   }
@@ -675,14 +804,19 @@ export async function verifyPublicSitePublication({ publication, baseUrl = publi
   }
   const assetManifest = await loadPublicationAssetManifest(publication);
   assertIndexIdentity(indexHtml, assetManifest);
-  const assetsStartedAt = new Date().toISOString();
-  const assets = await verifyPublicPublicationAssets({ baseUrl: base, indexHtml, assetManifest, fetchImpl, onlyKinds: ["script", "style", "icon"], signal });
-  await onEvidence?.({ phase: "verifying-assets", result: phaseEnvelope(publication, resolvedAttemptId, "verifying-assets", { startedAt: assetsStartedAt, finishedAt: new Date().toISOString(), assets, result: "verified", verified: assets.verified !== false }) });
-  const browserRuntime = browserRuntimeVerify
-    ? await browserRuntimeVerify({ baseUrl: base, routes: [...routes], taskId: "site-publication-public-verify", publicationIdentity: sitePublicationIdentity(publication), attemptId: resolvedAttemptId, onEvidence, signal })
-    : null;
-  const mediaPhase = await verifyMediaPhase({ publication, base, indexHtml, assetManifest, mediaPaths: publication.contentManifest?.mediaPaths || publication.mediaPaths || [], fetchImpl, signal });
-  await onEvidence?.({ phase: "verifying-media", result: mediaPhase });
+  const { assetsPhase, appPhase: browserRuntime, mediaPhase, verificationEvidence } = await verifyPublicationPhaseSet({
+    publication,
+    base,
+    indexHtml,
+    assetManifest,
+    routes,
+    mediaPaths: publication.contentManifest?.mediaPaths || publication.mediaPaths || [],
+    fetchImpl,
+    browserRuntimeVerify,
+    onEvidence,
+    signal,
+    attemptId: resolvedAttemptId,
+  });
   if (publication.candidateContentReleaseId && !actualIds.includes(publication.candidateContentReleaseId)) {
     throw new Error("public content manifest does not contain the candidate release");
   }
@@ -714,16 +848,10 @@ export async function verifyPublicSitePublication({ publication, baseUrl = publi
       lineageBinding: contentManifest.lineageBinding || null,
     },
     pages,
-    assets,
+    assets: assetsPhase,
     browserRuntime,
     media: mediaPhase.media,
-    ...(assets.skipped ? {} : { verificationEvidence: {
-      schemaVersion: PUBLICATION_RUNTIME_VERSION,
-      publicationIdentity: sitePublicationIdentity(publication),
-      attemptId: resolvedAttemptId,
-      phases: { assets, app: browserRuntime || { result: "skipped", verified: true }, media: mediaPhase },
-      phase: "verified", result: "verified", verified: true,
-    } }),
+    ...(verificationEvidence ? { verificationEvidence } : {}),
     verifiedAt: new Date().toISOString(),
   };
 }

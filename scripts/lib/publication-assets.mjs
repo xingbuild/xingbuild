@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { createPublicationPhaseEvidence } from "./publication-evidence.mjs";
 
 export const PUBLICATION_ASSET_MANIFEST_VERSION = "publication-asset-manifest-v1";
 const MIME_BY_EXTENSION = Object.freeze({
@@ -144,8 +145,13 @@ function publicAssetError(message, details = {}) {
   return error;
 }
 
-export async function verifyPublicPublicationAssets({ baseUrl, indexHtml, assetManifest, fetchImpl = fetch, onlyKinds = null, signal = null } = {}) {
+export async function verifyPublicPublicationAssets({ baseUrl, indexHtml, assetManifest, fetchImpl = fetch, onlyKinds = null, signal = null, publicationIdentity = null, attemptId = null } = {}) {
   if (!assetManifest || !Array.isArray(assetManifest.assets)) return { verified: false, skipped: true, reason: "asset manifest unavailable" };
+  if (!publicationIdentity || !attemptId) {
+    const error = new Error("publication asset verification requires publication identity and attemptId");
+    error.code = "PUBLICATION_EVIDENCE_IDENTITY_REQUIRED";
+    throw error;
+  }
   const references = parseIndexAssetReferences(indexHtml);
   const expected = new Map(assetManifest.assets.map((item) => [item.path, item]));
   for (const reference of references) if (!expected.has(reference.path)) throw publicAssetError("public index references an unmanifested asset: " + reference.path, { assetPath: reference.path });
@@ -166,5 +172,17 @@ export async function verifyPublicPublicationAssets({ baseUrl, indexHtml, assetM
     if (observed.bytes !== item.bytes || observed.sha256 !== item.sha256) throw publicAssetError("public asset " + item.path + " integrity mismatch", { assetPath: item.path, ...observed });
     assets[item.path] = { ...observed, verified: true };
   }
-  return { verified: true, skipped: false, assets, manifestHash: assetManifest.manifestHash };
+  return createPublicationPhaseEvidence({
+    publicationIdentity,
+    attemptId,
+    phase: "verifying-assets",
+    startedAt: new Date().toISOString(),
+    finishedAt: new Date().toISOString(),
+    result: "verified",
+    verified: true,
+    assets,
+    manifestHash: assetManifest.manifestHash,
+    skipped: false,
+    lastEvidence: { assets, manifestHash: assetManifest.manifestHash, skipped: false },
+  });
 }

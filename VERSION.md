@@ -1,3 +1,17 @@
+## v0.26.19 — 发布证据契约与验证闭环
+
+父版本：`v0.26.18` / `77a21d61a0a5efc29f7609f1aadbc4805a0f17ff`
+
+- 建立唯一 `publication-runtime-evidence-v4` `PublicationPhaseEvidence` envelope、validator、factory、reducer 与 aggregate；assets/app/media 只能经统一工厂产出规范 phase，v3 仅只读兼容。
+- `finalize` 只接受同一 publication identity/attempt 的完整 assets → app → media v4 aggregate；缺 phase/result、raw/v3 混用、重复、identity/CAS drift 和失败/中断均在 finalize 前硬失败。
+- 保留 v0.26.18 app-ready/媒体分离、资产 MIME/bytes/hash、recoverable、状态 CAS 与同 deployment resume 语义；不修改 UI、ContentSet、内容事实或旧 SitePublication/deployment。
+
+## 验证合同
+
+- 正向 `verify → aggregate → finalize` 与负向 missing result/phase、schema mix、duplicate、identity drift、raw evidence 回归；保留 v0.26.17/v0.26.18 runtime/coordinator/assets 测试。
+- `npm run check`、`release:prepare`、targeted `v0.26.19` tests、分层 `release:qa`、`release:closeout-check`、exact `release:build`、`release:preflight`、`git diff --check`。
+- 使用现有 v0.26.16 assembled client/content-enabled staging 做五路由与 Robotaxi media 验证；本地 Engineering checkpoint 后待产品/视觉独立验收，未执行 transport/content publish。
+
 ## v0.26.18 — 发布运行时媒体阶段与原子恢复
 
 父版本：`v0.26.17` / `734c71ca5fcdf0e9a11b259d70816c93db397b8d`

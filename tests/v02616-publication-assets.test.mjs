@@ -73,7 +73,7 @@ test("public asset verification rejects HTML fallback and MIME drift", async () 
     const indexHtml = await readFile(path.join(root, "index.html"), "utf8");
     const fallbackFetch = async () => new Response(indexHtml, { status: 200, headers: { "content-type": "text/html" } });
     await assert.rejects(
-      verifyPublicPublicationAssets({ baseUrl: "https://example.test/", indexHtml, assetManifest: manifest, fetchImpl: fallbackFetch }),
+      verifyPublicPublicationAssets({ baseUrl: "https://example.test/", indexHtml, assetManifest: manifest, fetchImpl: fallbackFetch, publicationIdentity: { sitePublicationId: "asset-test", snapshotHash: "asset-test" }, attemptId: "asset-test-attempt" }),
       /MIME mismatch|HTML fallback/,
     );
   } finally {
@@ -93,7 +93,7 @@ test("public asset verification records exact MIME, bytes and hash", async () =>
       const contentType = pathname.endsWith(".css") ? "text/css" : "application/javascript";
       return new Response(body, { status: 200, headers: { "content-type": contentType } });
     };
-    const verified = await verifyPublicPublicationAssets({ baseUrl: "https://example.test/", indexHtml, assetManifest: manifest, fetchImpl });
+    const verified = await verifyPublicPublicationAssets({ baseUrl: "https://example.test/", indexHtml, assetManifest: manifest, fetchImpl, publicationIdentity: { sitePublicationId: "asset-test", snapshotHash: "asset-test" }, attemptId: "asset-test-attempt" });
     assert.equal(verified.verified, true);
     assert.equal(Object.keys(verified.assets).length, 2);
     assert.equal(verified.assets["/assets/site.css"].verified, true);

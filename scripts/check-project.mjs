@@ -44,6 +44,7 @@ const requiredFiles = [
   "scripts/generate-evergreen-figures.mjs",
   "scripts/lib/qa-browser-runtime.mjs",
   "scripts/lib/publication-assets.mjs",
+  "scripts/lib/publication-evidence.mjs",
   "scripts/lib/publication-runtime.mjs",
   "scripts/qa-browser-install-check.mjs",
   ".puppeteerrc.cjs",

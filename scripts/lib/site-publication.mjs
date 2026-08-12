@@ -26,6 +26,7 @@ import { createSiteSnapshot, productArtifactIdentity } from "./site-snapshot.mjs
 import { createPublicationRun, publicationRunIdForSnapshot, readPublicationRun, writePublicationRun } from "./publication-run.mjs";
 import { readProductArtifact } from "./product-artifact.mjs";
 import { writePublicationAssetManifest } from "./publication-assets.mjs";
+import { assertPublicationPhaseAggregate, PUBLICATION_RUNTIME_EVIDENCE_V4 } from "./publication-evidence.mjs";
 
 export function sitePublicationId({ productVersion, productCommit, contentReleaseIds = [], contentSetId = null } = {}) {
   return [productVersion, productCommit, ...(contentSetId ? [contentSetId] : contentReleaseIds)].join("+");
@@ -730,14 +731,11 @@ export function assertSitePublicationEvidence({ deployment, publicVerify, produc
   if (!publicVerify || !Object.keys(publicVerify).length || !productVerify || !Object.keys(productVerify).length || !contentVerify || !Object.keys(contentVerify).length) throw new Error("site publication requires product and content public verification evidence");
   if (publicVerify.assets && !publicVerify.assets.skipped && publicVerify.assets.verified !== true) throw new Error("site publication requires public static asset verification evidence");
   if (publicVerify.browserRuntime && !publicVerify.browserRuntime.skipped && publicVerify.browserRuntime.verified !== true) throw new Error("site publication requires public browser runtime verification evidence");
-  if (publicVerify.verificationEvidence?.schemaVersion === "publication-runtime-evidence-v3") {
-    const phases = publicVerify.verificationEvidence.phases || {};
-    if (publicVerify.verificationEvidence.result !== "verified"
-      || phases.assets?.result !== "verified"
-      || phases.media?.result !== "verified"
-      || (phases.app && phases.app.result !== "verified")) {
-      throw new Error("site publication requires complete v3 assets/app/media verification evidence");
-    }
+  if (publicVerify.assets && !publicVerify.assets.skipped && publicVerify.verificationEvidence?.schemaVersion !== PUBLICATION_RUNTIME_EVIDENCE_V4) {
+    throw new Error("site publication requires publication-runtime-evidence-v4 aggregate");
+  }
+  if (publicVerify.verificationEvidence?.schemaVersion === PUBLICATION_RUNTIME_EVIDENCE_V4) {
+    assertPublicationPhaseAggregate(publicVerify.verificationEvidence);
   }
   return true;
 }

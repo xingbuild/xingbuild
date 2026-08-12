@@ -17,7 +17,7 @@ async function listen(server) {
   return `http://127.0.0.1:${server.address().port}`;
 }
 
-test("publication runtime v3 separates app-ready from lazy media readiness", async () => {
+test("publication runtime v4 separates app-ready from lazy media readiness", async () => {
   const server = serverFor(`<!doctype html><title>xingbuild</title><div id="root"><main><h1>Ready</h1><p>App text</p><video src="/lazy.mp4"></video></main></div>`);
   const baseUrl = await listen(server);
   try {
