@@ -1,3 +1,17 @@
+## v0.26.14 — QA 浏览器供应链与安装副作用治理
+
+父版本：`v0.26.13` / `62ab89f49771dde0bb6388add9874b83515d2299`
+
+- 新增唯一项目级 Puppeteer install policy：root、Chrome、Chrome Headless Shell 与 Firefox 均 `skipDownload=true`，cacheDirectory 隔离到 ignored QA workspace；`preinstall` guard 拒绝全局 cache、executable 和下载开关环境覆盖。
+- 新增 `qa:browser:install-policy`，通过真实 `puppeteer.configuration()` API、静态配置、cache snapshot、进程 snapshot 与重复检查证明无安装下载副作用。
+- 保留 v0.26.13 `qa-browser-runtime` 唯一 resolver、显式受控 Chrome、临时 profile、runId 与生命周期回收；不修改页面、ContentSet、内容事实、Content CLI、SitePublication 或 EdgeOne。
+
+## 验证合同
+
+- 安装策略 API/静态/环境覆盖/配置漂移/重复运行测试；v0.26.13 runtime 四种生命周期与 Mermaid 同 runtime 回归；既有 retained failures 分层记录。
+- `npm run check`、`npm run release:prepare`、`npm run qa:browser:install-policy`、`npm run qa:browser:check`、`npm run release:qa`、`npm run release:closeout-check`、exact `release:build`、`npm run release:preflight`、`git diff --check`。
+- 未执行 content publish 或 product transport；待产品/视觉独立验收。
+
 ## v0.26.13 — QA 浏览器运行时生命周期与残留治理
 
 父版本：`v0.26.12` / `e20335a79109c6dee1e3632a2e0ccba8ac649420`

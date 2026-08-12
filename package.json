@@ -1,6 +1,6 @@
 {
   "name": "xingbuild",
-  "version": "0.26.13",
+  "version": "0.26.14",
   "private": true,
   "type": "module",
   "scripts": {
@@ -16,9 +16,11 @@
     "preview": "vite preview",
     "test:sites": "node --test tests/*.test.mjs",
     "check": "node scripts/check-project.mjs",
-    "release:prepare": "npm run check && npm run content:check && npm run article:check && npm run practice:check && npm run qa:browser:check",
+    "preinstall": "node scripts/qa-browser-install-check.mjs --install-guard",
+    "release:prepare": "npm run check && npm run content:check && npm run article:check && npm run practice:check && npm run qa:browser:install-policy && npm run qa:browser:check",
     "release:build": "node scripts/release-build.mjs",
-    "release:qa": "npm run qa:browser:check && npm run test:sites",
+    "release:qa": "npm run qa:browser:install-policy && npm run qa:browser:check && npm run test:sites",
+    "qa:browser:install-policy": "node scripts/qa-browser-install-check.mjs",
     "qa:browser:check": "node scripts/qa-browser-check.mjs",
     "qa:visual:spacing": "node scripts/qa-v02511-showcase-spacing.mjs",
     "content:import": "node scripts/content-import.mjs",
@@ -57,6 +59,7 @@
   "devDependencies": {
     "@mermaid-js/mermaid-cli": "11.16.0",
     "axe-core": "^4.10.3",
-    "edgeone": "1.6.17"
+    "edgeone": "1.6.17",
+    "puppeteer": "25.4.0"
   }
 }

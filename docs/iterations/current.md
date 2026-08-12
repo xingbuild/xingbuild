@@ -1,41 +1,43 @@
 # 当前迭代
 
-## 当前唯一版本：`v0.26.13`
+## 当前唯一版本：`v0.26.14`
 
-父版本：`v0.26.12` / `e20335a79109c6dee1e3632a2e0ccba8ac649420`
+父版本：`v0.26.13` / `62ab89f49771dde0bb6388add9874b83515d2299`
 
 ## 正式方案
 
-[`docs/design/v0.26.13 QA 浏览器运行时生命周期与残留治理方案.md`](../design/v0.26.13%20QA%20浏览器运行时生命周期与残留治理方案.md)
+[`docs/design/v0.26.14 QA 浏览器供应链与安装副作用治理方案.md`](../design/v0.26.14%20QA%20浏览器供应链与安装副作用治理方案.md)
 
-来源：当前项目 QA 使用 Puppeteer/Mermaid 默认缓存 Chrome for Testing，启动器退出后可能留下孤儿进程；缓存/偏好失配会触发 macOS reopen 混乱。本版本建立项目级唯一 QA Browser Runtime，不回写 v0.26.12。
+来源：v0.26.13 已完成运行时治理并完成一次线上 transport，但复盘发现 Puppeteer `postinstall` 仍可能在依赖安装阶段自动下载 Chrome for Testing。本版本补齐安装/供应层，不回写 v0.26.13。
 
 ## 根本目标
 
 ```mermaid
 flowchart LR
-  A[所有 QA/图形生成入口] --> B[qa-browser-runtime 唯一 resolver]
-  B --> C[显式受控 executable]
-  B --> D[headless 临时 profile]
-  B --> E[run manifest + runId]
-  C --> F[正常/异常退出回收]
-  D --> F
-  E --> F
-  F --> G[残留证明与硬门禁]
+  A[npm install / npm ci] --> B[项目 Puppeteer install policy]
+  B --> C[skipDownload=true + 隔离 cache]
+  C --> D[无 Chrome Testing 下载]
+  E[所有 QA/图形生成入口] --> F[qa-browser-runtime resolver]
+  F --> G[显式受控 executable]
+  F --> H[headless 临时 profile + runId]
+  G --> I[正常/异常退出回收]
+  H --> I
+  D --> I
+  I --> J[残留证明与硬门禁]
 ```
 
-- 从根源上禁止 Puppeteer、Mermaid CLI、Playwright 静默使用自动下载的 Chrome for Testing 或其他缓存 App。
-- 所有项目浏览器运行都使用同一个可验证 executable、一次性 profile、runId 和生命周期回收器。
-- 正常完成、断言失败、SIGTERM、超时都必须清理本次 run；无法证明归属的残留只报告 Incident，不终止用户正常 Chrome。
-- QA 证据必须包含 runtime identity、profile、run lifecycle、cleanup outcome 和 owned process count，避免出现“测试通过但浏览器状态失控”。
+- 依赖安装不自动下载 Chrome for Testing，也不写入用户全局 Puppeteer cache。
+- 所有项目浏览器运行都使用 v0.26.13 的唯一 resolver、可验证 executable、一次性 profile、runId 和生命周期回收器。
+- 安装 policy 与 runtime policy 必须同时通过；任何一层失败都停止。
+- QA 证据必须包含 install policy、runtime identity、profile、run lifecycle、cleanup outcome 和 owned process count。
 
 ## 实现范围
 
-1. 新增 `scripts/lib/qa-browser-runtime.mjs`，统一 resolver、受控 launch options、临时 profile、run manifest、超时/信号回收和 residue check。
-2. `scripts/qa-v02511-showcase-spacing.mjs` 与 `scripts/generate-evergreen-figures.mjs` 只通过 resolver 启动 Puppeteer/Mermaid；后续入口不得裸调用 browser launch 或无 config 调用 `mmdc`。
-3. 显式 `XINGBUILD_QA_BROWSER_PATH` 只允许指向存在且可执行的受控浏览器；默认 macOS 路径为 `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`。
-4. 任何 `Google Chrome for Testing.app`、`.cache/puppeteer`、`Library/Caches/ms-playwright` 或非受控路径均在启动前硬失败，不自动下载、不打开 GUI、不修改 LaunchServices/Dock/macOS 偏好。
-5. 增加静态、单元、正常/失败/SIGTERM/超时、重复运行和 Mermaid 图形生成测试；增加 `qa:browser:check` 运行前门禁。
+1. 新增唯一项目级 Puppeteer 配置，明确 `skipDownload=true`、浏览器分项 skip 和项目 ignored 隔离 cacheDirectory；不得同时存在第二份配置。
+2. 新增 `scripts/qa-browser-install-check.mjs` 与 `npm run qa:browser:install-policy`，验证真实 configuration API、环境变量、cache snapshot 和无安装副作用。
+3. 保留 v0.26.13 `scripts/lib/qa-browser-runtime.mjs` 唯一 resolver；所有 Puppeteer/Mermaid 入口继续只经 resolver。
+4. 增加安装模拟、配置缺失/漂移/全局 cache override、重复 install-policy、运行时生命周期和 Mermaid 同 runtime 测试。
+5. 将 install policy 纳入 `release:prepare`、`release:qa`、closeout/preflight 证据，不自动下载、不打开 GUI、不修改 LaunchServices/Dock/macOS 偏好。
 
 ## 明确不做
 
@@ -48,7 +50,7 @@ flowchart LR
 
 ```yaml
 contentImpact: none
-contentImpactReason: qa-browser-runtime-governance-only
+contentImpactReason: qa-browser-supply-and-install-governance-only
 affectedTargets: []
 affectedRoutes: []
 affectedFields: []
@@ -57,20 +59,22 @@ compatibilityEvidence: content-set-and-content-cli-unchanged
 
 ## Engineering 合同
 
-1. 浏览器 executable 缺失、不可执行、来自自动下载缓存、GUI 模式或 profile 不是本次临时目录时，返回明确 `QA_BROWSER_RUNTIME_*` Incident 并停止。
-2. 每次 run 必须保存 `runId/pid/startTime/executablePath/userDataDir/parentTask/exitState`；成功或失败都必须进入 cleanup 和 residue verification。
-3. cleanup 只允许按本次 runId/profile 回收本次进程组；无法证明归属时不得终止进程。
-4. 静态检查阻止裸 `puppeteer.launch`、裸 `chromium.launch` 和无受控 Puppeteer config 的 `mmdc`。
-5. 运行时失败不得生成或复用不可信截图/图形；不得继续 release QA 或 release preflight。
-6. 不改变现有 ContentSet、内容检查、SitePublication、ProductArtifact 身份和线上内容事实。
+1. 安装配置缺失、skipDownload 漂移、cacheDirectory 指向全局/禁止路径或环境变量绕过时，返回 `QA_BROWSER_INSTALL_POLICY_*` Incident 并停止。
+2. 浏览器 executable 缺失、不可执行、来自自动下载缓存、GUI 模式或 profile 不是本次临时目录时，返回 `QA_BROWSER_RUNTIME_*` Incident 并停止。
+3. 每次 run 必须保存 `runId/pid/startTime/executablePath/userDataDir/parentTask/exitState`；成功或失败都必须进入 cleanup 和 residue verification。
+4. cleanup 只允许按本次 runId/profile 回收本次进程组；无法证明归属时不得终止进程。
+5. 静态检查阻止裸 `puppeteer.launch`、裸 `chromium.launch` 和无受控 Puppeteer config 的 `mmdc`。
+6. 安装或运行时失败不得生成或复用不可信截图/图形；不得继续 release QA 或 release preflight。
+7. 不改变现有 ContentSet、内容检查、SitePublication、ProductArtifact 身份和线上内容事实。
 
 ## 验收门禁
 
+- install policy 真实 configuration API、配置漂移、环境变量和 cache snapshot 静态/单元测试通过；连续两次检查不下载浏览器。
 - resolver/路径拒绝/launch options/cleanup 静态与单元测试通过。
 - 正常、断言失败、SIGTERM、超时四条生命周期路径均无 owned orphan process、临时 profile 或失效 manifest。
-- Puppeteer QA 与 Mermaid 图形生成使用相同 runtime identity；连续两次运行不启动 GUI Chrome Testing、不修改正常 Chrome 用户数据。
+- Puppeteer QA 与 Mermaid 图形生成使用相同 runtime identity；连续两次安装策略与运行策略不启动 GUI Chrome Testing、不修改正常 Chrome 用户数据。
 - 五路由现有 viewport/interactive/axe/视频/键盘/Reduced Motion 合同不回归；既有 retained failures 分层报告。
-- `npm run check`、`release:prepare`、`qa:browser:check`、`release:qa`、`release:closeout-check`、exact `release:build`、`release:preflight`、`git diff --check` 通过。
+- `npm run check`、`release:prepare`、`qa:browser:install-policy`、`qa:browser:check`、`release:qa`、`release:closeout-check`、exact `release:build`、`release:preflight`、`git diff --check` 通过。
 - ProductArtifact 与 exact HEAD/tag 一致；产品/视觉确认工程证据可信后，才可按持续授权 product transport；内容 task 不因本版本被唤起。
 
 ## 当前责任
