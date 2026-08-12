@@ -429,7 +429,7 @@ async function createContentSetSitePublication({ productClient, outputRoot, publ
     await cp(productClient, resolvedOutputRoot, { recursive: true });
   }
   const assetManifest = await stat(path.join(resolvedOutputRoot, "index.html")).catch(() => null)
-    ? await writePublicationAssetManifest({ clientRoot: resolvedOutputRoot })
+    ? await writePublicationAssetManifest({ clientRoot: resolvedOutputRoot, additionalPaths: contentManifest.mediaPaths || [] })
     : null;
   await writeJsonAtomically(path.join(resolvedOutputRoot, "content-manifest.json"), contentManifest);
   let publicationRun;
@@ -471,6 +471,7 @@ async function createContentSetSitePublication({ productClient, outputRoot, publ
     state: persistedIdentityMatches && ["recoverable", "propagating", "deploying", "verifying", "released", "rolled-back"].includes(existingPublication?.state)
       ? existingPublication.state
       : "assembled",
+    stateRevision: existingPublication?.stateRevision || 0,
     assembledAt: existingPublication?.assembledAt || new Date().toISOString(),
   };
   delete persisted.client;
@@ -703,7 +704,7 @@ export async function createSitePublication({ productClient, releasesRoot, outpu
     await cp(productClient, resolvedOutputRoot, { recursive: true });
   }
   const assetManifest = await stat(path.join(resolvedOutputRoot, "index.html")).catch(() => null)
-    ? await writePublicationAssetManifest({ clientRoot: resolvedOutputRoot })
+    ? await writePublicationAssetManifest({ clientRoot: resolvedOutputRoot, additionalPaths: contentManifest.mediaPaths || [] })
     : null;
   await writeJsonAtomically(path.join(resolvedOutputRoot, "content-manifest.json"), contentManifest);
   const persistedIdentityMatches = existingPublication?.sitePublicationId === publication.sitePublicationId && existingPublication?.snapshotHash === publication.snapshotHash;
@@ -713,6 +714,7 @@ export async function createSitePublication({ productClient, releasesRoot, outpu
     ...(persistedIdentityMatches ? existingPublication : {}),
     client: undefined,
     state: persistedIdentityMatches && ["recoverable", "propagating", "deploying", "verified", "released"].includes(existingPublication?.state) ? existingPublication.state : "assembled",
+    stateRevision: existingPublication?.stateRevision || 0,
     assembledAt: new Date().toISOString(),
   };
   delete persisted.client;
@@ -728,5 +730,14 @@ export function assertSitePublicationEvidence({ deployment, publicVerify, produc
   if (!publicVerify || !Object.keys(publicVerify).length || !productVerify || !Object.keys(productVerify).length || !contentVerify || !Object.keys(contentVerify).length) throw new Error("site publication requires product and content public verification evidence");
   if (publicVerify.assets && !publicVerify.assets.skipped && publicVerify.assets.verified !== true) throw new Error("site publication requires public static asset verification evidence");
   if (publicVerify.browserRuntime && !publicVerify.browserRuntime.skipped && publicVerify.browserRuntime.verified !== true) throw new Error("site publication requires public browser runtime verification evidence");
+  if (publicVerify.verificationEvidence?.schemaVersion === "publication-runtime-evidence-v3") {
+    const phases = publicVerify.verificationEvidence.phases || {};
+    if (publicVerify.verificationEvidence.result !== "verified"
+      || phases.assets?.result !== "verified"
+      || phases.media?.result !== "verified"
+      || (phases.app && phases.app.result !== "verified")) {
+      throw new Error("site publication requires complete v3 assets/app/media verification evidence");
+    }
+  }
   return true;
 }

@@ -144,14 +144,19 @@ function publicAssetError(message, details = {}) {
   return error;
 }
 
-export async function verifyPublicPublicationAssets({ baseUrl, indexHtml, assetManifest, fetchImpl = fetch } = {}) {
+export async function verifyPublicPublicationAssets({ baseUrl, indexHtml, assetManifest, fetchImpl = fetch, onlyKinds = null, signal = null } = {}) {
   if (!assetManifest || !Array.isArray(assetManifest.assets)) return { verified: false, skipped: true, reason: "asset manifest unavailable" };
   const references = parseIndexAssetReferences(indexHtml);
   const expected = new Map(assetManifest.assets.map((item) => [item.path, item]));
   for (const reference of references) if (!expected.has(reference.path)) throw publicAssetError("public index references an unmanifested asset: " + reference.path, { assetPath: reference.path });
   const assets = {};
-  for (const item of assetManifest.assets) {
-    const response = await fetchImpl(new URL(item.path, baseUrl), { redirect: "follow", cache: "no-store", headers: { accept: item.expectedMime === "text/css" ? "text/css,*/*" : "application/javascript,text/javascript,*/*" } });
+  const selected = onlyKinds?.length ? assetManifest.assets.filter((item) => onlyKinds.includes(item.kind)) : assetManifest.assets;
+  for (const item of selected) {
+    const response = await fetchImpl(new URL(item.path, baseUrl), {
+      redirect: "follow", cache: "no-store",
+      headers: { accept: `${item.expectedMime},*/*` },
+      ...(signal ? { signal } : {}),
+    });
     const body = new Uint8Array(await response.arrayBuffer());
     const contentType = response.headers.get("content-type") || "";
     if (!response.ok) throw publicAssetError("public asset " + item.path + " returned HTTP " + response.status, { assetPath: item.path, status: response.status });

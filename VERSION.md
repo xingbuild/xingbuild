@@ -1,3 +1,18 @@
+## v0.26.18 — 发布运行时媒体阶段与原子恢复
+
+父版本：`v0.26.17` / `734c71ca5fcdf0e9a11b259d70816c93db397b8d`
+
+- 将公网校验拆为 assets → app → media 三个独立阶段；app-ready 只验证 DOM 挂载、文本、`main`/`h1` 和脚本/CSS/页面错误，不把懒加载媒体 `readyState=0` 判为失败。
+- 统一使用 `publication-runtime-evidence-v3`，持久化 phase、route、media、attempt、lastEvidence 与可恢复结果；媒体资产沿 asset manifest 校验 status/MIME/bytes/hash，浏览器媒体 probe 明确记录 `not-probed`。
+- 新增唯一 `transitionSitePublication` 状态 reducer 与 `stateRevision` CAS；evidence/propagation 只能追加事实，SIGINT/SIGTERM/timeout/browser/media failure 原子收口为 recoverable，禁止 `propagating` 与 failure 并存。
+- 保持 v0.26.16 既有 SitePublication/deployment 与 active ContentSet 只读兼容；不修改页面、内容事实、旧 tag/history，不执行 transport/content publish。
+
+## 验证合同
+
+- app-ready 与媒体 readyState 分离、媒体 MIME/hash/取消/超时分类、evidence-v3、状态 reducer/CAS、resume 幂等和失败不污染 active 回归。
+- `npm run check`、`release:prepare`、targeted runtime/coordinator/assets QA、分层 `release:qa`、`release:closeout-check`、exact `release:build`、`release:preflight`、`git diff --check`。
+- 已完成 Engineering local implementation；待产品/视觉独立验收，未执行 v0.26.18 transport。
+
 ## v0.26.17 — 公网运行时验证状态机与恢复闭环
 
 父版本：`v0.26.16` / `4d6198360cf045bb075751788ea4f0370299d215`

@@ -17,15 +17,18 @@ async function listen(server) {
   return `http://127.0.0.1:${server.address().port}`;
 }
 
-test("publication runtime v2 uses app-ready evidence without network idle", async () => {
-  const server = serverFor(`<!doctype html><title>xingbuild</title><div id="root"><main><h1>Ready</h1><p>App text</p></main></div>`);
+test("publication runtime v3 separates app-ready from lazy media readiness", async () => {
+  const server = serverFor(`<!doctype html><title>xingbuild</title><div id="root"><main><h1>Ready</h1><p>App text</p><video src="/lazy.mp4"></video></main></div>`);
   const baseUrl = await listen(server);
   try {
     const evidence = await verifyPublicBrowserRuntime({ baseUrl, routes: ["/"], timeoutMs: 20_000, routeTimeoutMs: 5_000, publicationIdentity: { sitePublicationId: "pub", snapshotHash: "snap" }, attemptId: "attempt-test" });
     assert.equal(evidence.schemaVersion, PUBLICATION_RUNTIME_VERSION);
     assert.equal(evidence.result, "verified");
+    assert.equal(evidence.phase, "verifying-app");
     assert.equal(evidence.routes["/"].main, 1);
     assert.equal(evidence.routes["/"].h1, 1);
+    assert.equal(evidence.routes["/"].media[0].browserProbe, "not-probed");
+    assert.deepEqual(evidence.routes["/"].mediaFailures, []);
     assert.equal(evidence.routes["/"].verified, true);
   } finally {
     await new Promise((resolve) => server.close(resolve));

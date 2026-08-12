@@ -1,7 +1,7 @@
 import puppeteer from "puppeteer";
 import { withQaBrowser } from "./qa-browser-runtime.mjs";
 
-export const PUBLICATION_RUNTIME_VERSION = "publication-runtime-evidence-v2";
+export const PUBLICATION_RUNTIME_VERSION = "publication-runtime-evidence-v3";
 export const PUBLICATION_ROUTES = Object.freeze(["/", "/products", "/business-observations", "/observations", "/about"]);
 
 function iso() { return new Date().toISOString(); }
@@ -16,23 +16,50 @@ function runtimeFailure(code, message, details = {}) {
   return error;
 }
 
-function withDeadline(promise, timeoutMs, code = "PUBLICATION_RUNTIME_TIMEOUT") {
-  if (!timeoutMs || timeoutMs <= 0) return promise;
-  let timer;
-  const timeout = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(runtimeFailure(code, `publication runtime deadline exceeded after ${timeoutMs}ms`, { timeoutMs })), timeoutMs);
-  });
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+function throwIfAborted(signal) {
+  if (signal?.aborted) throw runtimeFailure("PUBLICATION_RUNTIME_ABORTED", "publication browser runtime was aborted");
 }
 
-async function verifyRoute({ browser, base, route, routeTimeoutMs, onEvidence, routeEvidence }) {
+function withDeadline(promise, timeoutMs, code = "PUBLICATION_RUNTIME_TIMEOUT", signal = null) {
+  if ((!timeoutMs || timeoutMs <= 0) && !signal) return promise;
+  let timer;
+  let abortHandler;
+  const timeout = timeoutMs && timeoutMs > 0
+    ? new Promise((_, reject) => {
+      timer = setTimeout(() => reject(runtimeFailure(code, `publication runtime deadline exceeded after ${timeoutMs}ms`, { timeoutMs })), timeoutMs);
+    })
+    : null;
+  const aborted = signal
+    ? new Promise((_, reject) => {
+      abortHandler = () => reject(runtimeFailure("PUBLICATION_RUNTIME_ABORTED", "publication browser runtime was aborted"));
+      if (signal.aborted) abortHandler();
+      else signal.addEventListener("abort", abortHandler, { once: true });
+    })
+    : null;
+  const racers = [promise];
+  if (timeout) racers.push(timeout);
+  if (aborted) racers.push(aborted);
+  return Promise.race(racers).finally(() => {
+    if (timer) clearTimeout(timer);
+    if (signal && abortHandler) signal.removeEventListener("abort", abortHandler);
+  });
+}
+
+function mediaCancellation(failure = "") {
+  return /ABORTED|CANCELLED|ERR_ABORTED|ERR_CANCELED/i.test(String(failure));
+}
+
+async function verifyRoute({ browser, base, route, routeTimeoutMs, onEvidence, routeEvidence, signal }) {
+  throwIfAborted(signal);
   const startedAt = iso();
   const pageStarted = Date.now();
   const page = await browser.newPage();
   const consoleErrors = [];
   const consoleWarnings = [];
   const pageErrors = [];
-  const requestFailures = [];
+  const assetFailures = [];
+  const mediaRequestFailures = [];
+  const mediaCancelled = [];
   let domcontentloadedAt = null;
   try {
     page.on("console", (message) => {
@@ -43,21 +70,28 @@ async function verifyRoute({ browser, base, route, routeTimeoutMs, onEvidence, r
     page.on("pageerror", (error) => pageErrors.push(String(error?.message || error)));
     page.on("requestfailed", (request) => {
       const type = request.resourceType();
-      if (["script", "stylesheet", "media"].includes(type)) {
-        requestFailures.push({ url: request.url(), resourceType: type, failure: request.failure()?.errorText || "unknown" });
+      const item = { url: request.url(), resourceType: type, failure: request.failure()?.errorText || "unknown" };
+      if (["script", "stylesheet"].includes(type)) assetFailures.push(item);
+      else if (["media"].includes(type)) {
+        if (mediaCancellation(item.failure)) mediaCancelled.push(item);
+        else mediaRequestFailures.push(item);
       }
     });
-    const response = await withDeadline(page.goto(new URL(route, base).href, { waitUntil: "domcontentloaded", timeout: routeTimeoutMs }), routeTimeoutMs);
+    const response = await withDeadline(page.goto(new URL(route, base).href, { waitUntil: "domcontentloaded", timeout: routeTimeoutMs }), routeTimeoutMs, "PUBLICATION_RUNTIME_ROUTE_TIMEOUT", signal);
     domcontentloadedAt = iso();
     if (!response || !response.ok()) throw runtimeFailure("PUBLICATION_RUNTIME_ROUTE_HTTP", `public browser route ${route} returned HTTP ${response?.status() || "unknown"}`, { route, status: response?.status() || null });
     await withDeadline(page.waitForFunction(() => {
       const root = document.querySelector("#root");
       return Boolean(root?.children.length && root.textContent?.trim() && document.querySelector("main") && document.querySelector("h1") && document.body?.textContent?.trim());
-    }, { timeout: routeTimeoutMs }), routeTimeoutMs);
+    }, { timeout: routeTimeoutMs }), routeTimeoutMs, "PUBLICATION_RUNTIME_APP_READY_TIMEOUT", signal);
+    throwIfAborted(signal);
     const dom = await page.evaluate(() => {
       const media = [...document.querySelectorAll("video, audio")].map((element) => ({
         tagName: element.tagName.toLowerCase(), currentSrc: element.currentSrc || element.src || null,
+        // Media readiness is deliberately informational in app phase. A lazy
+        // element with readyState=0 is not an application failure.
         readyState: element.readyState, error: element.error ? { code: element.error.code, message: element.error.message || null } : null,
+        browserProbe: "not-probed",
       }));
       return {
         rootChildren: document.querySelector("#root")?.children.length || 0,
@@ -68,24 +102,27 @@ async function verifyRoute({ browser, base, route, routeTimeoutMs, onEvidence, r
         media,
       };
     });
-    const mediaFailures = dom.media.filter((item) => item.error || !item.currentSrc || item.readyState < 2);
-    const hardAssetFailures = requestFailures.filter((item) => item.resourceType !== "media");
-    const cancelledMedia = requestFailures.filter((item) => item.resourceType === "media" && /ABORTED|CANCELLED/i.test(item.failure) && dom.media.every((item) => item.readyState >= 2 && !item.error));
-    const effectiveRequestFailures = [...hardAssetFailures, ...requestFailures.filter((item) => item.resourceType === "media" && !cancelledMedia.includes(item))];
     const evidence = {
-      route, status: response.status(), startedAt, domcontentloadedAt, appReadyAt: iso(), finishedAt: iso(),
+      phase: "verifying-app", route, status: response.status(), appReady: true,
+      startedAt, domcontentloadedAt, appReadyAt: iso(), finishedAt: iso(),
       durationMs: Date.now() - pageStarted, ...dom,
-      consoleErrors, consoleWarnings, pageErrors, assetFailures: effectiveRequestFailures,
-      mediaFailures, mediaCancelled: cancelledMedia, verified: !consoleErrors.length && !pageErrors.length && !effectiveRequestFailures.length && !mediaFailures.length && dom.rootChildren > 0 && dom.rootTextLength > 0 && dom.bodyTextLength > 0 && dom.main === 1 && dom.h1 === 1,
+      consoleErrors, consoleWarnings, pageErrors, assetFailures,
+      mediaRequestFailures, mediaCancelled, mediaFailures: [],
+      verified: !consoleErrors.length && !pageErrors.length && !assetFailures.length
+        && dom.rootChildren > 0 && dom.rootTextLength > 0 && dom.bodyTextLength > 0 && dom.main === 1 && dom.h1 === 1,
     };
     routeEvidence[route] = evidence;
-    await onEvidence?.({ phase: "verifying-runtime", route, result: evidence });
-    if (!evidence.verified) throw runtimeFailure("PUBLICATION_RUNTIME_ROUTE_FAILED", `public browser runtime failed on ${route}`, { route, evidence });
+    await onEvidence?.({ phase: "verifying-app", route, result: evidence });
+    if (!evidence.verified) throw runtimeFailure("PUBLICATION_RUNTIME_ROUTE_FAILED", `public browser app runtime failed on ${route}`, { route, evidence });
     return evidence;
   } catch (error) {
-    const evidence = routeEvidence[route] || { route, startedAt, finishedAt: iso(), durationMs: Date.now() - pageStarted, consoleErrors, consoleWarnings, pageErrors, assetFailures: requestFailures, verified: false };
+    const evidence = routeEvidence[route] || {
+      phase: "verifying-app", route, startedAt, finishedAt: iso(), durationMs: Date.now() - pageStarted,
+      consoleErrors, consoleWarnings, pageErrors, assetFailures, mediaRequestFailures, mediaCancelled,
+      mediaFailures: [], verified: false,
+    };
     routeEvidence[route] = { ...evidence, failure: { code: error.code || "PUBLICATION_RUNTIME_ROUTE_FAILED", message: error.message }, verified: false };
-    await onEvidence?.({ phase: "verifying-runtime", route, result: routeEvidence[route] });
+    await onEvidence?.({ phase: "verifying-app", route, result: routeEvidence[route] });
     if (!error.code?.startsWith("PUBLICATION_RUNTIME_")) throw runtimeFailure("PUBLICATION_RUNTIME_ROUTE_FAILED", error.message, { route, evidence: routeEvidence[route] });
     error.details = { ...(error.details || {}), route, evidence: routeEvidence[route] };
     error.runtimeEvidence = routeEvidence;
@@ -98,31 +135,33 @@ async function verifyRoute({ browser, base, route, routeTimeoutMs, onEvidence, r
 export async function verifyPublicBrowserRuntime({
   baseUrl, routes = PUBLICATION_ROUTES, taskId = "site-publication-public-verify", timeoutMs = 60000,
   routeTimeoutMs = Math.min(12000, timeoutMs), publicationIdentity = null, attemptId = null, onEvidence = null,
+  signal = null,
 } = {}) {
   const base = new URL(baseUrl);
   const startedAt = iso();
   const routeEvidence = {};
   const envelope = {
     schemaVersion: PUBLICATION_RUNTIME_VERSION, publicationIdentity, attemptId: attemptId || `attempt-${Date.now()}`,
-    phase: "verifying-runtime", startedAt, finishedAt: null, routes: routeEvidence, assets: null, result: "running",
+    phase: "verifying-app", startedAt, finishedAt: null, routes: routeEvidence, media: null, result: "running",
   };
-  await onEvidence?.({ phase: "verifying-runtime", result: envelope });
+  await onEvidence?.({ phase: "verifying-app", result: envelope });
   try {
-    const result = await withQaBrowser({ puppeteer, taskId, timeoutMs }, async ({ browser, runtime }) => {
-      for (const route of routes) await verifyRoute({ browser, base, route, routeTimeoutMs, onEvidence, routeEvidence });
+    throwIfAborted(signal);
+    const result = await withDeadline(withQaBrowser({ puppeteer, taskId, timeoutMs }, async ({ browser, runtime }) => {
+      for (const route of routes) await verifyRoute({ browser, base, route, routeTimeoutMs, onEvidence, routeEvidence, signal });
       return { runtime: { runtimeVersion: runtime.runtimeVersion, executablePath: runtime.executablePath, browserVersion: runtime.version } };
-    });
+    }), timeoutMs, "PUBLICATION_RUNTIME_TIMEOUT", signal);
     envelope.runtime = result.runtime;
     envelope.finishedAt = iso();
     envelope.result = "verified";
     envelope.verified = true;
-    await onEvidence?.({ phase: "verified", result: envelope });
+    await onEvidence?.({ phase: "verifying-app", result: envelope });
     return envelope;
   } catch (error) {
     envelope.finishedAt = iso();
     envelope.result = "recoverable";
     envelope.verified = false;
-    envelope.failure = { code: error.code || "PUBLICATION_RUNTIME_FAILED", message: error.message, phase: "verifying-runtime", lastEvidence: routeEvidence };
+    envelope.failure = { code: error.code || "PUBLICATION_RUNTIME_FAILED", message: error.message, phase: error.details?.phase || "verifying-app", lastEvidence: error.runtimeEvidence || routeEvidence };
     envelope.routes = routeEvidence;
     await onEvidence?.({ phase: "recoverable", result: envelope });
     error.recoverable = true;
