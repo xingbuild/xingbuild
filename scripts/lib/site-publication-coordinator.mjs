@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { readFile, stat, rm } from "node:fs/promises";
 import path from "node:path";
 import { assertProductContentCompatibility } from "./content-compatibility.mjs";
 import { acquireSitePublicationLease, releaseSitePublicationLease, assertSitePublicationEvidence } from "./site-publication.mjs";
@@ -9,6 +10,8 @@ import { assertActiveContentProjection } from "./content-release-receipt.mjs";
 import { compareAndSwapContentSlot, contentLogicalContentId, contentReceiptId, ensureContentSlotRegistry, restoreContentSlot } from "./content-slot-registry.mjs";
 import { activateContentSet, readActiveContentSet, restoreActiveContentSet } from "./content-set.mjs";
 import { markPublicationRecoverable, markPublicationReleased, markPublicationRolledBack, readPublicationRun, writePublicationRun } from "./publication-run.mjs";
+import { readPublicationAssetManifest, preparePortableUploadRoot, verifyPublicPublicationAssets } from "./publication-assets.mjs";
+import { verifyPublicBrowserRuntime } from "./publication-runtime.mjs";
 import { assertProductArtifactIdentityShape } from "./product-artifact.mjs";
 import {
   assertBindingCandidate,
@@ -354,6 +357,33 @@ async function fetchJson(url, fetchImpl) {
   }
 }
 
+async function loadPublicationAssetManifest(publication) {
+  if (publication.assetManifest) return publication.assetManifest;
+  if (!publication.client) return null;
+  const manifest = await readPublicationAssetManifest(publication.client).catch((error) => {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  });
+  if (!manifest && await stat(path.join(publication.client, "index.html")).catch(() => null)) {
+    throw new Error("SitePublication asset manifest is required for a client upload root");
+  }
+  return manifest;
+}
+
+function assertIndexIdentity(indexHtml, assetManifest) {
+  if (!assetManifest?.index) return;
+  const bytes = Buffer.byteLength(indexHtml);
+  const hash = createHash("sha256").update(indexHtml).digest("hex");
+  if (bytes !== assetManifest.index.bytes || hash !== assetManifest.index.sha256) {
+    const error = new Error("public index.html integrity mismatch");
+    error.code = "SITE_PUBLICATION_ASSET_VERIFY";
+    error.recoverable = true;
+    error.propagation = true;
+    error.observedIdentity = { indexBytes: bytes, indexSha256: hash };
+    throw error;
+  }
+}
+
 function assertExactArray(actual, expected, field) {
   if (!Array.isArray(actual)) throw new Error(`public content manifest ${field} is missing`);
   const actualValues = [...new Set(actual)].sort();
@@ -364,7 +394,7 @@ function assertExactArray(actual, expected, field) {
   return actualValues;
 }
 
-export async function verifyPublicSitePublication({ publication, baseUrl = publicUrl, fetchImpl = fetch } = {}) {
+export async function verifyPublicSitePublication({ publication, baseUrl = publicUrl, fetchImpl = fetch, browserRuntimeVerify = null } = {}) {
   const base = new URL(baseUrl);
   const [release, contentManifest] = await Promise.all([
     fetchJson(new URL("/release.json", base), fetchImpl),
@@ -430,13 +460,21 @@ export async function verifyPublicSitePublication({ publication, baseUrl = publi
     }
     const routes = new Set(["/", "/products", "/business-observations", "/observations", "/about"]);
     const pages = {};
+    let indexHtml = null;
     for (const route of routes) {
       const response = await fetchImpl(new URL(route, base), { redirect: "follow", cache: "no-store" });
       if (!response.ok) throw new Error(`public verify ${route} returned HTTP ${response.status}`);
       const text = await response.text();
       if (!/<title>xingbuild/i.test(text)) throw new Error(`public verify ${route} is not an xingbuild page`);
+      if (route === "/") indexHtml = text;
       pages[route] = { status: response.status, verified: true };
     }
+    const assetManifest = await loadPublicationAssetManifest(publication);
+    assertIndexIdentity(indexHtml, assetManifest);
+    const assets = await verifyPublicPublicationAssets({ baseUrl: base, indexHtml, assetManifest, fetchImpl });
+    const browserRuntime = browserRuntimeVerify
+      ? await browserRuntimeVerify({ baseUrl: base, routes: [...routes], taskId: "site-publication-public-verify" })
+      : null;
     const media = {};
     for (const mediaPath of publication.contentManifest?.mediaPaths || []) {
       const response = await fetchImpl(new URL(mediaPath, base), { redirect: "follow", cache: "no-store" });
@@ -458,6 +496,8 @@ export async function verifyPublicSitePublication({ publication, baseUrl = publi
       release: { version: release.version, commit: release.commit, baseSiteArtifactId: release.baseSiteArtifactId || null },
       contentManifest,
       pages,
+      assets,
+      browserRuntime,
       media,
       verifiedAt: new Date().toISOString(),
     };
@@ -518,13 +558,21 @@ export async function verifyPublicSitePublication({ publication, baseUrl = publi
   if (publication.targetPath) routes.add(publication.targetPath);
   for (const receipt of expectedReceipts) if (receipt.targetPath) routes.add(receipt.targetPath);
   const pages = {};
+  let indexHtml = null;
   for (const route of routes) {
     const response = await fetchImpl(new URL(route, base), { redirect: "follow", cache: "no-store" });
     if (!response.ok) throw new Error(`public verify ${route} returned HTTP ${response.status}`);
     const text = await response.text();
     if (!/<title>xingbuild/i.test(text)) throw new Error(`public verify ${route} is not an xingbuild page`);
+    if (route === "/") indexHtml = text;
     pages[route] = { status: response.status, verified: true };
   }
+  const assetManifest = await loadPublicationAssetManifest(publication);
+  assertIndexIdentity(indexHtml, assetManifest);
+  const assets = await verifyPublicPublicationAssets({ baseUrl: base, indexHtml, assetManifest, fetchImpl });
+  const browserRuntime = browserRuntimeVerify
+    ? await browserRuntimeVerify({ baseUrl: base, routes: [...routes], taskId: "site-publication-public-verify" })
+    : null;
   const mediaPaths = publication.contentManifest?.mediaPaths || publication.mediaPaths || [];
   const media = {};
   for (const mediaPath of mediaPaths) {
@@ -563,17 +611,19 @@ export async function verifyPublicSitePublication({ publication, baseUrl = publi
       lineageBinding: contentManifest.lineageBinding || null,
     },
     pages,
+    assets,
+    browserRuntime,
     media,
     verifiedAt: new Date().toISOString(),
   };
 }
 
-export async function waitForPublicSitePublication({ publication, baseUrl = publicUrl, fetchImpl = fetch, maxAttempts = 30, initialDelayMs = 1000, maxDelayMs = 10000, sleepImpl = (ms) => new Promise((resolve) => setTimeout(resolve, ms)), onObservation = async () => {} } = {}) {
+export async function waitForPublicSitePublication({ publication, baseUrl = publicUrl, fetchImpl = fetch, browserRuntimeVerify = null, maxAttempts = 30, initialDelayMs = 1000, maxDelayMs = 10000, sleepImpl = (ms) => new Promise((resolve) => setTimeout(resolve, ms)), onObservation = async () => {} } = {}) {
   let lastError;
   const observations = [];
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
-      return { ...(await verifyPublicSitePublication({ publication, baseUrl, fetchImpl })), attempts: attempt, propagationObservations: observations };
+      return { ...(await verifyPublicSitePublication({ publication, baseUrl, fetchImpl, browserRuntimeVerify })), attempts: attempt, propagationObservations: observations };
     } catch (error) {
       lastError = error;
       if (error.propagation) {
@@ -643,13 +693,26 @@ export async function transportSitePublication({ publication, sourceRoot, argv =
     }
   }
   let propagationObservations = current.propagation?.observations || [];
+  let uploadRoot = null;
   try {
+    const indexExists = Boolean(await stat(path.join(publication.client, "index.html")).catch(() => null));
+    if (runCaptureImpl === runCapture || indexExists) {
+      uploadRoot = await preparePortableUploadRoot({
+        clientRoot: publication.client,
+      });
+    } else {
+      // Unit and audit fixtures may exercise coordinator state transitions without
+      // a client tree; real transport always takes the explicit upload-root path.
+      uploadRoot = { root: publication.client, manifest: publication.assetManifest || null, async cleanup() {} };
+    }
+    current = { ...current, assetManifest: uploadRoot.manifest };
+    await writePublicationRecord(publication.client, current).catch(() => {});
     if (!current.deploymentId) {
       if (!edgeonePath) throw new Error("EdgeOne CLI path is required for SitePublication transport");
       let output;
       try {
         runCaptureImpl(edgeonePath, ["whoami"], sourceRoot, env);
-        output = runCaptureImpl(edgeonePath, ["makers", "deploy", publication.client, "--name", target.name, "--env", "production", "--json"], sourceRoot, env);
+        output = runCaptureImpl(edgeonePath, ["makers", "deploy", uploadRoot.root, "--name", target.name, "--env", "production", "--json"], sourceRoot, env);
       } catch (error) {
         error.recoverable = true;
         throw error;
@@ -686,6 +749,17 @@ export async function transportSitePublication({ publication, sourceRoot, argv =
       initialDelayMs,
       maxDelayMs,
       sleepImpl,
+      browserRuntimeVerify: fetchImpl === fetch
+        ? async (options) => {
+          try {
+            return await verifyPublicBrowserRuntime(options);
+          } catch (error) {
+            error.recoverable = true;
+            error.propagation = true;
+            throw error;
+          }
+        }
+        : null,
       onObservation: async (observation) => {
         propagationObservations = [...propagationObservations, observation];
         current = await writePublicationRecord(publication.client, {
@@ -745,6 +819,7 @@ export async function transportSitePublication({ publication, sourceRoot, argv =
     throw error;
   } finally {
     await releaseSitePublicationLease(lease);
+    if (uploadRoot) await uploadRoot.cleanup().catch(() => {});
   }
 }
 

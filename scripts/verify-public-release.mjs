@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 
+import { parseIndexAssetReferences } from "./lib/publication-assets.mjs";
+import { verifyPublicBrowserRuntime } from "./lib/publication-runtime.mjs";
+
 const [baseUrl = "https://xingbuild.top/", expectedVersion, expectedCommit] =
   process.argv.slice(2);
 
@@ -52,7 +55,24 @@ for (let attempt = 1; attempt <= attempts; attempt += 1) {
     if (typeof manifest !== "object" || manifest === null) {
       throw new Error("content manifest is not a valid JSON object");
     }
+    const assetEvidence = {};
+    for (const reference of parseIndexAssetReferences(html)) {
+      const response = await fetch(new URL(reference.path, publicUrl), {
+        redirect: "follow",
+        cache: "no-store",
+        headers: { accept: reference.kind === "style" ? "text/css,*/*" : "application/javascript,text/javascript,*/*" },
+      });
+      const body = Buffer.from(await response.arrayBuffer());
+      const contentType = response.headers.get("content-type") || "";
+      if (!response.ok) throw new Error("asset " + reference.path + " returned HTTP " + response.status);
+      if (reference.kind === "style" && !contentType.toLowerCase().startsWith("text/css")) throw new Error("asset " + reference.path + " has invalid CSS MIME");
+      if (reference.kind === "script" && !/(?:text|application)\/javascript/i.test(contentType)) throw new Error("asset " + reference.path + " has invalid JS MIME");
+      if (/^\s*(?:<!doctype html|<html)/i.test(body.toString("utf8"))) throw new Error("asset " + reference.path + " returned HTML fallback");
+      assetEvidence[reference.path] = { status: response.status, contentType, bytes: body.byteLength, verified: true };
+    }
+    const browserRuntime = await verifyPublicBrowserRuntime({ baseUrl: publicUrl, taskId: "release-verify-public" });
 
+    console.log(JSON.stringify({ assetEvidence, browserRuntime }));
     console.log(
       `Public release verified: ${expectedVersion} ${expectedCommit.slice(0, 7)}`,
     );

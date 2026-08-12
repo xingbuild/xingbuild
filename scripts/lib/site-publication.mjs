@@ -25,6 +25,7 @@ import {
 import { createSiteSnapshot, productArtifactIdentity } from "./site-snapshot.mjs";
 import { createPublicationRun, publicationRunIdForSnapshot, readPublicationRun, writePublicationRun } from "./publication-run.mjs";
 import { readProductArtifact } from "./product-artifact.mjs";
+import { writePublicationAssetManifest } from "./publication-assets.mjs";
 
 export function sitePublicationId({ productVersion, productCommit, contentReleaseIds = [], contentSetId = null } = {}) {
   return [productVersion, productCommit, ...(contentSetId ? [contentSetId] : contentReleaseIds)].join("+");
@@ -427,6 +428,9 @@ async function createContentSetSitePublication({ productClient, outputRoot, publ
     await mkdir(resolvedOutputRoot, { recursive: true });
     await cp(productClient, resolvedOutputRoot, { recursive: true });
   }
+  const assetManifest = await stat(path.join(resolvedOutputRoot, "index.html")).catch(() => null)
+    ? await writePublicationAssetManifest({ clientRoot: resolvedOutputRoot })
+    : null;
   await writeJsonAtomically(path.join(resolvedOutputRoot, "content-manifest.json"), contentManifest);
   let publicationRun;
   try {
@@ -457,6 +461,7 @@ async function createContentSetSitePublication({ productClient, outputRoot, publ
     publicationRunId: publicationRun.publicationRunId,
     publicationRun,
     contentManifest,
+    ...(assetManifest ? { assetManifest } : {}),
     contentPackageRevisionIds: [],
     publicationIdempotencyKey: sitePublicationIdempotencyKey({ sitePublicationId: id, snapshotHash: snapshot.snapshotHash }),
     deploymentId: null,
@@ -697,10 +702,14 @@ export async function createSitePublication({ productClient, releasesRoot, outpu
     await mkdir(resolvedOutputRoot, { recursive: true });
     await cp(productClient, resolvedOutputRoot, { recursive: true });
   }
+  const assetManifest = await stat(path.join(resolvedOutputRoot, "index.html")).catch(() => null)
+    ? await writePublicationAssetManifest({ clientRoot: resolvedOutputRoot })
+    : null;
   await writeJsonAtomically(path.join(resolvedOutputRoot, "content-manifest.json"), contentManifest);
   const persistedIdentityMatches = existingPublication?.sitePublicationId === publication.sitePublicationId && existingPublication?.snapshotHash === publication.snapshotHash;
   const persisted = {
     ...publication,
+    ...(assetManifest ? { assetManifest } : {}),
     ...(persistedIdentityMatches ? existingPublication : {}),
     client: undefined,
     state: persistedIdentityMatches && ["recoverable", "propagating", "deploying", "verified", "released"].includes(existingPublication?.state) ? existingPublication.state : "assembled",
@@ -717,5 +726,7 @@ export async function createSitePublication({ productClient, releasesRoot, outpu
 export function assertSitePublicationEvidence({ deployment, publicVerify, productVerify, contentVerify } = {}) {
   if (!deployment || typeof deployment !== "object" || !deployment.deploymentId) throw new Error("site publication requires machine-readable deployment JSON");
   if (!publicVerify || !Object.keys(publicVerify).length || !productVerify || !Object.keys(productVerify).length || !contentVerify || !Object.keys(contentVerify).length) throw new Error("site publication requires product and content public verification evidence");
+  if (publicVerify.assets && !publicVerify.assets.skipped && publicVerify.assets.verified !== true) throw new Error("site publication requires public static asset verification evidence");
+  if (publicVerify.browserRuntime && !publicVerify.browserRuntime.skipped && publicVerify.browserRuntime.verified !== true) throw new Error("site publication requires public browser runtime verification evidence");
   return true;
 }

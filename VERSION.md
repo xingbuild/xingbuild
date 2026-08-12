@@ -1,3 +1,18 @@
+## v0.26.16 — 发布资产传输与运行时验证闭环
+
+父版本：`v0.26.15` / `222b6a93f3bae8e7c1a87b86c62d61e563add904`
+
+- 建立不依赖隐藏 workspace、symlink、当前目录或目录 fallback 的可移植 SitePublication upload root，并生成逐项资产 hash/MIME manifest。
+- Coordinator 在部署前校验 index/assets，传播后校验公网 JS/CSS 状态、MIME、正文完整性，并复用唯一 qa-browser-runtime 验证五路由真实挂载、文本、console/pageerror 与资产请求。
+- 资产或浏览器门禁失败只保留 blocked/recoverable 状态；同一 publication/deployment resume 幂等，不污染 active ContentSet，不重试 v0.26.15 坏 deployment。
+- 不修改 UI、ContentSet、正文、审核、来源、媒体事实或旧 SitePublication。
+
+## 验证合同
+
+- 正确资产、HTML fallback、错误 MIME、缺失资产、路径越界、symlink、传播旧响应、白屏、resume/rollback 回归。
+- `npm run check`、`release:prepare`、asset/runtime targeted QA、分层 `release:qa`、`release:closeout-check`、exact `release:build`、`release:preflight`、`git diff --check`。
+- 待产品/视觉独立验收，未执行 v0.26.16 transport 或 content publish。
+
 ## v0.26.15 — 通用响应式内容表达与独立发布能力
 
 父版本：`v0.26.14` / `375f0c885ddec940be6859336b4db94bc5654256`
