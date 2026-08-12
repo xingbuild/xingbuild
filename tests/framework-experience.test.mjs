@@ -62,8 +62,9 @@ test("a declared figure needs only a source and semantic metadata for both respo
   assert.match(generator, /diagramFigureAssets\(figure\.sourcePath\)/);
   assert.doesNotMatch(generator, /figure\.mobileSrc|figure\.src/);
   assert.doesNotMatch(generator, /d2:\s*render/);
-  assert.doesNotMatch(generator, /Google Chrome\.app|executablePath: browser, args/);
-  assert.match(generator, /if \(browser\) \{/);
+  assert.match(generator, /runQaBrowserCommand/);
+  assert.doesNotMatch(generator, /MERMAID_PUPPETEER_EXECUTABLE_PATH/);
+  assert.doesNotMatch(generator, /puppeteer\.launch/);
 });
 
 test("a Mermaid source alone generates both responsive SVG outputs and removes stale output on failure", async () => {

@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { Graphviz } from "@hpcc-js/wasm-graphviz";
 import { diagramFigureAssets } from "../src/content/diagramFigureAssets.js";
 import { readPublishedArticles, root } from "./lib/evergreen-article.mjs";
+import { runQaBrowserCommand } from "./lib/qa-browser-runtime.mjs";
 
 const run = promisify(execFile);
 const args = process.argv.slice(2);
@@ -44,19 +44,10 @@ async function renderLikeC4(figure, assets) {
 }
 async function renderMermaid(figure, assets) {
   const source = join(root, figure.sourcePath);
-  const browser = process.env.MERMAID_PUPPETEER_EXECUTABLE_PATH;
-  const temp = await mkdtemp(join(tmpdir(), "xingbuild-mermaid-"));
-  try {
-    const browserArgs = [];
-    if (browser) {
-      const config = join(temp, "puppeteer.json");
-      await writeFile(config, JSON.stringify({ executablePath: browser }));
-      browserArgs.push("-p", config);
-    }
-    await mkdir(dirname(join(publicDirectory, assets.desktop)), { recursive: true });
-    await run(join(root, "node_modules/.bin/mmdc"), ["-i", source, "-o", join(publicDirectory, assets.desktop), "-w", "1600", "-b", "transparent", ...browserArgs]);
-    await run(join(root, "node_modules/.bin/mmdc"), ["-i", source, "-o", join(publicDirectory, assets.mobile), "-w", "640", "-b", "transparent", ...browserArgs]);
-  } finally { await rm(temp, { recursive: true, force: true }); }
+  await mkdir(dirname(join(publicDirectory, assets.desktop)), { recursive: true });
+  const command = join(root, "node_modules/.bin/mmdc");
+  await runQaBrowserCommand(command, ["-i", source, "-o", join(publicDirectory, assets.desktop), "-w", "1600", "-b", "transparent"], { taskId: `article-figure-desktop-${figure.sourcePath}` });
+  await runQaBrowserCommand(command, ["-i", source, "-o", join(publicDirectory, assets.mobile), "-w", "640", "-b", "transparent"], { taskId: `article-figure-mobile-${figure.sourcePath}` });
 }
 const adapters = { likec4: renderLikeC4, mermaid: renderMermaid };
 const articles = fixtureArticle ? [JSON.parse(await readFile(join(root, fixtureArticle), "utf8"))] : await readPublishedArticles();

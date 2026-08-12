@@ -1,3 +1,17 @@
+## v0.26.13 — QA 浏览器运行时生命周期与残留治理
+
+父版本：`v0.26.12` / `e20335a79109c6dee1e3632a2e0ccba8ac649420`
+
+- 建立项目级唯一 `qa-browser-runtime` resolver，所有 Puppeteer 与 Mermaid 入口使用显式受控 Chrome、headless 临时 profile、runId manifest 和生命周期回收。
+- 启动前拒绝 Chrome for Testing、Puppeteer/Playwright 自动下载缓存与非受控路径；正常、失败、信号和超时均执行本次 run 的进程/profile 残留核验。
+- 新增 `qa:browser:check` 静态/运行前门禁；不修改页面、ContentSet、内容事实、Content CLI、SitePublication 或 EdgeOne。
+
+## 验证合同
+
+- resolver identity、禁止路径、headless/profile/run manifest、正常/失败/SIGTERM/timeout、重复运行和 Mermaid 同 runtime 测试。
+- `npm run check`、`npm run release:prepare`、`npm run qa:browser:check`、`npm run release:qa`、`npm run release:closeout-check`、exact `release:build`、`npm run release:preflight`、`git diff --check`。
+- 既有 retained content fixture、历史断言和环境失败分层记录，不隐藏、不修改内容事实。
+
 ## v0.26.12 — 共享 ActionGroup 可用宽度与窄屏安全边界
 
 父版本：`v0.26.11` / `cba8406d707a5ec8c8e2a83096965973c3d47766`

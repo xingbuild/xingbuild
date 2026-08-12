@@ -1,12 +1,8 @@
 import assert from "node:assert/strict";
-import puppeteer from "/Users/kingjin/Documents/Builder/xingbuild/node_modules/puppeteer/lib/puppeteer/puppeteer.js";
+import puppeteer from "puppeteer";
+import { withQaBrowser } from "./lib/qa-browser-runtime.mjs";
 
 const baseUrl = process.env.XINGBUILD_PREVIEW_URL || "http://127.0.0.1:4317";
-const browser = await puppeteer.launch({
-  headless: true,
-  executablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-  args: ["--no-sandbox"],
-});
 
 function geometry(page) {
   return page.evaluate(() => {
@@ -63,7 +59,7 @@ function assertContract(snapshot, { copyMin, copyMax, moduleMin, moduleMax }) {
   }
 }
 
-try {
+await withQaBrowser({ puppeteer, taskId: "qa-v02511-showcase-spacing" }, async ({ browser }) => {
   const page = await browser.newPage();
   const evidence = [];
   for (const viewport of [{ width: 1600, height: 1067 }, { width: 1280, height: 900 }, { width: 390, height: 844 }]) {
@@ -76,6 +72,4 @@ try {
     evidence.push(snapshot);
   }
   console.log(JSON.stringify({ ok: true, evidence }, null, 2));
-} finally {
-  await browser.close();
-}
+});

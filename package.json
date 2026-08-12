@@ -1,6 +1,6 @@
 {
   "name": "xingbuild",
-  "version": "0.26.12",
+  "version": "0.26.13",
   "private": true,
   "type": "module",
   "scripts": {
@@ -16,9 +16,10 @@
     "preview": "vite preview",
     "test:sites": "node --test tests/*.test.mjs",
     "check": "node scripts/check-project.mjs",
-    "release:prepare": "npm run check && npm run content:check && npm run article:check && npm run practice:check",
+    "release:prepare": "npm run check && npm run content:check && npm run article:check && npm run practice:check && npm run qa:browser:check",
     "release:build": "node scripts/release-build.mjs",
-    "release:qa": "npm run test:sites",
+    "release:qa": "npm run qa:browser:check && npm run test:sites",
+    "qa:browser:check": "node scripts/qa-browser-check.mjs",
     "qa:visual:spacing": "node scripts/qa-v02511-showcase-spacing.mjs",
     "content:import": "node scripts/content-import.mjs",
     "content:check": "node scripts/content-check.mjs",

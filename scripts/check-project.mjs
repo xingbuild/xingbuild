@@ -42,6 +42,8 @@ const requiredFiles = [
   "src/content/pageContentResolver.js",
   "src/components/page-compositions/PageCompositionRenderer.jsx",
   "scripts/generate-evergreen-figures.mjs",
+  "scripts/lib/qa-browser-runtime.mjs",
+  "scripts/qa-browser-check.mjs",
   "scripts/generate-enterprise-architecture-views.mjs",
   "src/architecture/enterprise-operating-system/model.c4",
   "scripts/article-content-check.mjs",
