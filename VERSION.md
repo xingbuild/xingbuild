@@ -1,3 +1,18 @@
+## v0.26.17 — 公网运行时验证状态机与恢复闭环
+
+父版本：`v0.26.16` / `4d6198360cf045bb075751788ea4f0370299d215`
+
+- 将公网浏览器验证改为 `domcontentloaded` + app-ready 合同，按路由、资产、媒体分阶段记录证据；媒体取消与真实媒体失败分离。
+- 新增 `publication-runtime-evidence-v2`，持久化 publication/product/content identity、attempt、phase、route、错误、媒体和资产摘要。
+- timeout、SIGINT、浏览器异常进入 recoverable 并保留 lastEvidence；同一 SitePublication/deployment resume 幂等，不创建第二 deployment。
+- 不修改 UI、ContentSet、正文、审核、来源、媒体事实或 v0.26.16 旧 deployment。
+
+## 验证合同
+
+- app-ready、脚本/CSS/媒体错误分类、媒体 cancellation、五路由 runtime、timeout/SIGINT/recoverable、resume/finalize CAS 回归。
+- `npm run check`、`release:prepare`、runtime/coordinator targeted QA、分层 `release:qa`、`release:closeout-check`、exact `release:build`、`release:preflight`、`git diff --check`。
+- 待产品/视觉独立验收，未执行 v0.26.17 transport。
+
 ## v0.26.16 — 发布资产传输与运行时验证闭环
 
 父版本：`v0.26.15` / `222b6a93f3bae8e7c1a87b86c62d61e563add904`

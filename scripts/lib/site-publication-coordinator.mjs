@@ -353,6 +353,10 @@ async function fetchJson(url, fetchImpl) {
   } catch (cause) {
     const error = new Error(`public verify ${url} returned an invalid JSON manifest`);
     error.cause = cause;
+    error.code = "SITE_PUBLICATION_MANIFEST_PROPAGATION";
+    error.recoverable = true;
+    error.propagation = true;
+    error.observedIdentity = { url: String(url), invalidJson: true };
     throw error;
   }
 }
@@ -394,7 +398,8 @@ function assertExactArray(actual, expected, field) {
   return actualValues;
 }
 
-export async function verifyPublicSitePublication({ publication, baseUrl = publicUrl, fetchImpl = fetch, browserRuntimeVerify = null } = {}) {
+export async function verifyPublicSitePublication({ publication, baseUrl = publicUrl, fetchImpl = fetch, browserRuntimeVerify = null, attemptId = null, onEvidence = null } = {}) {
+  await onEvidence?.({ phase: "verifying-assets", result: { schemaVersion: "publication-runtime-evidence-v2", publicationIdentity: sitePublicationIdentity(publication), attemptId, phase: "verifying-assets", startedAt: new Date().toISOString(), result: "running" } });
   const base = new URL(baseUrl);
   const [release, contentManifest] = await Promise.all([
     fetchJson(new URL("/release.json", base), fetchImpl),
@@ -472,8 +477,9 @@ export async function verifyPublicSitePublication({ publication, baseUrl = publi
     const assetManifest = await loadPublicationAssetManifest(publication);
     assertIndexIdentity(indexHtml, assetManifest);
     const assets = await verifyPublicPublicationAssets({ baseUrl: base, indexHtml, assetManifest, fetchImpl });
+    await onEvidence?.({ phase: "verifying-assets", result: { schemaVersion: "publication-runtime-evidence-v2", publicationIdentity: sitePublicationIdentity(publication), attemptId, phase: "verifying-assets", startedAt: new Date().toISOString(), finishedAt: new Date().toISOString(), assets, result: "verified" } });
     const browserRuntime = browserRuntimeVerify
-      ? await browserRuntimeVerify({ baseUrl: base, routes: [...routes], taskId: "site-publication-public-verify" })
+      ? await browserRuntimeVerify({ baseUrl: base, routes: [...routes], taskId: "site-publication-public-verify", publicationIdentity: sitePublicationIdentity(publication), attemptId, onEvidence })
       : null;
     const media = {};
     for (const mediaPath of publication.contentManifest?.mediaPaths || []) {
@@ -570,9 +576,10 @@ export async function verifyPublicSitePublication({ publication, baseUrl = publi
   const assetManifest = await loadPublicationAssetManifest(publication);
   assertIndexIdentity(indexHtml, assetManifest);
   const assets = await verifyPublicPublicationAssets({ baseUrl: base, indexHtml, assetManifest, fetchImpl });
-  const browserRuntime = browserRuntimeVerify
-    ? await browserRuntimeVerify({ baseUrl: base, routes: [...routes], taskId: "site-publication-public-verify" })
-    : null;
+  await onEvidence?.({ phase: "verifying-assets", result: { schemaVersion: "publication-runtime-evidence-v2", publicationIdentity: sitePublicationIdentity(publication), attemptId, phase: "verifying-assets", startedAt: new Date().toISOString(), finishedAt: new Date().toISOString(), assets, result: "verified" } });
+    const browserRuntime = browserRuntimeVerify
+      ? await browserRuntimeVerify({ baseUrl: base, routes: [...routes], taskId: "site-publication-public-verify", publicationIdentity: sitePublicationIdentity(publication), attemptId, onEvidence })
+      : null;
   const mediaPaths = publication.contentManifest?.mediaPaths || publication.mediaPaths || [];
   const media = {};
   for (const mediaPath of mediaPaths) {
@@ -618,12 +625,12 @@ export async function verifyPublicSitePublication({ publication, baseUrl = publi
   };
 }
 
-export async function waitForPublicSitePublication({ publication, baseUrl = publicUrl, fetchImpl = fetch, browserRuntimeVerify = null, maxAttempts = 30, initialDelayMs = 1000, maxDelayMs = 10000, sleepImpl = (ms) => new Promise((resolve) => setTimeout(resolve, ms)), onObservation = async () => {} } = {}) {
+export async function waitForPublicSitePublication({ publication, baseUrl = publicUrl, fetchImpl = fetch, browserRuntimeVerify = null, maxAttempts = 30, initialDelayMs = 1000, maxDelayMs = 10000, sleepImpl = (ms) => new Promise((resolve) => setTimeout(resolve, ms)), onObservation = async () => {}, onEvidence = null, attemptId = null } = {}) {
   let lastError;
   const observations = [];
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
-      return { ...(await verifyPublicSitePublication({ publication, baseUrl, fetchImpl, browserRuntimeVerify })), attempts: attempt, propagationObservations: observations };
+      return { ...(await verifyPublicSitePublication({ publication, baseUrl, fetchImpl, browserRuntimeVerify, onEvidence, attemptId: attemptId || `attempt-${attempt}` })), attempts: attempt, propagationObservations: observations };
     } catch (error) {
       lastError = error;
       if (error.propagation) {
@@ -694,6 +701,18 @@ export async function transportSitePublication({ publication, sourceRoot, argv =
   }
   let propagationObservations = current.propagation?.observations || [];
   let uploadRoot = null;
+  const attemptId = `attempt-${Date.now()}-${current.deploymentId || "pending"}`;
+  const signalHandlers = new Map();
+  const markInterrupted = (signal) => {
+    const failure = { code: "SITE_PUBLICATION_INTERRUPTED", phase: current.phase || "transport", message: `received ${signal}`, at: new Date().toISOString(), lastEvidence: current.runtimeEvidence || null };
+    current = { ...current, state: "recoverable", failure, recoveryId: current.recoveryId || publicationRecoveryId(current.sitePublicationId, "interrupted") };
+    writePublicationRecord(publication.client, current).catch(() => {});
+  };
+  for (const signal of ["SIGINT", "SIGTERM"]) {
+    const handler = () => markInterrupted(signal);
+    signalHandlers.set(signal, handler);
+    process.once(signal, handler);
+  }
   try {
     const indexExists = Boolean(await stat(path.join(publication.client, "index.html")).catch(() => null));
     if (runCaptureImpl === runCapture || indexExists) {
@@ -740,7 +759,7 @@ export async function transportSitePublication({ publication, sourceRoot, argv =
       });
       await writeJsonAtomically(path.join(publication.client, "deployment.json"), deployment);
     }
-    current = await writePublicationRecord(publication.client, { ...current, state: "propagating" });
+    current = await writePublicationRecord(publication.client, { ...current, state: "verifying-assets", phase: "verifying-assets", verificationAttemptId: attemptId });
     const publicVerify = await waitForPublicSitePublication({
       publication: current,
       baseUrl,
@@ -749,6 +768,17 @@ export async function transportSitePublication({ publication, sourceRoot, argv =
       initialDelayMs,
       maxDelayMs,
       sleepImpl,
+      attemptId,
+      onEvidence: async ({ phase, result }) => {
+        current = await writePublicationRecord(publication.client, {
+          ...current,
+          phase,
+          state: phase === "recoverable" ? "recoverable" : phase,
+          verificationAttemptId: attemptId,
+          runtimeEvidence: result,
+          lastEvidence: result,
+        });
+      },
       browserRuntimeVerify: fetchImpl === fetch
         ? async (options) => {
           try {
@@ -818,6 +848,7 @@ export async function transportSitePublication({ publication, sourceRoot, argv =
     error.sitePublication = failed;
     throw error;
   } finally {
+    for (const [signal, handler] of signalHandlers) process.removeListener(signal, handler);
     await releaseSitePublicationLease(lease);
     if (uploadRoot) await uploadRoot.cleanup().catch(() => {});
   }
