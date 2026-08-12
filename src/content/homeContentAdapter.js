@@ -1,4 +1,5 @@
 import { homeContent as fallbackHomeContent } from "./siteContent.js";
+import { normalizeResponsiveTextSlot } from "./responsiveTextSlot.js";
 
 const contentBuildEnabled = typeof __XINGBUILD_CONTENT_BUILD__ !== "undefined" && __XINGBUILD_CONTENT_BUILD__;
 const homeModules = contentBuildEnabled
@@ -7,8 +8,15 @@ const homeModules = contentBuildEnabled
 
 function validHomeContent(value) {
   const empty = value?.emptyStates?.observations;
-  return typeof value?.description === "string"
-    && typeof value?.homeTitle === "string"
+  let responsive = false;
+  try {
+    normalizeResponsiveTextSlot(value?.description, { maxLength: 400 });
+    normalizeResponsiveTextSlot(value?.homeTitle, { maxLength: 400 });
+    responsive = true;
+  } catch {
+    responsive = false;
+  }
+  return responsive
     && typeof empty?.message === "string"
     && typeof empty?.description === "string";
 }

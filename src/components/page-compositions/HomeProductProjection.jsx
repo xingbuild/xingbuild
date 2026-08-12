@@ -21,7 +21,7 @@ export function HomeProductProjection({ practice }) {
   if (!practice) return <EmptyHomeProduct />;
   return (
     <div className="home-product-section">
-      <ProductHero practice={practice} headingLevel={2} headingId="home-product-title" eyebrow="最新作品" eyebrowAlign="start" actions={[]} />
+      <ProductHero practice={practice} headingLevel={2} headingId="home-product-title" eyebrow="最新作品" eyebrowAlign="start" introProjection="home.productHero.intro" actions={[]} />
       <PracticeModuleList modules={practice.modules} headingLevel={3} />
       <ClosingAction closing={projectHomeClosingAction()} />
     </div>

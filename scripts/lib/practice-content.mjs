@@ -4,6 +4,8 @@ import path from "node:path";
 import { projectRoot } from "./observation-content.mjs";
 import { contentRootDirectory } from "./content-root.mjs";
 import { isPublicPracticeMedia } from "../../src/content/practiceMediaLifecycle.js";
+import { normalizeResponsiveTextSlot } from "./responsive-text-slot.mjs";
+import { validateRegisteredResponsiveTextValues } from "./content-targets.mjs";
 
 
 const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -31,6 +33,11 @@ async function fileExists(file) {
 
 function isObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function validResponsiveOrText(value, field, errors, { maxLength = 400 } = {}) {
+  try { normalizeResponsiveTextSlot(value, { maxLength }); }
+  catch (error) { errors.push(`${field} must be a valid string or responsive-text-slot-v1: ${error.message}`); }
 }
 
 function validateAction(errors, action, field) {
@@ -223,10 +230,20 @@ export function validatePracticeBundle(practice, manifest) {
   if (!isObject(practice)) return ["practice must be an object"];
   if (!isObject(manifest)) return ["media manifest must be an object"];
 
-  const practiceAllowed = new Set(["id", "route", "navLabel", "title", "intro", "boundary", "observationQuery", "modules"]);
+  const practiceAllowed = new Set(["id", "route", "navLabel", "title", "intro", "boundary", "why", "observationQuery", "modules"]);
   for (const key of Object.keys(practice)) if (!practiceAllowed.has(key)) errors.push(`practice.${key} is not allowed`);
-  for (const field of ["id", "route", "navLabel", "title", "intro", "boundary"]) {
-    if (!hasText(practice[field])) errors.push(`practice.${field} must be a non-empty string`);
+  for (const field of ["id", "route", "navLabel", "title", "boundary"]) if (!hasText(practice[field])) errors.push(`practice.${field} must be a non-empty string`);
+  validResponsiveOrText(practice.intro, "practice.intro", errors, { maxLength: 400 });
+  if (practice.why !== undefined) {
+    if (!isObject(practice.why)) errors.push("practice.why must be an object");
+    else {
+      if (practice.why.eyebrow !== undefined) validResponsiveOrText(practice.why.eyebrow, "practice.why.eyebrow", errors, { maxLength: 80 });
+      if (!Array.isArray(practice.why.items)) errors.push("practice.why.items must be an array");
+      else for (const item of practice.why.items) {
+        if (!slugPattern.test(item?.id || "")) errors.push("practice.why item id must be kebab-case");
+        validResponsiveOrText(item?.text, `practice.why.items.${item?.id || "unknown"}.text`, errors, { maxLength: 400 });
+      }
+    }
   }
   if (!slugPattern.test(practice.id || "")) errors.push("practice.id must be kebab-case");
   if (practice.route !== "/products") errors.push("practice.route must be /products");
@@ -302,9 +319,8 @@ export function validatePracticeBundle(practice, manifest) {
     }
     const allowed = new Set(["id", "group", "label", "shortDescription", "loopRelation", "mediaId", "action"]);
     for (const key of Object.keys(module)) if (!allowed.has(key)) errors.push(`${field}.${key} is not allowed`);
-    for (const key of ["id", "group", "label", "shortDescription", "loopRelation"]) {
-      if (!hasText(module[key])) errors.push(`${field}.${key} must be a non-empty string`);
-    }
+    for (const key of ["id", "group", "label", "loopRelation"]) if (!hasText(module[key])) errors.push(`${field}.${key} must be a non-empty string`);
+    validResponsiveOrText(module.shortDescription, `${field}.shortDescription`, errors, { maxLength: 400 });
     if (!slugPattern.test(module.id || "")) errors.push(`${field}.id must be kebab-case`);
     if (moduleIds.has(module.id)) errors.push(`duplicate practice module id: ${module.id}`);
     moduleIds.add(module.id);
@@ -338,6 +354,11 @@ export async function assertPracticeContent(practiceId, { rootDirectory = projec
       return readFile(file);
     },
   }));
+  try {
+    await validateRegisteredResponsiveTextValues({ kind: "practice", target: practiceId, value: practice, rootDirectory });
+  } catch (error) {
+    errors.push(`responsive text registry: ${error.message}`);
+  }
   if (errors.length) throw new Error(errors.map((error) => `- ${error}`).join("\n"));
   return { practice, manifest };
 }

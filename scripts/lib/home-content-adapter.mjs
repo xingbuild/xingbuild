@@ -1,5 +1,6 @@
 import { hashValue } from "./content-targets.mjs";
 import { normalizeContentSetEntry } from "./content-set.mjs";
+import { normalizeResponsiveTextSlot, RESPONSIVE_TEXT_SLOT_SCHEMA } from "./responsive-text-slot.mjs";
 
 export const HOME_CONTENT_FIELDS = Object.freeze([
   "description",
@@ -16,11 +17,17 @@ export function normalizeHomeContent(value = {}) {
     ["emptyStates.observations.message", empty.message],
     ["emptyStates.observations.description", empty.description],
   ]) {
-    if (typeof candidate !== "string" || candidate.trim() === "") throw new Error(`home content field is required: ${field}`);
+    if (field.startsWith("emptyStates.")) {
+      if (typeof candidate !== "string" || candidate.trim() === "") throw new Error(`home content field is required: ${field}`);
+    } else {
+      try { normalizeResponsiveTextSlot(candidate, { maxLength: 400 }); }
+      catch (error) { throw new Error(`home content field is invalid: ${field}: ${error.message}`); }
+    }
   }
+  const normalizeText = (candidate) => typeof candidate === "string" ? candidate : normalizeResponsiveTextSlot(candidate, { maxLength: 400 });
   return {
-    description: value.description,
-    homeTitle: value.homeTitle,
+    description: normalizeText(value.description),
+    homeTitle: normalizeText(value.homeTitle),
     emptyStates: {
       observations: {
         message: empty.message,

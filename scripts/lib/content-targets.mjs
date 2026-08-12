@@ -3,10 +3,11 @@ import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { projectRoot } from "./observation-content.mjs";
 import { contentRootDirectory } from "./content-root.mjs";
+import { normalizeResponsiveTextSlot, RESPONSIVE_TEXT_SLOT_SCHEMA } from "./responsive-text-slot.mjs";
 
 export const contentTargetsPath = "content/registry/content-targets.json";
 export const changesDirectory = ".content-workspace/changes";
-const targetIdPattern = /^products\.robotaxi\.(title|intro|boundary|heroActions\.[a-z0-9-]+\.(label|href)|closing\.(title|summary|action\.(label|href))|module\.[a-z0-9-]+\.(label|shortDescription|loopRelation|action\.href|order))$/;
+const targetIdPattern = /^products\.robotaxi\.(title|intro|boundary|why\.eyebrow|why\.item\.[a-z0-9-]+\.text|heroActions\.[a-z0-9-]+\.(label|href)|closing\.(title|summary|action\.(label|href))|module\.[a-z0-9-]+\.(label|shortDescription|loopRelation|action\.href|order))$/;
 const mediaTargetIdPattern = /^(?:media\.robotaxi\.(asset\.[a-z0-9-]+\.(type|src|ratio|alt|caption)|module\.[a-z0-9-]+\.mediaId)|products\.robotaxi\.module\.[a-z0-9-]+\.mediaId)$/;
 const siteTargetIdPattern = /^site\.(home|sharedCopy)\.[a-z0-9-]+$/;
 
@@ -16,6 +17,10 @@ function hasText(value) {
 
 function canonical(value) {
   return JSON.stringify(value);
+}
+
+function sameValue(left, right) {
+  return canonical(left) === canonical(right);
 }
 
 export function hashValue(value) {
@@ -61,7 +66,8 @@ export function validateContentTargetRegistry(registry) {
     ids.add(target.targetId);
     if (target.scope !== "field" || !safeRelativePath(target.sourcePath, { allowSrc: false })) throw new Error(`content target registry has unsafe target source: ${target.targetId}`);
     if (target.kind === "product-content" && target.targetId.startsWith("products.robotaxi.")) {
-      if (target.editable !== true || target.scope !== "field" || target.valueType !== "string" || target.sourcePath !== "content/products/robotaxi.json" || JSON.stringify(target.projectionRoutes) !== JSON.stringify(["/products"]) || !targetIdPattern.test(target.targetId || "")) {
+      const responsiveAllowed = /\.(?:intro|why\.eyebrow|why\.item\.[a-z0-9-]+\.text|module\.[a-z0-9-]+\.shortDescription)$/.test(target.targetId || "");
+      if (target.editable !== true || target.scope !== "field" || !["string", RESPONSIVE_TEXT_SLOT_SCHEMA].includes(target.valueType) || (target.valueType === RESPONSIVE_TEXT_SLOT_SCHEMA && !responsiveAllowed) || target.sourcePath !== "content/products/robotaxi.json" || JSON.stringify(target.projectionRoutes) !== JSON.stringify(["/products"]) || !targetIdPattern.test(target.targetId || "")) {
         throw new Error(`Robotaxi product target contract is invalid: ${target.targetId}`);
       }
     }
@@ -72,7 +78,7 @@ export function validateContentTargetRegistry(registry) {
   }
   for (const template of registry.templates) {
     if (!safeRelativePath(template?.sourcePathTemplate, { allowSrc: false })) throw new Error("content target registry has unsafe template source");
-    if (!hasText(template.targetIdPattern) || !hasText(template.fieldPathTemplate || template.fieldPath) || template.scope !== "field" || template.editable !== true || template.valueType !== "string") throw new Error("content target registry template contract is invalid");
+    if (!hasText(template.targetIdPattern) || !hasText(template.fieldPathTemplate || template.fieldPath) || template.scope !== "field" || template.editable !== true || !["string", RESPONSIVE_TEXT_SLOT_SCHEMA].includes(template.valueType)) throw new Error("content target registry template contract is invalid");
     if (template.kind === "product-content" && !template.targetIdPattern.startsWith("products.robotaxi.")) throw new Error("Robotaxi product template contract is invalid");
     if (template.kind === "site-content" && !siteTargetIdPattern.test(template.targetIdPattern.replace(/\{[^}]+\}/g, "sample-field"))) throw new Error("Site content template contract is invalid");
     if (template.kind === "media-content" && (!/^(?:media\.robotaxi\.|products\.robotaxi\.module\.)/.test(template.targetIdPattern) || !["content/media/robotaxi/manifest.json", "content/products/robotaxi.json"].includes(template.sourcePathTemplate))) throw new Error("Robotaxi media template contract is invalid");
@@ -120,7 +126,7 @@ function instantiateTemplate(template, targetId) {
   if (!match) return null;
   const values = Object.fromEntries(names.map((name, index) => [name, match[index + 1]]));
   const replace = (value) => String(value).replace(/\{([a-zA-Z][a-zA-Z0-9_]*)\}/g, (_, name) => values[name]);
-  return { ...template, targetId, sourcePath: replace(template.sourcePathTemplate), fieldPath: replace(template.fieldPathTemplate || template.fieldPath), projectionRoutes: (template.projectionRoutes || []).map(replace) };
+  return { ...template, targetId, sourcePath: replace(template.sourcePathTemplate), fieldPath: replace(template.fieldPathTemplate || template.fieldPath), projectionRoutes: (template.projectionRoutes || []).map(replace), projectionKeys: (template.projectionKeys || []).map(replace) };
 }
 
 export async function resolveContentTarget(targetId, { rootDirectory = projectRoot } = {}) {
@@ -136,6 +142,34 @@ export async function resolveContentTarget(targetId, { rootDirectory = projectRo
   return target;
 }
 
+/** Validate slot values against the target registry at the content boundary. */
+export async function validateRegisteredResponsiveTextValues({ kind, target, value, rootDirectory = projectRoot } = {}) {
+  const checks = [];
+  if (kind === "home") {
+    checks.push(["site.home.homeTitle", value?.homeTitle], ["site.home.description", value?.description]);
+  } else if (kind === "practice") {
+    checks.push(["products.robotaxi.intro", value?.intro]);
+    if (value?.why?.eyebrow !== undefined) checks.push(["products.robotaxi.why.eyebrow", value.why.eyebrow]);
+    for (const item of value?.why?.items || []) checks.push([`products.robotaxi.why.item.${item.id}.text`, item.text]);
+    for (const module of value?.modules || []) checks.push([`products.robotaxi.module.${module.id}.shortDescription`, module.shortDescription]);
+  }
+  let registry;
+  try { registry = await readContentTargetRegistry({ rootDirectory }); }
+  catch (error) {
+    if (error.code === "ENOENT" && checks.every(([, candidate]) => typeof candidate === "string")) return true;
+    if (error.code === "ENOENT") throw new Error("responsive text target registry is required for slot values");
+    throw error;
+  }
+  for (const [targetId, candidate] of checks) {
+    const registered = (registry.targets || []).find((entry) => entry.targetId === targetId)
+      || (registry.templates || []).map((entry) => instantiateTemplate(entry, targetId)).find(Boolean);
+    if (!registered) throw new Error(`responsive text target is not registered: ${targetId}`);
+    if (registered.valueType !== RESPONSIVE_TEXT_SLOT_SCHEMA) continue;
+    normalizeResponsiveTextSlot(candidate, { projections: registered.projectionKeys || [], maxLength: registered.constraints?.maxLength || 400 });
+  }
+  return true;
+}
+
 export async function createContentTargetCard(targetId, { rootDirectory = projectRoot } = {}) {
   const target = await resolveContentTarget(targetId, { rootDirectory });
   const document = JSON.parse(await readFile(resolveContentSourceFile(target.sourcePath, { rootDirectory }), "utf8"));
@@ -144,7 +178,7 @@ export async function createContentTargetCard(targetId, { rootDirectory = projec
     if (target.kind === "media-content" && (target.fieldPath.startsWith("assets[id=") || target.fieldPath.includes("].mediaId"))) current = null;
     else throw error;
   }
-  if (current !== null && typeof current !== "string") throw new Error(`registered target is not a string field: ${targetId}`);
+  if (current !== null && typeof current !== "string" && target.valueType !== RESPONSIVE_TEXT_SLOT_SCHEMA) throw new Error(`registered target is not a supported field: ${targetId}`);
   return {
     targetId: target.targetId,
     scope: target.scope,
@@ -165,14 +199,11 @@ export function parseFieldPath(fieldPath) {
     throw new Error(`unsupported fieldPath: ${fieldPath || "missing"}`);
   }
   const segments = fieldPath.split(".");
-  const first = /^([a-zA-Z][a-zA-Z0-9_]*)(?:\[id=([a-z0-9-]+)\])?$/.exec(segments.shift() || "");
-  if (!first || segments.some((segment) => !/^[a-zA-Z][a-zA-Z0-9_]*$/.test(segment))) {
+  const parsed = segments.map((segment) => /^([a-zA-Z][a-zA-Z0-9_]*)(?:\[id=([a-z0-9-]+)\])?$/.exec(segment));
+  if (parsed.some((segment) => !segment)) {
     throw new Error(`fieldPath must use explicit fields and stable id selectors: ${fieldPath}`);
   }
-  const parts = [first[1]];
-  if (first[2]) parts.push({ id: first[2] });
-  parts.push(...segments);
-  return parts;
+  return parsed.flatMap((segment) => segment[2] ? [segment[1], { id: segment[2] }] : [segment[1]]);
 }
 
 export function readFieldValue(document, fieldPath) {
@@ -218,6 +249,11 @@ export function writeFieldValue(document, fieldPath, value) {
 
 function validateAfter(target, after) {
   if (after === null && target.kind === "media-content" && target.fieldPath.startsWith("assets[id=")) return;
+  if (target.valueType === RESPONSIVE_TEXT_SLOT_SCHEMA) {
+    try { normalizeResponsiveTextSlot(after, { projections: target.projectionKeys }); }
+    catch (error) { throw new Error(`${target.targetId} after responsive text is invalid: ${error.message}`); }
+    return;
+  }
   if (typeof after !== "string") throw new Error("ChangeSet after must be a string field value");
   const constraints = target.constraints || {};
   if (constraints.nonEmpty && !hasText(after)) throw new Error(`${target.targetId} after must be non-empty`);
@@ -240,6 +276,13 @@ function operationBefore(operation) {
 
 function operationSourceRefs(operation, fallback = []) {
   return Array.isArray(operation?.sourceRefs) ? operation.sourceRefs : fallback;
+}
+
+function normalizeTargetValue(target, value) {
+  if (target?.valueType === RESPONSIVE_TEXT_SLOT_SCHEMA && typeof value !== "string") {
+    return normalizeResponsiveTextSlot(value, { projections: target.projectionKeys, maxLength: target.constraints?.maxLength || 400 });
+  }
+  return value;
 }
 
 function operationDescriptor(operation, target, { before, after } = {}) {
@@ -320,10 +363,12 @@ function validateOperation(operation, target, { index = 0, fallbackSourceRefs = 
       throw new Error(`ChangeSet operation ${index + 1} media approval/provenance is required`);
     }
   }
-  if (Array.isArray(after) || (after && typeof after === "object")) throw new Error("ChangeSet cannot replace an array or object");
+  if (target.valueType !== RESPONSIVE_TEXT_SLOT_SCHEMA && (Array.isArray(after) || (after && typeof after === "object"))) throw new Error("ChangeSet cannot replace an array or object");
   validateAfter(target, after);
-  if (before !== undefined && before !== null && typeof before !== "string") throw new Error(`ChangeSet operation ${index + 1} before must match the registered value type`);
-  return { ...operation, ...operationDescriptor(operation, target, { before, after }), sourceRefs, boundary, authority };
+  if (target.valueType !== RESPONSIVE_TEXT_SLOT_SCHEMA && before !== undefined && before !== null && typeof before !== "string") throw new Error(`ChangeSet operation ${index + 1} before must match the registered value type`);
+  const normalizedBefore = before && typeof before === "object" ? normalizeTargetValue(target, before) : before;
+  const normalizedAfter = normalizeTargetValue(target, after);
+  return { ...operation, ...operationDescriptor({ ...operation, afterHash: operation.afterHash || hashValue(normalizedAfter) }, target, { before: normalizedBefore, after: normalizedAfter }), sourceRefs, boundary, authority };
 }
 
 /** Validate and normalize a multi-operation ChangeSet using registry targets. */
@@ -391,8 +436,8 @@ export async function createContentChangeSet({
         if (target.kind === "media-content" && (target.fieldPath.startsWith("assets[id=") || target.fieldPath.includes("].mediaId"))) before = null;
         else throw error;
       }
-      if (before !== null && typeof before !== "string") throw new Error(`registered target is not a string field: ${operation.targetId}`);
-      const nextAfter = operationAfter(operation);
+      if (before !== null && typeof before !== "string" && target.valueType !== RESPONSIVE_TEXT_SLOT_SCHEMA) throw new Error(`registered target is not a supported field: ${operation.targetId}`);
+      const nextAfter = normalizeTargetValue(target, operationAfter(operation));
       validateAfter(target, nextAfter);
       const actualBeforeHash = hashValue(before);
       if (operation.beforeHash && operation.beforeHash !== actualBeforeHash) throw new Error(`ChangeSet beforeHash conflict for ${operation.targetId}`);
@@ -466,10 +511,11 @@ export async function createContentChangeSet({
     if (target.kind === "media-content" && (target.fieldPath.startsWith("assets[id=") || target.fieldPath.includes("].mediaId"))) before = null;
     else throw error;
   }
-  if (before !== null && typeof before !== "string") throw new Error(`registered target is not a string field: ${targetId}`);
+  if (before !== null && typeof before !== "string" && target.valueType !== RESPONSIVE_TEXT_SLOT_SCHEMA) throw new Error(`registered target is not a supported field: ${targetId}`);
   const actualBeforeHash = hashValue(before);
   if (beforeHash && beforeHash !== actualBeforeHash) throw new Error(`ChangeSet beforeHash conflict for ${targetId}`);
-  const nextChangeId = changeId || `change-${targetId.replace(/[^a-zA-Z0-9-]/g, "-")}-${hashValue(after).slice(0, 16)}`;
+  const normalizedAfter = normalizeTargetValue(target, after);
+  const nextChangeId = changeId || `change-${targetId.replace(/[^a-zA-Z0-9-]/g, "-")}-${hashValue(normalizedAfter).slice(0, 16)}`;
   const changeSet = {
     changeSetId: nextChangeId,
     changeId: nextChangeId,
@@ -480,8 +526,8 @@ export async function createContentChangeSet({
     fieldPath: target.fieldPath,
     beforeHash: actualBeforeHash,
     before,
-    after,
-    afterHash: hashValue(after),
+    after: normalizedAfter,
+    afterHash: hashValue(normalizedAfter),
     affectedRoutes: [...target.projectionRoutes],
     sourceRefs: [...sourceRefs],
     boundary,
@@ -491,10 +537,10 @@ export async function createContentChangeSet({
       type: "field-reverse",
       rollbackChangeId: `${nextChangeId}-rollback`,
       originalBefore: before,
-      originalAfter: after,
+      originalAfter: normalizedAfter,
     },
   };
-  changeSet.operations = [operationDescriptor(changeSet, target, { before, after })];
+  changeSet.operations = [operationDescriptor(changeSet, target, { before, after: normalizedAfter })];
   changeSet.changedTargets = [target.targetId];
   return { ...changeSet, target };
 }
@@ -530,10 +576,10 @@ export function validateContentChangeSet(changeSet, { target } = {}) {
   if (!/^[a-f0-9]{64}$/.test(changeSet.beforeHash || "")) throw new Error("ChangeSet beforeHash must be sha256");
   if (!Array.isArray(changeSet.sourceRefs) || changeSet.sourceRefs.length === 0 || changeSet.sourceRefs.some((source) => !hasText(source))) throw new Error("ChangeSet sourceRefs are required");
   if (!hasText(changeSet.boundary) || !hasText(changeSet.authority)) throw new Error("ChangeSet boundary and authority are required");
-  if (Array.isArray(changeSet.after) || (changeSet.after && typeof changeSet.after === "object")) throw new Error("ChangeSet cannot replace an array or object");
+  if (target.valueType !== RESPONSIVE_TEXT_SLOT_SCHEMA && (Array.isArray(changeSet.after) || (changeSet.after && typeof changeSet.after === "object"))) throw new Error("ChangeSet cannot replace an array or object");
   validateAfter(target, changeSet.after);
   if (changeSet.recovery) {
-    if (changeSet.recovery.type !== "field-reverse" || !hasText(changeSet.recovery.rollbackChangeId) || changeSet.recovery.originalBefore !== changeSet.before || changeSet.recovery.originalAfter !== changeSet.after) {
+    if (changeSet.recovery.type !== "field-reverse" || !hasText(changeSet.recovery.rollbackChangeId) || !sameValue(changeSet.recovery.originalBefore, changeSet.before) || !sameValue(changeSet.recovery.originalAfter, changeSet.after)) {
       throw new Error("ChangeSet recovery descriptor is invalid");
     }
   }
@@ -542,7 +588,7 @@ export function validateContentChangeSet(changeSet, { target } = {}) {
     throw new Error("ChangeSet releasePackage must stay inside .content-workspace/releases");
   }
   if (changeSet.rollbackOf) {
-    if (!hasText(changeSet.rollbackOf.changeId) || !hasText(changeSet.rollbackOf.contentReleaseId) || !hasText(changeSet.rollbackOf.releasePackage) || changeSet.rollbackOf.originalBefore !== changeSet.after || changeSet.rollbackOf.originalAfter !== changeSet.before) {
+    if (!hasText(changeSet.rollbackOf.changeId) || !hasText(changeSet.rollbackOf.contentReleaseId) || !hasText(changeSet.rollbackOf.releasePackage) || !sameValue(changeSet.rollbackOf.originalBefore, changeSet.after) || !sameValue(changeSet.rollbackOf.originalAfter, changeSet.before)) {
       throw new Error("rollback ChangeSet must link its source content release and preimage");
     }
   }

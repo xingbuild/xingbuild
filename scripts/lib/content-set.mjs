@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import { access, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { assertProductArtifactIdentityShape } from "./product-artifact.mjs";
+import { normalizeResponsiveTextSlot } from "./responsive-text-slot.mjs";
+import { validateRegisteredResponsiveTextValues } from "./content-targets.mjs";
 
 /**
  * ContentSet is the runtime authority for public content.  Receipts, slot
@@ -116,12 +118,15 @@ export function normalizeContentSetEntry(entry = {}) {
 function normalizeHomePayload(value) {
   if (value == null) return null;
   const empty = value.emptyStates?.observations;
-  for (const candidate of [value.description, value.homeTitle, empty?.message, empty?.description]) {
-    if (typeof candidate !== "string" || candidate.trim() === "") throw new Error("ContentSet homeContent is incomplete");
+  for (const candidate of [value.description, value.homeTitle]) {
+    try { normalizeResponsiveTextSlot(candidate, { maxLength: 400 }); }
+    catch { throw new Error("ContentSet homeContent is incomplete"); }
   }
+  for (const candidate of [empty?.message, empty?.description]) if (typeof candidate !== "string" || candidate.trim() === "") throw new Error("ContentSet homeContent is incomplete");
+  const normalizeText = (candidate) => typeof candidate === "string" ? candidate : normalizeResponsiveTextSlot(candidate, { maxLength: 400 });
   return {
-    description: value.description,
-    homeTitle: value.homeTitle,
+    description: normalizeText(value.description),
+    homeTitle: normalizeText(value.homeTitle),
     emptyStates: { observations: { message: empty.message, description: empty.description } },
   };
 }
@@ -376,6 +381,7 @@ export async function readActiveContentSet({ sourceRoot } = {}) {
 export async function writeContentSet({ sourceRoot, contentSet } = {}) {
   const root = sourceRoot || process.cwd();
   validateContentSet(contentSet);
+  if (contentSet.homeContent) await validateRegisteredResponsiveTextValues({ kind: "home", target: "home", value: contentSet.homeContent, rootDirectory: root });
   const { setsDirectory } = contentSetPaths(root);
   const file = path.join(setsDirectory, contentSet.contentSetId, "content-set.json");
   try {

@@ -366,6 +366,21 @@ provenance
 
 内容 task 只声明表达意图和源文件；页面不声明节点坐标、关系路径、字体尺寸或响应式分支。
 
+### 5.5.1 ResponsiveTextSlot（通用内容表达能力）
+
+说明文字、定位语、模块摘要和产品动机都属于内容对象的语义表达，不应因为需要 Web/Mobile 的不同换行而进入页面 JSX 或 CSS。统一使用有界的 `ResponsiveTextSlot`：
+
+```text
+ResponsiveTextSlot
+├─ parts[]：稳定 id + 纯文本语义片段
+└─ projections
+   └─ 已登记页面/slot → web/mobile breakAfter（可选）
+```
+
+`parts[]` 不是物理屏幕行；同一语义文本只保存一份。页面只能读取自己登记的 projection，所以 Home 与 `/products` 可以读取同一作品说明，却各自拥有独立 IA、容器、页面顺序、生命周期和换行策略。产品能力层负责字体、最大宽度、行高、gutter、关系间距和自然换行；内容运营只负责经审核的文本片段与已登记的换行提示。
+
+该能力禁止 HTML、`<br>`、CSS、DOM selector、页面私有样式和任意投影 key。旧字符串仍由 resolver 解释为单一 legacy part，无提示时沿用自然排版；缺失的可选 slot 不渲染且不产生空白。新增或改变 slot schema、target registry、resolver 或 renderer 属于产品工程版本；在能力已经上线后，文案和 break hints 通过独立 ContentSet Candidate 发布，不递增产品版本。
+
 ## 6. 页面模板与布局合同
 
 ### 6.1 全局 shell

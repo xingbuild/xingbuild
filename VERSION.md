@@ -1,3 +1,17 @@
+## v0.26.15 — 通用响应式内容表达与独立发布能力
+
+父版本：`v0.26.14` / `375f0c885ddec940be6859336b4db94bc5654256`
+
+- 新增有界 `responsive-text-slot-v1`：稳定语义 parts、已登记 projectionKeys 与 web/mobile breakAfter；拒绝 HTML/CSS/DOM、未知投影、非法断点和空文本。
+- Practice/Home adapter、ContentSet/ChangeSet prepare/build/reconcile/rollback 与共享 renderer 兼容 slot；旧字符串和既有 active ContentSet 不迁移即可读取。
+- 首页定位与 Robotaxi 作品说明支持独立页面 projection；`site.home.description` 仅做 slot 兼容，不新增首页可见 block；Home 与 Products 保持独立 IA/CTA/ClosingAction/lifecycle。
+- 不修改现有 active ContentSet、正文/审核/source/media、SitePublication/Coordinator 语义；不执行 content publish。
+
+## 验证合同
+
+- 旧字符串/38-entry active ContentSet、合法 slot round-trip/rollback、未知 projection 零落盘、页面独立投影和分层 release gates。
+- 待产品/视觉独立验收；尚未 product transport。
+
 ## v0.26.14 — QA 浏览器供应链与安装副作用治理
 
 父版本：`v0.26.13` / `62ab89f49771dde0bb6388add9874b83515d2299`

@@ -20,6 +20,7 @@ import {
   safeReturnTo,
 } from "../../lib/navigation";
 import { robotaxiProductConfiguration } from "../../content/productConfiguration.js";
+import { ResponsiveText } from "../content/ResponsiveText.jsx";
 
 function EmptyContentState() {
   return <section className="content-empty-state" aria-label="内容状态"><p>暂无已发布内容</p></section>;
@@ -31,7 +32,7 @@ function HomeComposition({ content }) {
   const briefs = content.briefs;
   return (
     <LayoutShell className="page-composition page-composition--home home-page">
-      <section className="home-page__positioning-shell"><h1 className="home-page__positioning">{content.home.homeTitle}</h1></section>
+      <section className="home-page__positioning-shell"><h1 className="home-page__positioning"><ResponsiveText value={content.home.homeTitle} projection="home.positioning.title" profile="auto" /></h1></section>
       <div className="home-page__actions-align">
         <ActionGroup className="home-page__actions" actions={robotaxiProductConfiguration.homeActions} equalWidth />
       </div>

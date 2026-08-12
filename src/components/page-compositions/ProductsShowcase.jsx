@@ -18,7 +18,7 @@ export function ProductsShowcase({ practice }) {
   return (
     <div className="products-showcase">
       <LatestUpdateCard />
-      <ProductHero practice={practice} headingLevel={1} actions={robotaxiProductConfiguration.heroActions} />
+      <ProductHero practice={practice} headingLevel={1} introProjection="products.productHero.intro" showWhy actions={robotaxiProductConfiguration.heroActions} />
       <PracticeModuleList modules={practice.modules} headingLevel={2} />
       <ClosingAction closing={projectProductsClosingAction()} />
     </div>

@@ -535,7 +535,14 @@
   .product-hero--compact h2 { font: 650 var(--type-page-title)/var(--leading-title) var(--font-ui); }
   .product-hero__intro { max-width: 52.5rem; margin: 0; color: var(--color-text); font: 400 clamp(1.125rem, 1rem + 0.25vw, 1.25rem)/1.6 var(--font-ui); }
   .product-hero__boundary { max-width: 47.5rem; margin: 0; color: var(--color-text-muted); font: 400 var(--type-ui)/var(--leading-ui) var(--font-ui); }
+  .product-hero--with-why { gap: 0; }
+  .product-hero--with-why .product-hero__intro { margin-top: var(--space-4); }
+  .product-hero__why { display: grid; gap: 0; max-width: 42rem; margin: var(--space-3) 0 0; }
+  .product-hero__why-eyebrow { margin: 0 0 var(--space-1); }
+  .product-hero__why-items { display: grid; gap: var(--space-2); }
+  .product-hero__why-item { margin: 0; color: var(--color-text-muted); font: 400 var(--type-ui)/var(--leading-ui) var(--font-ui); }
   .product-hero .action-group { justify-content: center; margin-top: var(--space-2); }
+  .product-hero--with-why .action-group { margin-top: var(--space-6); }
   .product-hero--start .action-group { justify-content: start; }
 
   /* ShowcaseModule owns its internal copy/media geometry; the list owns module rhythm. */

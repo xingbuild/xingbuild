@@ -5,6 +5,7 @@ import { contentFilePath, contentMediaManifestPath } from "./content-root.mjs";
 import { hashValue } from "./content-targets.mjs";
 import { homeContent as legacyHomeContent } from "../../src/content/siteContent.js";
 import { homeContentSetEntry } from "./home-content-adapter.mjs";
+import { validateRegisteredResponsiveTextValues } from "./content-targets.mjs";
 
 function sourcePathFor(kind, target) {
   if (kind === "home") return "content/home.json";
@@ -27,6 +28,7 @@ function routeFor(kind, target) {
 export async function contentSetEntryFromCanonical({ sourceRoot = process.cwd(), kind, target, reviewProof = {}, sourceProof = [], mediaProof = [], legacyAuditId = null, contentValue = undefined, mediaManifest = undefined } = {}) {
   const normalizedKind = kind === "content" ? "observation" : kind;
   if (normalizedKind === "home") {
+    await validateRegisteredResponsiveTextValues({ kind: "home", target, value: contentValue === undefined ? legacyHomeContent : contentValue, rootDirectory: sourceRoot });
     return homeContentSetEntry({
       value: contentValue === undefined ? legacyHomeContent : contentValue,
       sourceProof,
@@ -36,6 +38,7 @@ export async function contentSetEntryFromCanonical({ sourceRoot = process.cwd(),
   }
   const file = contentFilePath(normalizedKind === "observation" ? "content" : normalizedKind, target, { sourceRoot });
   const value = contentValue === undefined ? JSON.parse(await readFile(file, "utf8")) : contentValue;
+  if (normalizedKind === "practice") await validateRegisteredResponsiveTextValues({ kind: "practice", target, value, rootDirectory: sourceRoot });
   let contentHash = hashValue(value);
   if (normalizedKind === "practice") {
     const media = mediaManifest === undefined
@@ -76,6 +79,7 @@ export async function prepareContentSetCandidate({ sourceRoot = process.cwd(), e
   try { activeContentSet = (await readActiveContentSet({ sourceRoot })).contentSet; } catch (error) {
     if (error.code !== "ENOENT") throw error;
   }
+  if (homeContent) await validateRegisteredResponsiveTextValues({ kind: "home", target: "home", value: homeContent, rootDirectory: sourceRoot });
   const candidate = createContentSetCandidate({ activeContentSet, entries, homeContent: homeContent || activeContentSet?.homeContent || null, previousContentSetId, createdAt });
   return writeContentSet({ sourceRoot, contentSet: candidate });
 }
