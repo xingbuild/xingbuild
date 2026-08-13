@@ -526,23 +526,38 @@ export function contentPreviewWorkbench() {
       }
       frames.forEach((frame) => frame.addEventListener("load", () => setTimeout(requestMarkers, 220)));
       setTimeout(requestMarkers, 600);
-      function applyUpdate(payload) {
+      async function refreshTargetFrame(frame, payload) {
+        try {
+          const response = await fetch("/__xingbuild/content-authoring?target-id=" + encodeURIComponent(selectedTargetId), { cache: "no-store" });
+          const authored = await response.json();
+          frame.dataset.revision = String(payload.revision || 0);
+          frame.contentWindow?.postMessage({
+            schema: "content-preview-target-update-v1",
+            type: "xingbuild-content-preview-update",
+            targetId: selectedTargetId,
+            authoring: authored.authoring,
+            revision: payload.revision || 0,
+          }, "*");
+        } catch (error) {
+          errorNode.textContent = "PREVIEW_TARGET_UPDATE_FAILED: " + error.message;
+        }
+      }
+      async function applyUpdate(payload) {
         if (!payload || !selectedTargetId || payload.targetId !== selectedTargetId) return;
         statusNode.textContent = payload.status || payload.sessionStatus || "unknown";
         revisionNode.textContent = String(payload.revision || 0);
         errorNode.textContent = payload.error ? (payload.error.code + ": " + payload.error.message) : "无";
         if (payload.refresh !== true || !["valid", "valid-updated", "ready"].includes(payload.status || payload.sessionStatus)) return;
         const affected = new Set((payload.consumerViews || consumerViews).map((view) => view.route + ":" + view.viewport));
-        frames.filter((frame) => affected.has(frame.dataset.route + ":" + frame.dataset.viewport)).forEach((frame) => {
-          const separator = frame.dataset.baseSrc.includes("?") ? "&" : "?";
-          frame.dataset.revision = String(payload.revision || 0);
-          frame.src = frame.dataset.baseSrc + separator + "__xingbuild_content_preview_revision=" + encodeURIComponent(String(payload.revision || 0));
-        });
+        await Promise.all(frames
+          .filter((frame) => affected.has(frame.dataset.route + ":" + frame.dataset.viewport))
+          .map((frame) => refreshTargetFrame(frame, payload)));
+        setTimeout(requestMarkers, 80);
       }
       if (targetId) {
         const eventSource = new EventSource("/__xingbuild/preview-events?target-id=" + encodeURIComponent(targetId));
         eventSource.addEventListener("preview-state", (event) => {
-          try { applyUpdate(JSON.parse(event.data)); } catch (error) { errorNode.textContent = "PREVIEW_EVENT_INVALID: " + error.message; }
+          try { void applyUpdate(JSON.parse(event.data)); } catch (error) { errorNode.textContent = "PREVIEW_EVENT_INVALID: " + error.message; }
         });
         eventSource.onerror = () => { errorNode.textContent = "PREVIEW_RUNTIME_DISCONNECTED"; };
       }
@@ -623,7 +638,36 @@ export function contentPreviewFrameMarker() {
     event.preventDefault(); event.stopPropagation();
     parent.postMessage({ schema: "content-preview-interaction-v1", type: "preview-navigation-click", route, viewport }, "*");
   }, true);
-  window.addEventListener("message", (event) => { if (event.data?.type !== "xingbuild-content-target-request") return; clear(); const viewport = event.data.viewport || "web-1280"; setTimeout(() => (event.data.targets || []).forEach((target) => markTarget(target, viewport, event.data.selectedTargetId)), 80); });
+  const applyTargetUpdate = (payload) => {
+    const element = [...document.querySelectorAll("[data-xingbuild-content-target]")].find((candidate) => candidate.dataset.xingbuildContentTarget === payload.targetId);
+    if (!element) return;
+    const viewport = new URL(location.href).searchParams.get("__xingbuild_content_preview") || "web-1280";
+    const value = viewport === "mobile-390" && payload.authoring?.mobileText ? payload.authoring.mobileText : payload.authoring?.text;
+    const parts = String(value || "").split("\\n");
+    if (element.tagName === "P" && parts.length > 1) {
+      const replacements = parts.map((part) => {
+        const paragraph = document.createElement("p");
+        paragraph.className = element.className;
+        paragraph.textContent = part;
+        return paragraph;
+      });
+      replacements[0].dataset.xingbuildContentTarget = payload.targetId;
+      element.replaceWith(...replacements);
+    } else {
+      element.textContent = String(value || "");
+    }
+    parent.postMessage({ type: "xingbuild-content-target-updated", targetId: payload.targetId, route: location.pathname, viewport, revision: payload.revision || 0 }, "*");
+  };
+  window.addEventListener("message", (event) => {
+    if (event.data?.type === "xingbuild-content-preview-update") {
+      applyTargetUpdate(event.data);
+      return;
+    }
+    if (event.data?.type !== "xingbuild-content-target-request") return;
+    clear();
+    const viewport = event.data.viewport || "web-1280";
+    setTimeout(() => (event.data.targets || []).forEach((target) => markTarget(target, viewport, event.data.selectedTargetId)), 80);
+  });
 })();
 </script>`;
       return html.replace("</head>", script + "</head>");
@@ -734,6 +778,12 @@ export function contentPreviewHmr() {
           reduction = reduceContentPreviewTargetUpdate({ state: revisionState, targetId, consumerRoutes, consumerViews, error, now: new Date().toISOString() });
         }
       }
+      // The custom preview event owns frame refreshes, so Vite must not emit
+      // a global reload. Invalidate the changed JSON module nevertheless;
+      // otherwise a targeted frame reload can receive Vite's cached eager
+      // import and render the previous source snapshot.
+      const changedModules = server.moduleGraph?.getModulesByFile?.(file) || new Set();
+      for (const module of changedModules) server.moduleGraph?.invalidateModule?.(module);
       revisionState = reduction.state;
       server.ws.send({ type: "custom", event: "xingbuild:content-target-update", data: reduction.event });
       return [];

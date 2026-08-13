@@ -9,6 +9,19 @@ import {
 export const CONTENT_PREVIEW_RUNTIME_V2_SCHEMA = "content-preview-runtime-v2";
 export const CONTENT_PREVIEW_EVENT_SCHEMA = "content-preview-event-v2";
 
+function invalidatePreviewModuleChain(server, sourcePath) {
+  const roots = server.moduleGraph.getModulesByFile?.(sourcePath) || new Set();
+  const queue = [...roots];
+  const seen = new Set();
+  while (queue.length) {
+    const module = queue.shift();
+    if (!module || seen.has(module)) continue;
+    seen.add(module);
+    for (const importer of module.importers || []) queue.push(importer);
+    server.moduleGraph.invalidateModule(module);
+  }
+}
+
 function json(value) {
   return JSON.stringify(value);
 }
@@ -170,6 +183,7 @@ export function createPreviewSourceWatcher({
   consumerRoutes = [],
   consumerViews = [],
   broker,
+  onSourceChange = null,
   debounceMs = 120,
 } = {}) {
   if (!sourcePath || !broker) throw new TypeError("PreviewSourceWatcher requires sourcePath and broker");
@@ -236,6 +250,7 @@ export function createPreviewSourceWatcher({
       if (nextKey !== lastEventKey) {
         state = reduction.state;
         lastEventKey = nextKey;
+        onSourceChange?.();
         broker.publish(event);
         // Editors commonly save by truncating and rewriting the JSON file. A
         // transient parse error is useful evidence, but it must not become a
@@ -326,6 +341,9 @@ export async function createPreviewRuntimeV2({
     consumerRoutes: context.consumerRoutes,
     consumerViews: context.consumerViews,
     broker,
+    onSourceChange: () => {
+      invalidatePreviewModuleChain(server, context.sourcePath);
+    },
     debounceMs,
   });
   let closed = false;

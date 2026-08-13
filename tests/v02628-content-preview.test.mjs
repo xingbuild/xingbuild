@@ -133,6 +133,8 @@ test("workbench has no connection-line layer and the fixed launcher is explicit"
   const launcher = await readFile(path.join(projectRoot, "start-content-preview.command"), "utf8");
   assert.doesNotMatch(vite, /relation-layer|data-relation-layer|drawRelations|is-related/);
   assert.match(vite, /consumerViews/);
+  assert.match(vite, /moduleGraph\??\.getModulesByFile/);
+  assert.match(vite, /invalidateModule/);
   assert.match(launcher, /4317|content-site-preview/);
   assert.match(launcher, /exec node scripts\/content-site-preview\.mjs/);
   const target = await resolveContentTarget("profile.about.block.direction.text");
