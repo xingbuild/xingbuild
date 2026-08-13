@@ -1,3 +1,16 @@
+## v0.26.23 — 全页面自然文本内容编辑工作台
+
+父版本：`v0.26.22` / `6868f0d03a581f1d2a9d6b27e5783b085f958adf`
+
+- 将 `responsive-text-slot-v1` 保留为内部发布/渲染规范，新增自然文本 authoring value；Xing 不再编辑 `parts`、`projection` 或 `breakAfter`。
+- 工作台从唯一 target registry 展开全部页面文本字段，支持 Web/Mobile 自然文本、可选移动端换行、source/value hash CAS 和原子写入。
+- 通过 session-scoped SSE 与 TargetImpact 只刷新受影响 route×viewport；不执行全站 build、ProductArtifact、ContentSet、SitePublication 或发布。
+
+## 验证合同
+
+- `npm run check`、content/article/practice checks、authoring/targeted tests、固定 4317 真实编辑→局部更新→原字节恢复、`git diff --check`。
+- 预览只写 canonical ignored content source；active ContentSet、review/recovery/release、ProductArtifact、SitePublication 和线上状态保持只读不变。
+
 ## v0.26.22 — 内容预览运行时 v2 与局部刷新闭环
 
 父版本：`v0.26.21` / `3bde62d80a1bb666ee5846e30dd10fa631fbf29f`

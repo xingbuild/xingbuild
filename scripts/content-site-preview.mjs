@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { currentIdentity, previewPort } from "./preview-runtime.mjs";
 import {
   CONTENT_PREVIEW_MODE,
+  listContentPreviewTargetIds,
   resolveContentPreviewTarget,
   sessionEnvironment,
   sessionOutput,
@@ -20,20 +21,40 @@ function option(argv, name) {
 }
 
 export async function createContentPreviewSession({ targetId, rootDirectory = root, taskId = process.env.XBUILD_TASK_ID || "local" } = {}) {
-  if (!targetId) {
-    const error = new Error("Usage: npm run content:preview:site -- --target-id <registered targetId>");
-    error.code = "CONTENT_PREVIEW_TARGET_REQUIRED";
+  const selectedTargetId = targetId || "__all__";
+  const contexts = selectedTargetId === "__all__"
+    ? await Promise.all((await listContentPreviewTargetIds({ rootDirectory })).map((id) => resolveContentPreviewTarget(id, { rootDirectory }).catch(() => null))).then((items) => items.filter(Boolean))
+    : [];
+  const context = selectedTargetId === "__all__" ? null : await resolveContentPreviewTarget(selectedTargetId, { rootDirectory });
+  if (selectedTargetId === "__all__" && contexts.length === 0) {
+    const error = new Error("Content preview has no registered target sources");
+    error.code = "CONTENT_PREVIEW_TARGETS_EMPTY";
     throw error;
   }
-  const context = await resolveContentPreviewTarget(targetId, { rootDirectory });
   const sessionId = process.env.XINGBUILD_PREVIEW_SESSION_ID || `content-preview-${randomUUID()}`;
   const identity = currentIdentity(rootDirectory, { mode: CONTENT_PREVIEW_MODE, sessionId });
+  identity.targetId = selectedTargetId;
   return {
     context,
+    contexts,
     identity,
     taskId,
-    environment: sessionEnvironment(context, { identity, taskId }),
-    output: sessionOutput(context, { identity, taskId, port: previewPort }),
+    environment: sessionEnvironment(context, { identity, taskId, contexts }),
+    output: context ? sessionOutput(context, { identity, taskId, port: previewPort }) : {
+      schemaVersion: "content-preview-session-v1",
+      mode: CONTENT_PREVIEW_MODE,
+      cwd: identity.cwd,
+      commit: identity.commit,
+      version: identity.version,
+      taskId,
+      sessionId,
+      pid: null,
+      port: previewPort,
+      targetId: selectedTargetId,
+      targetCount: contexts.length,
+      readOnly: false,
+      statusText: "本地内容编辑与预览 · 未审核 · 未发布",
+    },
   };
 }
 
@@ -51,10 +72,14 @@ export async function runContentPreview({ targetId, rootDirectory = root, taskId
   });
   const output = { ...session.output, pid: child.pid || null };
   console.log(JSON.stringify(output, null, 2));
-  console.log(`Content preview workbench: http://127.0.0.1:${previewPort}/__xingbuild/content-preview?target-id=${encodeURIComponent(targetId)}`);
-  console.log(`Source: ${session.context.sourcePath}#${session.context.fieldPath}`);
-  console.log(`Routes: ${session.context.projectionRoutes.join(", ")}`);
-  console.log(`Active ContentSet baseline: ${session.context.activeBaseline.activeContentSetId} (${session.context.activeBaseline.contentSetHash}) [read-only]`);
+  console.log(`Content preview workbench: http://127.0.0.1:${previewPort}/__xingbuild/content-preview`);
+  if (session.context) {
+    console.log(`Source: ${session.context.sourcePath}#${session.context.fieldPath}`);
+    console.log(`Routes: ${session.context.projectionRoutes.join(", ")}`);
+    console.log(`Active ContentSet baseline: ${session.context.activeBaseline.activeContentSetId} (${session.context.activeBaseline.contentSetHash}) [read-only]`);
+  } else {
+    console.log(`Targets: ${session.contexts.length} registered source target(s)`);
+  }
 
   let stopping = false;
   const stop = (signal) => {

@@ -1,134 +1,54 @@
 # 当前迭代
 
-## 当前唯一版本：`v0.26.22`
+## 当前唯一版本：`v0.26.23`
 
-父版本：v0.26.21 / `3bde62d80a1bb666ee5846e30dd10fa631fbf29f`
+父版本：v0.26.22 / `6868f0d03a581f1d2a9d6b27e5783b085f958adf`
+
+contentImpact: compatible
+contentImpactReason: 本版本只增加 dev-only 内容作者工作台、authoring value 编译与局部预览写入；不改变已发布内容 schema、active ContentSet、页面结构或发布链路。
+affectedTargets: ["content-preview-authoring", "all-editable-text-targets"]
+affectedRoutes: ["/", "/products", "/business-observations", "/observations", "/about"]
+affectedFields: ["canonical ignored content text fields only"]
+compatibilityEvidence: content preview writes only canonical ignored source with source/value hash CAS; active/review/recovery/release/SitePublication/ProductArtifact are read-only and unchanged.
 
 ## 正式方案
 
-[docs/design/v0.26.22 内容预览运行时 v2 与局部刷新闭环方案.md](../design/v0.26.22%20内容预览运行时%20v2%20与局部刷新闭环方案.md)
+[docs/design/v0.26.23 全页面自然文本内容编辑工作台方案.md](../design/v0.26.23%20全页面自然文本内容编辑工作台方案.md)
 
 ## 本版本要解决的真实问题
 
-Xing 需要在本地直接修改已登记内容，并立即看到真实页面的 Web/Mobile 结果；修改一个字段只更新它真正影响的页面，不重新构建全站、不生成 ProductArtifact、不触碰 ContentSet 或线上状态。
+v0.26.22 已实现按 target 精准刷新，但 Xing 仍必须直接编辑 `parts / projection / breakAfter` 等工程内部结构，无法像普通内容作者一样在页面字段中直接输入文字和回车。这个能力没有完成真正的内容作者工作流。
 
-v0.26.21 已完成 target 影响面和 reducer 的单元/定向验证，但真实使用暴露出直接阻断：workbench 自定义 HTML 没有接入可运行的 Vite HMR client，文件 hash 已变化而浏览器 revision、DOM 和 frame 均不变化。v0.26.21 保持冻结，不回写旧版本；本版本建立独立的预览运行时事件链，避免再次依赖 Vite HMR 的隐式行为。
+## 产品范围
 
-## 产品合同
-
-### 1. 预览边界
-
-预览链只有：
-
-```text
-canonical ignored content source
-  → ContentTarget
-  → PreviewSourceWatcher
-  → target validator
-  → TargetImpact
-  → PreviewEventBroker
-  → affected Web/Mobile frames
-```
-
-发布链仍然独立：
-
-```text
-ProductArtifact + active ContentSet
-  → SiteSnapshot
-  → Site Publication Coordinator
-  → deployment / publicVerify / finalize
-```
-
-两条链不得互写、互相触发或共享发布状态。
-
-### 2. 稳定对象
-
-- `ContentTarget`：唯一 registry 中已登记的 `targetId`、`fieldPath`、source、projection 和安全校验规则。
-- `TargetImpact`：由 registry 与 `pageDefinitions/contentRefs` 共同解析的真实 consumer routes/views；不允许手工维护第二份映射。
-- `ContentPreviewSession`：一次只读本地会话，绑定当前 canonical main、HEAD、4317 lease、PID、`sessionId` 和 selected target。
-- `PreviewSourceWatcher`：只监听 selected target 的 canonical source 文件，支持原子保存的 rename、短暂半写入、debounce 和恢复；不监听整个仓库，不监听 active/release/recovery。
-- `PreviewEventBroker`：本地受控事件通道（SSE 或等价单一通道），传递 `targetId/sourceHash/valueHash/revision/consumerViews/status`。
-- `FrameManager`：只对 `TargetImpact` 返回的 Web/Mobile frame 发出更新；无关 frame 的 URL、revision、DOM 和导航计数必须保持不变。
-
-### 3. 状态与刷新规则
-
-```text
-valid source change
-  → validate
-  → revision + 1
-  → refresh only affected route × viewport
-
-invalid/partial source
-  → invalid
-  → preserve last-valid rendered state
-  → show inspectable error
-
-selected target unchanged
-  → outside-selected-target
-  → no frame refresh
-
-valid source restored
-  → valid-updated
-  → affected frames recover once
-```
-
-同一 source 的多个 target 必须按 `TargetImpact` 精确分发。例如：`products.robotaxi.intro` 影响 `/` 与 `/products`；Products-only Why 只影响 `/products`；首页 `homeTitle` 只影响 `/`。不得把 JSON 变化转换成 `path=*` 全量 reload。
-
-### 4. 内容与生命周期保护
-
-预览只能读：canonical ignored source、target registry、page definitions、review/draft 状态、approved media manifest，以及 active ContentSet 的只读 hash/baseline 对照。
-
-预览绝不能写：`src/`、schema/CSS/组件、`active.json`、ContentSet、review/approve/release/finalize、ProductArtifact、SitePublication、deployment、EdgeOne 或任何线上状态。预览不得把 draft 变成 approved/active。
-
-### 5. 会话清理
-
-`sessionId/runId`、4317 lease、PID、browser profile、临时截图和临时缓存均为会话对象。正常退出、异常退出、SIGINT/SIGTERM 和超时都必须进入可观测的 cleanup 分支，并验证无 orphan lease、owned process、profile/temp residue。QA 证据如需长期保留，另由 QA owner 保存最小 machine-readable summary；不得把 profile/cache 当发布证据。
+- 工作台覆盖 `content/registry/content-targets.json` 中所有 `editable=true` 的文本 target 和模板实例；媒体 target 仍在同一清单中可见但明确只读。页面域包括 `/`、`/products`、`/business-observations`、`/observations`、`/about`。
+- Xing 只编辑自然文本；响应式 slot 由内部 authoring compiler 自动生成；Web/Mobile 默认共享一份文本，只有明确选择移动端特殊换行时才生成 profile 断点。
+- 工作台提供 target 页面分组、字段选择、文本编辑、Web/Mobile frame、source/value hash、状态和错误提示。
+- 写入只允许当前 target 对应的 canonical ignored content source，采用 source-hash CAS 与原子替换；无效值不落盘。
+- 目标发生变化时只刷新真实 consumer routes/views；不做 full reload、全站 build、ProductArtifact、ContentSet、SitePublication 或发布。
 
 ## 明确不做
 
-- 不做产品 UI/IA/视觉、组件、token、文案或页面结构迭代；因此不需要 elon ui 做全站视觉验收。
-- 不新增 CMS、数据库、第二套内容 schema、第二套 target registry、第二套 renderer 或页面专用内容源。
-- 不把 Vite HMR 当产品协议；可以复用 Vite dev server，但刷新事件必须由预览运行时显式拥有和验证。
-- 不做 full reload、全站 build、ProductArtifact/ContentSet/SitePublication 生成、content publish、product transport 或 EdgeOne 调用。
-- 不读取、复制、迁移或清理历史 releases、site-publications、base-site-artifacts、recoveries；这些进入独立候选。
-- 不创建 branch、worktree、并行 task 或 automation。
+- 不改变页面 IA、布局、组件、视觉 token、媒体归属或页面生命周期。
+- 不新增 CMS、数据库、第二套 target registry、第二套页面内容源或第二套 renderer。
+- 不要求 Xing 直接编辑 JSON；不复制 Web/Mobile 两份完整文案。
+- 不写 `src/`、`active.json`、ContentSet、review、recovery、release、ProductArtifact、SitePublication、deployment 或 EdgeOne。
+- 不清理历史发布证据，不创建 branch/worktree/automation。
+
+## 工程实现边界
+
+Engineering 只实现正式方案中的 authoring value 编译器、全 target 工作台、source hash CAS 原子写入、响应式断点编辑、TargetImpact 局部刷新和零发布副作用；不得借此修改页面结构或内容发布生命周期。
 
 ## 验收合同
 
-### Xing 实际使用闭环（最高优先级）
+1. 每个页面域至少选择一个 target，Xing 能在工作台直接输入自然文本并用回车换行；
+2. Web1280/Mobile390 frame 显示编辑结果，Products intro 等多消费者 target 只刷新其受影响页面；
+3. Web/Mobile 特殊断点可选且不会形成两份漂移文案；
+4. invalid、半写入、恢复、CAS 冲突均可观察，last-valid 页面不白屏；
+5. active ContentSet、review/recovery/release/SitePublication/ProductArtifact 前后 byte/hash 不变；
+6. 4317 lease/PID/profile/temp 清理通过；
+7. `elon ui` 只对工作台能力做一次独立体验验收，日常内容编辑不重复进行全站视觉验收。
 
-1. 启动固定 4317，并显示当前 HEAD、sessionId、selected target、source hash 和 consumer frames。
-2. Xing 对 `products.robotaxi.intro` 做一次真实有效编辑；约定时限内 Web1280/Mobile390 的 `/`、`/products` frame 同步更新，revision +1，文本与响应式换行正确。
-3. 无关 `/business-observations`、`/observations`、`/about` frame 的 URL、revision、DOM 和导航计数不变。
-4. 写入一次非法/半写入内容：页面保留 last-valid，不白屏，workbench 显示字段级错误。
-5. 恢复有效内容：仅受影响 frame 恢复，revision 单调递增。
-6. 刷新页面后 source/value hash、revision 和生命周期快照一致；退出后 lease/PID/profile/temp 清理可证明。
+## 责任与发布边界
 
-### 工程门禁
-
-- target registry、page definitions、ContentSet 兼容和 frame impact 定向测试通过；未知 target、越界字段、非法 projection、无效 JSON 均在写入/渲染前硬失败。
-- valid、invalid、outside-selected-target、恢复、重复事件、乱序事件和断线重连回归通过。
-- 真实固定 4317 浏览器证据包含 source/value hash、revision、consumer identity、frame URL/DOM、console/pageerror 和 cleanup 结果。
-- active ContentSet、review/recovery/release/SitePublication/ProductArtifact 在预览前后 byte/hash 不变。
-- 版本形成 clean commit/tag、exact build、preflight 后，才由 Xing 决定是否进入产品发布；本版本本地预览完成本身不自动触发 publish。
-
-## `contentImpact` 声明
-
-```yaml
-contentImpact: compatible
-contentImpactReason: explicit-local-event-channel-replaces-implicit-hmr
-compatibilityEvidence: active-contentset-read-only-and-no-publication-side-effects
-affectedTargets: [content-preview-session, target-impact, products.robotaxi.intro, site.home.homeTitle, practice.why]
-affectedRoutes: [local-only]
-affectedFields: []
-lifecycleWrites: none
-publicationAction: none
-```
-
-## 执行顺序与责任
-
-1. `elon` 维护本 current 与正式方案；不把本地预览问题转成视觉验收。
-2. `elon engin` 只实现本文件范围，完成定向测试、固定 4317 真实使用证据、commit/tag/clean 和 ProductArtifact/preflight。
-3. Xing 进行一次实际编辑确认；这是本功能的产品验收，不是全站视觉审查。
-4. 产品版本是否 transport 由现有发布门禁单独决定；内容发布仍由 `elon ops` 按内容生命周期独立执行。
-5. 历史过程文件清理和内容数据生命周期不进入 v0.26.22，分别按对应候选处理。
+`elon` 维护本方案；`elon engin` 实现与本地 QA；Xing 做一次真实编辑确认；`elon ops` 只在 Xing 确认内容后执行独立内容发布。产品工程 transport 和内容发布仍然互不触发。

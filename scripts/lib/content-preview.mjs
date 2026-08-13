@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { lstat, readFile } from "node:fs/promises";
+import { lstat, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { contentRootDirectory, projectRoot } from "./content-root.mjs";
 import {
@@ -52,9 +52,13 @@ async function readJsonFile(file, code) {
   }
 }
 
-function expectedContentReference(sourcePath) {
-  if (sourcePath === "content/products/robotaxi.json") return { type: "practice", id: "robotaxi" };
+function expectedContentReference(sourcePath, targetId = "") {
+  // Shared site copy is a registered cross-page contract. Its consumer list is
+  // authoritative; it is not a page-local content object that must appear in
+  // every PageDefinition.contentRefs entry.
+  if (targetId.startsWith("site.sharedCopy.")) return null;
   if (sourcePath === "content/home.json") return { type: "home", id: "home" };
+  if (sourcePath === "content/products/robotaxi.json") return { type: "practice", id: "robotaxi" };
   if (sourcePath === "content/profile/about.json") return { type: "profile", id: "about" };
   if (sourcePath.startsWith("content/articles/")) return { type: "evergreenArticle", id: "enterprise-operating-system" };
   return null;
@@ -71,6 +75,51 @@ function pageHasReference(definition, expected) {
   return Object.values(definition?.contentRefs || {}).some((reference) => reference?.type === expected.type && reference?.id === expected.id);
 }
 
+function templateIds(template, sourceDocument, sourcePath) {
+  const pattern = String(template.targetIdPattern || "");
+  const ids = [];
+  const values = {
+    actionId: sourceDocument?.heroActions?.map?.((item) => item.id) || [],
+    itemId: sourceDocument?.why?.items?.map?.((item) => item.id) || [],
+    moduleId: sourceDocument?.modules?.map?.((item) => item.id) || [],
+    assetId: sourceDocument?.assets?.map?.((item) => item.id) || [],
+    field: Object.keys(sourceDocument || {}),
+  };
+  const placeholder = [...pattern.matchAll(/\{([a-zA-Z][a-zA-Z0-9_]*)\}/g)].map((match) => match[1]);
+  if (placeholder.length !== 1 || !values[placeholder[0]]?.length) return ids;
+  for (const value of values[placeholder[0]]) {
+    ids.push(pattern.replace(`{${placeholder[0]}}`, value));
+  }
+  return ids;
+}
+
+/** Return all concrete text-capable target ids for the authoring workbench. */
+export async function listContentPreviewTargetIds({ rootDirectory = projectRoot } = {}) {
+  const registry = await readContentTargetRegistry({ rootDirectory });
+  const ids = new Set((registry.targets || []).map((target) => target.targetId));
+  for (const template of registry.templates || []) {
+    const sourceTemplate = String(template.sourcePathTemplate || "");
+    if (sourceTemplate.includes("{slug}")) {
+      const directory = path.dirname(resolveContentSourceFile(sourceTemplate.replace("{slug}", "__slug__"), { rootDirectory }));
+      let names = [];
+      try { names = await readdir(directory); } catch { names = []; }
+      for (const name of names.filter((item) => item.endsWith(".json"))) {
+        const slug = name.slice(0, -5);
+        ids.add(template.targetIdPattern.replaceAll("{slug}", slug));
+      }
+      continue;
+    }
+    const sourcePath = resolveContentSourceFile(sourceTemplate, { rootDirectory });
+    try {
+      const source = JSON.parse(await readFile(sourcePath, "utf8"));
+      for (const targetId of templateIds(template, source, sourcePath)) ids.add(targetId);
+    } catch {
+      // Missing legacy sources stay out of the workbench until their target is repaired.
+    }
+  }
+  return [...ids].sort();
+}
+
 /**
  * Resolve the actual page consumers from the registered projection routes and
  * the product page definitions. The registry remains the source of target
@@ -80,7 +129,7 @@ function pageHasReference(definition, expected) {
 export function resolveContentPreviewTargetImpact(target, { definitions = pageDefinitions } = {}) {
   const routes = [...new Set(target?.projectionRoutes || [])];
   if (routes.length === 0) throw new Error(`content preview target has no consumer routes: ${target?.targetId || "unknown"}`);
-  const expected = expectedContentReference(target.sourcePath);
+  const expected = expectedContentReference(target.sourcePath, target.targetId);
   const keyRoutes = new Set((target.projectionKeys || []).map(routeFromProjectionKey).filter(Boolean));
   for (const route of routes) {
     const definition = definitions.find((candidate) => candidate.route === route)
@@ -369,8 +418,12 @@ export function reduceContentPreviewTargetUpdate({ state, targetId, consumerRout
   };
 }
 
-export function sessionEnvironment(context, { identity, taskId = process.env.XBUILD_TASK_ID || "local" } = {}) {
-  const baseline = context.activeBaseline;
+export function sessionEnvironment(context, { identity, taskId = process.env.XBUILD_TASK_ID || "local", contexts = [] } = {}) {
+  const allTargets = identity.targetId === "__all__";
+  // An all-target session has no selected source. Do not leak the first
+  // arbitrary target into preview-meta/lease as if it were the active field.
+  const selected = allTargets ? {} : (context || contexts[0] || {});
+  const baseline = selected.activeBaseline || null;
   return {
     XINGBUILD_CONTENT_BUILD: "1",
     XINGBUILD_PREVIEW_MODE: CONTENT_PREVIEW_MODE,
@@ -381,20 +434,21 @@ export function sessionEnvironment(context, { identity, taskId = process.env.XBU
     XINGBUILD_PREVIEW_SESSION_ID: identity.sessionId,
     XINGBUILD_CONTENT_PREVIEW_SESSION_ID: identity.sessionId,
     XINGBUILD_PREVIEW_RUNTIME: "content-preview-runtime-v2",
-    XINGBUILD_PREVIEW_OPEN_PATH: `/__xingbuild/content-preview?target-id=${encodeURIComponent(context.targetId)}`,
-    XINGBUILD_CONTENT_PREVIEW_TARGET_ID: context.targetId,
-    XINGBUILD_CONTENT_PREVIEW_SOURCE_PATH: context.sourcePath,
-    XINGBUILD_CONTENT_PREVIEW_FIELD_PATH: context.fieldPath,
-    XINGBUILD_CONTENT_PREVIEW_VALUE_TYPE: context.valueType,
-    XINGBUILD_CONTENT_PREVIEW_MAX_LENGTH: String(context.constraints?.maxLength || 400),
-    XINGBUILD_CONTENT_PREVIEW_ROUTES: JSON.stringify(context.projectionRoutes),
-    XINGBUILD_CONTENT_PREVIEW_CONSUMER_ROUTES: JSON.stringify(context.consumerRoutes || context.projectionRoutes),
-    XINGBUILD_CONTENT_PREVIEW_CONSUMER_VIEWS: JSON.stringify(context.consumerViews || []),
-    XINGBUILD_CONTENT_PREVIEW_PROJECTION_KEYS: JSON.stringify(context.projectionKeys),
-    XINGBUILD_CONTENT_PREVIEW_SOURCE_HASH: context.sourceHash,
-    XINGBUILD_CONTENT_PREVIEW_VALUE_HASH: context.valueHash,
+    XINGBUILD_PREVIEW_OPEN_PATH: allTargets ? "/__xingbuild/content-preview" : `/__xingbuild/content-preview?target-id=${encodeURIComponent(selected.targetId)}`,
+    XINGBUILD_CONTENT_PREVIEW_TARGET_ID: allTargets ? "__all__" : selected.targetId,
+    XINGBUILD_CONTENT_PREVIEW_SOURCE_PATH: selected.sourcePath || "",
+    XINGBUILD_CONTENT_PREVIEW_FIELD_PATH: selected.fieldPath || "",
+    XINGBUILD_CONTENT_PREVIEW_VALUE_TYPE: selected.valueType || "",
+    XINGBUILD_CONTENT_PREVIEW_MAX_LENGTH: String(selected.constraints?.maxLength || 400),
+    XINGBUILD_CONTENT_PREVIEW_ROUTES: JSON.stringify(selected.projectionRoutes || []),
+    XINGBUILD_CONTENT_PREVIEW_CONSUMER_ROUTES: JSON.stringify(selected.consumerRoutes || selected.projectionRoutes || []),
+    XINGBUILD_CONTENT_PREVIEW_CONSUMER_VIEWS: JSON.stringify(selected.consumerViews || []),
+    XINGBUILD_CONTENT_PREVIEW_PROJECTION_KEYS: JSON.stringify(selected.projectionKeys || []),
+    XINGBUILD_CONTENT_PREVIEW_SOURCE_HASH: selected.sourceHash || "",
+    XINGBUILD_CONTENT_PREVIEW_VALUE_HASH: selected.valueHash || "",
     XINGBUILD_CONTENT_PREVIEW_REVISION: "0",
-    XINGBUILD_CONTENT_PREVIEW_ACTIVE_BASELINE: JSON.stringify(baseline),
+    XINGBUILD_CONTENT_PREVIEW_ACTIVE_BASELINE: JSON.stringify(baseline || {}),
+    XINGBUILD_CONTENT_PREVIEW_TARGETS: JSON.stringify(contexts.map((item) => ({ targetId: item.targetId, kind: item.kind, valueType: item.valueType, projectionRoutes: item.projectionRoutes, sourcePath: item.sourcePath, fieldPath: item.fieldPath }))),
   };
 }
 
