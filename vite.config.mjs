@@ -134,9 +134,122 @@ function previewMetadata() {
           commit: process.env.XINGBUILD_PREVIEW_COMMIT || null,
           version: process.env.XINGBUILD_PREVIEW_VERSION || null,
           taskId: process.env.XINGBUILD_PREVIEW_TASK_ID || null,
+          mode: process.env.XINGBUILD_PREVIEW_MODE || "product-preview",
+          targetId: process.env.XINGBUILD_CONTENT_PREVIEW_TARGET_ID || null,
+          sourcePath: process.env.XINGBUILD_CONTENT_PREVIEW_SOURCE_PATH || null,
+          fieldPath: process.env.XINGBUILD_CONTENT_PREVIEW_FIELD_PATH || null,
+          projectionRoutes: parsePreviewJson("XINGBUILD_CONTENT_PREVIEW_ROUTES"),
+          projectionKeys: parsePreviewJson("XINGBUILD_CONTENT_PREVIEW_PROJECTION_KEYS"),
+          activeBaseline: parsePreviewJson("XINGBUILD_CONTENT_PREVIEW_ACTIVE_BASELINE"),
           port: 4317,
         }));
       });
+    },
+  };
+}
+
+function parsePreviewJson(name) {
+  try { return process.env[name] ? JSON.parse(process.env[name]) : null; } catch { return null; }
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function contentPreviewWorkbench() {
+  return {
+    name: "xingbuild-content-preview-workbench",
+    apply: "serve",
+    configureServer(server) {
+      server.middlewares.use("/__xingbuild/content-preview", (request, response, next) => {
+        const enabled = process.env.XINGBUILD_PREVIEW_MODE === "content-preview"
+          && Boolean(process.env.XINGBUILD_CONTENT_PREVIEW_TARGET_ID);
+        if (!enabled) return next();
+        if (request.method !== "GET" && request.method !== "HEAD") return next();
+        const query = new URL(request.url || "/", "http://127.0.0.1").searchParams;
+        const targetId = process.env.XINGBUILD_CONTENT_PREVIEW_TARGET_ID;
+        if (query.get("target-id") && query.get("target-id") !== targetId) {
+          response.statusCode = 409;
+          response.setHeader("Content-Type", "text/plain; charset=utf-8");
+          response.end("Content preview target identity mismatch");
+          return;
+        }
+        const routes = parsePreviewJson("XINGBUILD_CONTENT_PREVIEW_ROUTES") || [];
+        const route = routes[0] || "/products";
+        const routeUrl = (viewport) => `${route}${route.includes("?") ? "&" : "?"}__xingbuild_content_preview=${viewport}`;
+        const baseline = parsePreviewJson("XINGBUILD_CONTENT_PREVIEW_ACTIVE_BASELINE") || {};
+        const sourcePath = process.env.XINGBUILD_CONTENT_PREVIEW_SOURCE_PATH || "";
+        const fieldPath = process.env.XINGBUILD_CONTENT_PREVIEW_FIELD_PATH || "";
+        const html = `<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>xingbuild 本地内容预览</title>
+    <style>
+      :root { color-scheme: light; font-family: system-ui, -apple-system, sans-serif; color: #0f172a; background: #f8fafc; }
+      body { margin: 0; padding: 24px; }
+      header { max-width: 1400px; margin: 0 auto 24px; }
+      h1 { font-size: 24px; margin: 0 0 8px; }
+      p { margin: 4px 0; color: #475569; }
+      code { font-family: ui-monospace, SFMono-Regular, monospace; word-break: break-all; }
+      .status { display: grid; gap: 4px; margin-top: 16px; padding: 16px; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; }
+      .views { display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start; margin: 24px auto 0; max-width: 1400px; }
+      .view { background: #fff; border: 1px solid #cbd5e1; border-radius: 12px; padding: 12px; overflow: auto; }
+      .view h2 { margin: 0 0 8px; font-size: 16px; }
+      iframe { display: block; border: 0; background: #fff; }
+      .readonly { color: #0369a1; font-weight: 600; }
+    </style>
+  </head>
+  <body data-content-preview-mode="content-preview" data-target-id="${escapeHtml(targetId)}">
+    <header>
+      <h1>本地内容预览</h1>
+      <p class="readonly">本地内容预览 · 未审核 · 未发布</p>
+      <div class="status">
+        <p><strong>targetId：</strong><code>${escapeHtml(targetId)}</code></p>
+        <p><strong>source：</strong><code>${escapeHtml(sourcePath)}</code></p>
+        <p><strong>fieldPath：</strong><code>${escapeHtml(fieldPath)}</code></p>
+        <p><strong>projectionRoutes：</strong><code>${escapeHtml(JSON.stringify(routes))}</code></p>
+        <p><strong>active ContentSet（只读基线）：</strong><code>${escapeHtml(baseline.activeContentSetId || "missing")}</code></p>
+        <p><strong>contentSetHash：</strong><code>${escapeHtml(baseline.contentSetHash || "missing")}</code></p>
+      </div>
+    </header>
+    <main class="views">
+      <section class="view" aria-label="Web 1280 预览">
+        <h2>Web 1280</h2>
+        <iframe title="Web 1280 preview" width="1280" height="900" src="${escapeHtml(routeUrl("web-1280"))}"></iframe>
+      </section>
+      <section class="view" aria-label="Mobile 390 预览">
+        <h2>Mobile 390</h2>
+        <iframe title="Mobile 390 preview" width="390" height="844" src="${escapeHtml(routeUrl("mobile-390"))}"></iframe>
+      </section>
+    </main>
+  </body>
+</html>`;
+        response.statusCode = 200;
+        response.setHeader("Content-Type", "text/html; charset=utf-8");
+        response.setHeader("Cache-Control", "no-store");
+        response.end(request.method === "HEAD" ? undefined : html);
+      });
+    },
+  };
+}
+
+function contentPreviewHmr() {
+  const contentRoot = path.resolve(".content-workspace/content");
+  return {
+    name: "xingbuild-content-preview-hmr",
+    apply: "serve",
+    handleHotUpdate({ file, server }) {
+      if (process.env.XINGBUILD_PREVIEW_MODE !== "content-preview") return;
+      if (!file.startsWith(`${contentRoot}${path.sep}`) || !file.endsWith(".json")) return;
+      server.ws.send({ type: "full-reload", path: "*" });
+      return [];
     },
   };
 }
@@ -160,5 +273,5 @@ export default defineConfig({
       clientFiles: ["./src/main.jsx"],
     },
   },
-  plugins: [isolatedDraftPreview(), previewMetadata(), robotaxiReleaseAdapter(), contentMediaPreview(), react()],
+  plugins: [isolatedDraftPreview(), previewMetadata(), contentPreviewWorkbench(), contentPreviewHmr(), robotaxiReleaseAdapter(), contentMediaPreview(), react()],
 });

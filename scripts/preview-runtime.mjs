@@ -12,21 +12,35 @@ function projectRoot() {
   return path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 }
 
-function currentIdentity(root = projectRoot()) {
+export function currentIdentity(root = projectRoot(), { mode = process.env.XINGBUILD_PREVIEW_MODE || "product-preview" } = {}) {
   const packageJson = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8"));
+  const jsonEnv = (name) => {
+    try { return process.env[name] ? JSON.parse(process.env[name]) : null; } catch { return null; }
+  };
   return {
     cwd: root,
     commit: execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim(),
     version: `v${packageJson.version}`,
+    mode,
+    taskId: process.env.XINGBUILD_PREVIEW_TASK_ID || process.env.XBUILD_TASK_ID || "local",
+    targetId: process.env.XINGBUILD_CONTENT_PREVIEW_TARGET_ID || null,
+    sourcePath: process.env.XINGBUILD_CONTENT_PREVIEW_SOURCE_PATH || null,
+    fieldPath: process.env.XINGBUILD_CONTENT_PREVIEW_FIELD_PATH || null,
+    projectionRoutes: jsonEnv("XINGBUILD_CONTENT_PREVIEW_ROUTES"),
+    projectionKeys: jsonEnv("XINGBUILD_CONTENT_PREVIEW_PROJECTION_KEYS"),
+    activeBaseline: jsonEnv("XINGBUILD_CONTENT_PREVIEW_ACTIVE_BASELINE"),
   };
 }
 
 export function isPreviewRecordFor(record, identity) {
-  return Boolean(record)
-    && record.port === previewPort
-    && record.cwd === identity.cwd
-    && record.commit === identity.commit
-    && record.version === identity.version;
+  if (!record || record.port !== previewPort) return false;
+  for (const key of ["cwd", "commit", "version", "mode", "taskId", "targetId", "sourcePath", "fieldPath"]) {
+    if (identity[key] !== undefined && identity[key] !== null && record[key] !== identity[key]) return false;
+  }
+  for (const key of ["projectionRoutes", "projectionKeys", "activeBaseline"]) {
+    if (identity[key] !== undefined && identity[key] !== null && JSON.stringify(record[key] || null) !== JSON.stringify(identity[key])) return false;
+  }
+  return true;
 }
 
 function isProcessAlive(pid) {
@@ -96,7 +110,9 @@ async function runPreview() {
     XINGBUILD_PREVIEW_VERSION: identity.version,
     XINGBUILD_PREVIEW_TASK_ID: process.env.XBUILD_TASK_ID || "local",
   };
-  const child = spawn("npm", ["run", "dev", "--", "--host", "127.0.0.1", "--port", String(previewPort), "--strictPort", "--open", "/"], {
+  const openPath = process.env.XINGBUILD_PREVIEW_OPEN_PATH || "/";
+  const openArgs = process.env.XINGBUILD_PREVIEW_NO_OPEN === "1" ? [] : ["--open", openPath];
+  const child = spawn("npm", ["run", "dev", "--", "--host", "127.0.0.1", "--port", String(previewPort), "--strictPort", ...openArgs], {
     cwd: root,
     env,
     stdio: "inherit",

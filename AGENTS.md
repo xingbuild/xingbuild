@@ -7,12 +7,27 @@
 - 对用户的所有项目内回复、task 交接、验收回传和运营/工程报告，统一称呼为 **Xing**。
 - “Xing”是本项目的用户称呼规范，不改变 Git、版本、发布、内容或上游事实中的身份字段。
 
+## 当前 Task 命名体系
+
+- 项目人格命名原则：由 Xing 为每个项目指定一个统一的人名根；本项目的人名根是 `elon`（Elon Musk 的 Elon）。
+- `elon`：产品总负责人、首席产品官（CPO）/首席产品与总设计负责人；对应原“产品/视觉主线”。
+- `elon ui`（规范 slug：`elon-ui`）：视觉方向负责人、视觉验收 AI；对应原 `design-ui`。
+- `elon engin`：首席技术官（CTO）/Engineering 总负责人；对应原 Engineering 主线。
+- `elon ops`：首席运营官（COO）/内容运营与发布负责人；对应原 `ops-content`/内容及发布主线。
+- `elon1`、`elon2`：`elon` 职责域下的产品、业务或方案分析 task。
+- `elon ui1`、`elon ui2`：`elon ui` 职责域下的视觉探索或验收 task。
+- `elon engin1`、`elon engin2`：`elon engin` 职责域下的 Engineering 子 task。
+- `elon ops1`、`elon ops2`：`elon ops` 职责域下的内容运营/Ops 子 task。
+- 这些是可读的职责别名，不改变任何 threadId、hostId、Git、版本、内容身份或发布事实；未真实创建的编号 task 不预登记、不猜测。
+- 本命名体系是 xingbuild 项目内的职责别名，不修改 Codex 全局 agent 名称，也不自动改动其他项目。
+
 ## 一、开始工作前的唯一读取路由
 
 1. 本文件：确认项目边界与不可违反的红线。
-2. [`docs/rules/00-baseline-index.md`](docs/rules/00-baseline-index.md)：按任务类型选择唯一规则正文。
-3. 按索引读取职责、协作、迭代发布、产品视觉或 Engineering 架构规则。
-4. 只有涉及当前产品版本时才读 `docs/iterations/current.md` 和活动 `docs/iterations/candidates/`；历史文件只在需要追溯时读取。
+2. [`docs/rules/task-onboarding.md`](docs/rules/task-onboarding.md)：新 task 的身份、责任、并行、worktree、读取和回传门禁。
+3. [`docs/rules/00-baseline-index.md`](docs/rules/00-baseline-index.md)：按任务类型选择唯一规则正文。
+4. 按索引读取职责、协作、迭代发布、产品视觉或 Engineering 架构规则。
+5. 只有涉及当前产品版本时才读 `docs/iterations/current.md` 和活动 `docs/iterations/candidates/`；历史文件只在需要追溯时读取。
 
 不要用 task 历史、旧设计、冷档案或其他项目文件补全当前规则。事实缺失就报告缺口。
 

@@ -2,6 +2,8 @@
 
 状态：生效。本文只负责规则路由、优先级和读取矩阵，不复制产品、工程或运营正文。
 
+新 task 入场先读 [`task-onboarding.md`](task-onboarding.md)，再按本索引进入对应责任域；该文件只做入场路由和协作门禁，不替代下列规则正文。
+
 ## 一、唯一基线结构
 
 ```mermaid
@@ -25,6 +27,8 @@ flowchart TD
 | 2.3 | 产品版本如何从方案走到线上证据？ | [`iteration-and-release.md`](iteration-and-release.md) |
 | 2.4 | 网站应该是什么，页面和视觉能力边界是什么？ | [`../product/xingbuild 网站产品架构与视觉系统总案.md`](../product/xingbuild%20网站产品架构与视觉系统总案.md) |
 | 2.5 | 当前工程如何组织、构建和发布，不能越过哪些边界？ | [`engineering-architecture-and-principles.md`](engineering-architecture-and-principles.md)；站点物理发布由 `scripts/lib/site-publication-coordinator.mjs` 实现 |
+
+新 task 入场与并行资源门禁：[`task-onboarding.md`](task-onboarding.md)。
 
 运营事实不并入产品工程五层：内容运营以 [`../operations/内容运营与发布规则.md`](../operations/内容运营与发布规则.md) 为准，经营观察采集以 [`../operations/经营观察信息源与覆盖合同.md`](../operations/经营观察信息源与覆盖合同.md) 为准。
 

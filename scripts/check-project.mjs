@@ -79,6 +79,7 @@ const requiredFiles = [
   "scripts/lib/content-release-lease.mjs",
   "scripts/lib/content-targets.mjs",
   "scripts/lib/content-root.mjs",
+  "scripts/lib/content-preview.mjs",
   "scripts/lib/base-site-artifact.mjs",
   "scripts/lib/content-finalize.mjs",
   "scripts/lib/content-approval.mjs",
@@ -95,6 +96,7 @@ const requiredFiles = [
   "scripts/lib/product-artifact.mjs",
   "scripts/release-build.mjs",
   "scripts/content-set-migrate.mjs",
+  "scripts/content-site-preview.mjs",
   "scripts/lib/content-lifecycle-time.mjs",
   "tests/product-content-isolation.test.mjs",
   "scripts/verify-public-release.mjs",
@@ -127,6 +129,7 @@ assert.equal(packageJson.scripts["content:prepare"], "node scripts/content-relea
 assert.equal(packageJson.scripts["content:build"], "node scripts/content-release.mjs --build", "content build must stay explicit");
 assert.equal(packageJson.scripts["release:build"], "node scripts/release-build.mjs", "final release build must use the exact HEAD/tag builder");
 assert.equal(packageJson.scripts["site-publication"], "node scripts/site-publication.mjs", "site publication must have one coordinator entry point");
+assert.equal(packageJson.scripts["content:preview:site"], "node scripts/content-site-preview.mjs", "content site preview must use the single dev-only entry point");
 const version = await readFile(new URL("../VERSION.md", import.meta.url), "utf8");
 const current = await readFile(
   new URL("../docs/iterations/current.md", import.meta.url),

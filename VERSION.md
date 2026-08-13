@@ -1,3 +1,18 @@
+## v0.26.20 — 本地内容预览工作台与 Task 入场治理
+
+父版本：`v0.26.19` / `36dcffa097455fc6747555751f1861ae26b7227f`
+
+- 新增唯一 `content:preview:site` dev-only 入口，复用固定 `4317` preview lease，以 `content-preview` mode 绑定当前 HEAD、task、registered target、绝对 source、projection routes/keys 与 active ContentSet 只读基线。
+- 新增 ContentPreviewSession 与 Vite 内容预览工作台：使用 canonical ignored content、既有 page composition/ResponsiveTextSlot/media，提供 Web `1280` 与 Mobile `390` 真页面 iframe、HMR 和“本地内容预览 · 未审核 · 未发布”状态；不提供 approve/publish/deploy/active 切换。
+- 启动前拒绝未注册 target、unsafe source override、缺失/非法 JSON、非 projectionKeys 注册的 responsive slot；预览只读 active ContentSet，不写 active/review/recovery/release/SitePublication/线上 manifest。
+- 固化 AGENTS、task-onboarding、baseline index、task registry 的 elon 职责与 direct-local 入场边界；不改变 ContentSet/target registry/ResponsiveTextSlot schema、页面 IA/视觉或发布链路。
+
+## 验证合同
+
+- registered target/source/route/baseline、unknown/unsafe/missing source、responsive projection、content/product lease 隔离、workbench dev-only/无发布控制、零写入与 preview runtime 回归。
+- `npm run check`、`npm run release:prepare`、内容检查、`npm run release:closeout-check`、exact `npm run release:build`、`npm run release:preflight`、`git diff --check`；保留既有环境/内容 fixture failures 分层，不修改内容事实。
+- 本版本只形成本地 Engineering checkpoint；待 elon 产品/架构与 elon ui 本地 Web→Mobile 独立验收，未执行 product transport 或 content publish。
+
 ## v0.26.19 — 发布证据契约与验证闭环
 
 父版本：`v0.26.18` / `77a21d61a0a5efc29f7609f1aadbc4805a0f17ff`
@@ -1082,3 +1097,17 @@ Engineering local implementation checkpoint；待产品/视觉独立验收，尚
 - 分离结构化内容、页面组件与视觉样式。
 - 建立迭代、启动、发布前检查和 EdgeOne 发布流程。
 - 建立本地 Git 稳定提交和标签规则；线上仓库与生产发布保持独立授权。
+## v0.26.20 — 本地内容预览工作台与 Task 入场治理
+
+父版本：`v0.26.19` / `36dcffa097455fc6747555751f1861ae26b7227f`
+
+- 新增唯一 `content:preview:site` dev-only 入口，复用固定 `4317` preview lease，以 `content-preview` mode 绑定当前 HEAD、task、registered target、绝对 source、projection routes/keys 与 active ContentSet 只读基线。
+- 新增 ContentPreviewSession 与 Vite 内容预览工作台：使用 canonical ignored content、既有 page composition/ResponsiveTextSlot/media，提供 Web `1280` 与 Mobile `390` 真页面 iframe、HMR 和“未审核·未发布”状态；不提供 approve/publish/deploy/active 切换。
+- 启动前拒绝未注册 target、unsafe source override、缺失/非法 JSON、非 projectionKeys 注册的 responsive slot；预览只读 active ContentSet，不写 active/review/recovery/release/SitePublication/线上 manifest。
+- 固化 AGENTS、task-onboarding、baseline index、task registry 的 elon 职责与 direct-local 入场边界；不改变 ContentSet/target registry/ResponsiveTextSlot schema、页面 IA/视觉或发布链路。
+
+## 验证合同
+
+- registered target/source/route/baseline、unknown/unsafe/missing source、responsive projection、content/product lease 隔离、workbench dev-only/无发布控制、零写入与 preview runtime 回归。
+- `npm run check`、`npm run release:prepare`、内容检查、`npm run release:closeout-check`、exact `npm run release:build`、`npm run release:preflight`、`git diff --check`；保留既有环境/内容 fixture failures 分层，不修改内容事实。
+- 本版本只形成本地 Engineering checkpoint；待 elon 产品/架构与 elon ui 本地 Web→Mobile 独立验收，未执行 product transport 或 content publish。

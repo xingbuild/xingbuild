@@ -1,6 +1,6 @@
 {
   "name": "xingbuild",
-  "version": "0.26.19",
+  "version": "0.26.20",
   "private": true,
   "type": "module",
   "scripts": {
@@ -26,6 +26,7 @@
     "content:import": "node scripts/content-import.mjs",
     "content:check": "node scripts/content-check.mjs",
     "content:preview": "node scripts/content-preview.mjs",
+    "content:preview:site": "node scripts/content-site-preview.mjs",
     "content:approve": "node scripts/content-approve.mjs",
     "content:review": "node scripts/content-review.mjs",
     "content:promote": "node scripts/content-promote.mjs",
