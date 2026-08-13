@@ -213,6 +213,19 @@ function readRequestBody(request, { maxBytes = 256 * 1024 } = {}) {
   });
 }
 
+const contentPreviewSourceSnapshots = new Map();
+async function readAuthoringWithSnapshot(targetId, { includeSnapshot = false } = {}) {
+  const target = await readContentAuthoringTarget(targetId);
+  if (!contentPreviewSourceSnapshots.has(targetId)) {
+    contentPreviewSourceSnapshots.set(targetId, {
+      sourceHash: target.sourceHash,
+      valueHash: target.valueHash,
+      text: await readFile(target.sourcePath, "utf8"),
+    });
+  }
+  return includeSnapshot ? { ...target, sourceSnapshot: contentPreviewSourceSnapshots.get(targetId) } : target;
+}
+
 function contentPreviewAuthoringApi() {
   return {
     name: "xingbuild-content-preview-authoring-api",
@@ -229,7 +242,7 @@ function contentPreviewAuthoringApi() {
         if (request.method !== "GET" && request.method !== "HEAD") return next();
         try {
           const ids = await listContentPreviewTargetIds();
-          const targets = (await Promise.all(ids.map((targetId) => readContentAuthoringTarget(targetId).catch(() => null))))
+          const targets = (await Promise.all(ids.map((targetId) => readAuthoringWithSnapshot(targetId).catch(() => null))))
             .filter(Boolean)
             .map((target) => ({
               targetId: target.targetId,
@@ -253,12 +266,12 @@ function contentPreviewAuthoringApi() {
           if (request.method === "GET" || request.method === "HEAD") {
             const targetId = query.get("target-id");
             if (!targetId) return jsonResponse(response, 400, { error: "CONTENT_AUTHORING_TARGET_REQUIRED" });
-            return jsonResponse(response, 200, await readContentAuthoringTarget(targetId));
+            return jsonResponse(response, 200, await readAuthoringWithSnapshot(targetId, { includeSnapshot: true }));
           }
           if (request.method !== "POST") return next();
           const body = await readRequestBody(request);
           if (typeof body?.targetId !== "string") return jsonResponse(response, 400, { error: "CONTENT_AUTHORING_TARGET_REQUIRED" });
-          const result = await writeContentAuthoringTarget(body);
+          const result = await writeContentAuthoringTarget({ ...body, restoreSnapshot: contentPreviewSourceSnapshots.get(body.targetId) || null });
           return jsonResponse(response, 200, { schemaVersion: "content-authoring-write-v1", ...result });
         } catch (error) {
           const status = /CONFLICT|SOURCE_CHANGED|VALUE_CHANGED/.test(error.code || "") ? 409 : 422;
@@ -284,7 +297,12 @@ export function contentPreviewWorkbench() {
         const targetId = query.get("target-id") || (sessionTargetId === "__all__" ? null : sessionTargetId);
         let authored = null;
         if (targetId) {
-          try { authored = await readContentAuthoringTarget(targetId); }
+          try {
+            // Workbench GETs seed the per-session original byte snapshot used
+            // by the restore-original flow. It is never written to tracked or
+            // active content state and is not exposed by the target list.
+            authored = await readAuthoringWithSnapshot(targetId, { includeSnapshot: true });
+          }
           catch (error) {
             response.statusCode = error.code === "CONTENT_PREVIEW_TARGETS_EMPTY" ? 404 : 422;
             response.setHeader("Content-Type", "text/plain; charset=utf-8");
@@ -317,13 +335,14 @@ export function contentPreviewWorkbench() {
       </section>`).join("");
         const authoring = authored?.authoring || null;
         const responsive = authoring?.valueType === "responsive-text-slot-v1";
+        const richText = authoring?.valueType === "content-rich-text-list-v1";
         const pageLabels = { "/": "首页", "/products": "B端产品", "/business-observations": "经营观察", "/observations": "观察文章", "/about": "关于我" };
         const fieldName = targetId ? targetId.split(".").at(-1) : "";
         const fieldLabels = { title: "标题", summary: "摘要", intro: "页面说明", why: "为什么做", description: "说明", homeTitle: "首页标题", evidenceBoundary: "证据边界", navLabel: "导航名称", text: "正文" };
         const editorLabel = fieldLabels[fieldName] || fieldName || "页面内容";
         const affectedPages = routes.map((route) => pageLabels[route] || route).join("、");
         const editorHtml = targetId ? `<section class="editor" data-editor>
-          <div class="editor-heading"><div><h2>编辑内容</h2><p>${authored?.editable ? "修改后会立即更新右侧页面。" : "该对象属于媒体或非文本内容，当前仅可查看。"}</p></div><span class="pill">${responsive ? "响应式文本" : "普通文本"}</span></div>
+          <div class="editor-heading"><div><h2>编辑内容</h2><p>${authored?.editable ? "修改后会立即更新右侧页面。" : "该对象属于媒体或非文本内容，当前仅可查看。"}</p></div><span class="pill">${responsive ? "响应式文本" : richText ? "结构化正文" : "普通文本"}</span></div>
           <div class="editor-context" data-editor-context><strong>${escapeHtml(editorLabel)}</strong><span>影响：${escapeHtml(affectedPages || pageLabels[activeRoute] || activeRoute)}</span></div>
           <textarea data-editor-web rows="6" ${authored?.editable ? "" : "readonly"}>${escapeHtml(authoring?.text || "")}</textarea>
           ${responsive ? `<label class="mobile-toggle"><input type="checkbox" data-mobile-enabled ${authoring?.mobileText && authoring.mobileText !== authoring.text ? "checked" : ""}> 移动端需要单独换行</label><textarea data-editor-mobile rows="6" ${authored?.editable ? "" : "readonly"}>${escapeHtml(authoring?.mobileText || authoring?.text || "")}</textarea>` : ""}
@@ -355,7 +374,6 @@ export function contentPreviewWorkbench() {
       .preview-heading span { color: #64748b; font-size: 12px; }
       .views { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
       .view { position: relative; min-width: 0; background: #fff; border: 1px solid #cbd5e1; border-radius: 12px; padding: 12px; overflow: auto; }
-      .view.is-related { border-color: #0f766e; box-shadow: 0 0 0 2px rgba(15,118,110,.14); }
       .view h2 { margin: 0 0 8px; font-size: 16px; }
       iframe { display: block; border: 0; background: #fff; }
       .editor, .page-panel { padding: 14px; background: #fff; border: 1px solid #cbd5e1; border-radius: 12px; }
@@ -372,11 +390,7 @@ export function contentPreviewWorkbench() {
       .editor-context strong { color: #0f766e; font-size: 13px; }
       .editor-context span { color: #64748b; font-size: 11px; }
       .empty-editor { padding: 18px 4px; color: #64748b; font-size: 13px; }
-      .relation-layer { position: absolute; inset: 0; z-index: 3; pointer-events: none; overflow: visible; }
-      .relation-layer path { fill: none; stroke: #0f766e; stroke-width: 2; stroke-dasharray: 5 4; opacity: .82; }
-      .relation-layer circle { fill: #0f766e; }
-      .relation-caption { fill: #0f766e; font-size: 11px; font-weight: 600; }
-      @media (max-width: 980px) { .workbench-body { grid-template-columns: 1fr; height: auto; } .editor-column, .preview-column { position: static; height: auto; max-height: none; overflow: visible; } .views { grid-template-columns: 1fr; } .relation-layer { display: none; } }
+      @media (max-width: 980px) { .workbench-body { grid-template-columns: 1fr; height: auto; } .editor-column, .preview-column { position: static; height: auto; max-height: none; overflow: visible; } .views { grid-template-columns: 1fr; } }
       @media (max-width: 700px) { body { padding: 12px; } }
     </style>
   </head>
@@ -392,13 +406,12 @@ export function contentPreviewWorkbench() {
       <section class="workbench-body">
         <aside class="editor-column">${editorHtml || `<section class="editor empty-editor" data-editor-empty>选择上方内容字段后，在这里输入内容；下方会显示真实页面预览。</section>`}</aside>
         <section class="preview-column" data-preview-scroll>
-          <div class="preview-heading"><h2>页面实时预览</h2><span>预览区可独立上下移动；选中字段会高亮并显示连线</span></div>
+          <div class="preview-heading"><h2>页面实时预览</h2><span>预览区可独立上下移动；选中字段会高亮并显示受影响页面</span></div>
           <div class="views" data-views>
             ${frameHtml || `<section class="view empty-editor">请选择一个字段查看真实页面预览</section>`}
           </div>
         </section>
       </section>
-      <svg class="relation-layer" data-relation-layer aria-hidden="true"></svg>
     </main>
     <script type="module">
       const statusNode = document.querySelector("[data-preview-status]");
@@ -415,8 +428,6 @@ export function contentPreviewWorkbench() {
       const saveStatus = document.querySelector("[data-save-status]");
       const mobileEnabled = document.querySelector("[data-mobile-enabled]");
       const mobileEditor = document.querySelector("[data-editor-mobile]");
-      const shell = document.querySelector(".workbench-shell");
-      const relationLayer = document.querySelector("[data-relation-layer]");
       const PAGE_LABELS = { "/": "首页", "/products": "B端产品", "/business-observations": "经营观察", "/observations": "观察文章", "/about": "关于我" };
       const PAGE_ROUTES = ${safeJson(CONTENT_PREVIEW_PAGE_ROUTES)};
       const queryPage = new URLSearchParams(location.search).get("page");
@@ -449,11 +460,9 @@ export function contentPreviewWorkbench() {
       function normalizeText(value) { return String(value || "").replace(/\s+/g, "").replace(/[，。！？；：、“”‘’（）()]/g, ""); }
       function clearMarkers() {
         frames.forEach((frame) => {
-          frame.closest("[data-frame-shell]")?.classList.remove("is-related");
           try { frame.contentDocument?.querySelectorAll("[data-xingbuild-content-target]").forEach((element) => { element.style.outline = element.dataset.xingbuildOriginalOutline || ""; element.style.boxShadow = element.dataset.xingbuildOriginalShadow || ""; element.style.cursor = element.dataset.xingbuildOriginalCursor || ""; delete element.dataset.xingbuildContentTarget; }); } catch {}
         });
         markerMap.clear();
-        if (relationLayer) relationLayer.replaceChildren();
       }
       const markerMap = new Map();
       function clearEditorSelection() {
@@ -499,7 +508,6 @@ export function contentPreviewWorkbench() {
         if (payload.type !== "xingbuild-content-target-marker" || !payload.targetId) return;
         if (frame.dataset.route !== payload.route || frame.dataset.viewport !== payload.viewport) return;
         markerMap.set(payload.targetId + ":" + payload.route + ":" + payload.viewport, { targetId: payload.targetId, frame, rect: payload.rect, found: payload.found === true });
-        drawRelations();
       });
       function requestMarkers() {
         if (!targetCatalog.length) return;
@@ -516,46 +524,7 @@ export function contentPreviewWorkbench() {
           viewport: frame.dataset.viewport,
         }, "*"));
       }
-      function locateFrameTarget(frame) {
-        if (!selectedTargetId || !authored?.authoring?.text) return null;
-        try {
-          const doc = frame.contentDocument;
-          if (!doc) return null;
-          const expected = normalizeText(frame.dataset.viewport === "mobile-390" && authored.authoring.mobileText ? authored.authoring.mobileText : authored.authoring.text);
-          if (!expected) return null;
-          const candidates = [...doc.querySelectorAll("main h1, main h2, main h3, main p, main article, main section, main li, main dt, main dd, main figcaption")].filter((element) => normalizeText(element.textContent).includes(expected.slice(0, Math.min(48, expected.length))));
-          const element = candidates.sort((left, right) => left.textContent.length - right.textContent.length)[0];
-          if (!element) return null;
-          element.dataset.xingbuildOriginalOutline = element.style.outline;
-          element.dataset.xingbuildOriginalShadow = element.style.boxShadow;
-          element.dataset.xingbuildContentTarget = selectedTargetId;
-          element.style.outline = "3px solid #0f766e";
-          element.style.boxShadow = "0 0 0 5px rgba(15,118,110,.14)";
-          frame.closest("[data-frame-shell]")?.classList.add("is-related");
-          return element;
-        } catch { return null; }
-      }
-      function drawRelations() {
-        if (!relationLayer || !shell || !selectedTargetId || window.matchMedia("(max-width: 980px)").matches) return;
-        const source = document.querySelector("[data-editor-context]");
-        if (!source) return;
-        const shellRect = shell.getBoundingClientRect();
-        relationLayer.setAttribute("width", String(shell.clientWidth)); relationLayer.setAttribute("height", String(shell.clientHeight)); relationLayer.setAttribute("viewBox", "0 0 " + shell.clientWidth + " " + shell.clientHeight);
-        const sourceRect = source.getBoundingClientRect();
-        frames.forEach((frame) => {
-          const marker = markerMap.get(selectedTargetId + ":" + frame.dataset.route + ":" + frame.dataset.viewport); if (!marker?.found) return;
-          frame.closest("[data-frame-shell]")?.classList.add("is-related");
-          const frameRect = frame.getBoundingClientRect(); const elementRect = marker.rect;
-          const x1 = sourceRect.right - shellRect.left; const y1 = sourceRect.top + sourceRect.height / 2 - shellRect.top;
-          const x2 = frameRect.left + elementRect.left - shellRect.left; const y2 = frameRect.top + elementRect.top + elementRect.height / 2 - shellRect.top;
-          const bend = Math.max(24, (x2 - x1) * .45);
-          const path = document.createElementNS("http://www.w3.org/2000/svg", "path"); path.setAttribute("d", "M " + x1 + " " + y1 + " C " + (x1 + bend) + " " + y1 + ", " + (x2 - bend) + " " + y2 + ", " + x2 + " " + y2); relationLayer.append(path);
-          [ [x1, y1], [x2, y2] ].forEach(([x, y]) => { const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle"); circle.setAttribute("cx", String(x)); circle.setAttribute("cy", String(y)); circle.setAttribute("r", "3"); relationLayer.append(circle); });
-        });
-      }
       frames.forEach((frame) => frame.addEventListener("load", () => setTimeout(requestMarkers, 220)));
-      window.addEventListener("resize", () => setTimeout(drawRelations, 30));
-      document.querySelector("[data-preview-scroll]")?.addEventListener("scroll", () => drawRelations(), { passive: true });
       setTimeout(requestMarkers, 600);
       function applyUpdate(payload) {
         if (!payload || !selectedTargetId || payload.targetId !== selectedTargetId) return;
@@ -587,8 +556,8 @@ export function contentPreviewWorkbench() {
           if (!response.ok) throw new Error(payload.detail || payload.error || "保存失败");
           authored.sourceHash = payload.sourceHash; authored.valueHash = payload.valueHash;
           if (saveStatus) saveStatus.textContent = payload.unchanged
-            ? "内容未变化，未写入源文件 · 未审核 · 未发布"
-            : "已更新本地预览，受影响页面已刷新 · 未审核 · 未发布";
+            ? "当前已是最新 · 未审核 · 未发布"
+            : "已更新 " + (payload.consumerViews?.length || 0) + " 个受影响视图 · 未审核 · 未发布";
         } catch (error) { if (saveStatus) saveStatus.textContent = "保存失败：" + error.message; }
       }
       document.querySelector("[data-save]")?.addEventListener("click", saveAuthoring);
@@ -736,6 +705,11 @@ export function contentPreviewHmr() {
       const targetId = process.env.XINGBUILD_CONTENT_PREVIEW_TARGET_ID || "";
       const consumerRoutes = parsePreviewJson("XINGBUILD_CONTENT_PREVIEW_CONSUMER_ROUTES")
         || parsePreviewJson("XINGBUILD_CONTENT_PREVIEW_ROUTES") || [];
+      const consumerViews = parsePreviewJson("XINGBUILD_CONTENT_PREVIEW_CONSUMER_VIEWS")
+        || consumerRoutes.flatMap((route) => [
+          { route, viewport: "web-1280" },
+          { route, viewport: "mobile-390" },
+        ]);
       if (!revisionState) {
         revisionState = createContentPreviewRevisionState({
           sourceHash: process.env.XINGBUILD_CONTENT_PREVIEW_SOURCE_HASH || null,
@@ -745,7 +719,7 @@ export function contentPreviewHmr() {
       const selectedSource = selectedSourcePath();
       let reduction;
       if (path.resolve(file) !== selectedSource) {
-        reduction = reduceContentPreviewTargetUpdate({ state: revisionState, targetId, consumerRoutes, now: new Date().toISOString() });
+        reduction = reduceContentPreviewTargetUpdate({ state: revisionState, targetId, consumerRoutes, consumerViews, now: new Date().toISOString() });
       } else {
         try {
           const sourceState = await readContentPreviewSourceState({
@@ -755,9 +729,9 @@ export function contentPreviewHmr() {
             projectionKeys: parsePreviewJson("XINGBUILD_CONTENT_PREVIEW_PROJECTION_KEYS") || [],
             maxLength: Number(process.env.XINGBUILD_CONTENT_PREVIEW_MAX_LENGTH || 400),
           });
-          reduction = reduceContentPreviewTargetUpdate({ state: revisionState, targetId, consumerRoutes, sourceState, now: new Date().toISOString() });
+          reduction = reduceContentPreviewTargetUpdate({ state: revisionState, targetId, consumerRoutes, consumerViews, sourceState, now: new Date().toISOString() });
         } catch (error) {
-          reduction = reduceContentPreviewTargetUpdate({ state: revisionState, targetId, consumerRoutes, error, now: new Date().toISOString() });
+          reduction = reduceContentPreviewTargetUpdate({ state: revisionState, targetId, consumerRoutes, consumerViews, error, now: new Date().toISOString() });
         }
       }
       revisionState = reduction.state;

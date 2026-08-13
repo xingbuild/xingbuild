@@ -96,8 +96,10 @@ export function decompileResponsiveAuthoringValue(value, { projectionKeys = [] }
 export function decompileAuthoringValue(value, { valueType, projectionKeys = [] } = {}) {
   if (valueType === RESPONSIVE_TEXT_SLOT_SCHEMA) return decompileResponsiveAuthoringValue(value, { projectionKeys });
   if (valueType === RICH_TEXT_LIST_SCHEMA) {
-    if (!Array.isArray(value) || value.some((line) => typeof line !== "string")) throw new Error("rich text list must be an array of strings");
-    const text = value.join("\n");
+    if (typeof value !== "string" && !Array.isArray(value)) throw new Error("rich text list must be a legacy string or an array of strings");
+    const lines = typeof value === "string" ? [value] : value;
+    if (lines.some((line) => typeof line !== "string" || line.trim() === "")) throw new Error("rich text list must contain non-empty strings");
+    const text = lines.join("\n");
     return { schemaVersion: CONTENT_AUTHORING_SCHEMA, valueType: RICH_TEXT_LIST_SCHEMA, text, mobileText: text, projection: null };
   }
   if (typeof value !== "string") throw new Error("authoring value must be a string or responsive text slot");
@@ -111,6 +113,14 @@ export function compileAuthoringValue({ text, mobileText = undefined, valueType,
   if (valueType === RICH_TEXT_LIST_SCHEMA) {
     const normalized = normalizeLines(text, "rich text");
     if (normalized.length > maxLength) throw new Error(`text exceeds maxLength ${maxLength}`);
+    if (!normalized.includes("\n") && typeof existingValue === "string") return normalized;
+    if (!normalized.includes("\n") && Array.isArray(existingValue)) {
+      // A multi-paragraph edit that is deliberately collapsed back to one
+      // line can return to the legacy scalar representation. This makes the
+      // workbench's restore-original flow byte-stable without migrating an
+      // untouched legacy string.
+      return existingValue.length > 1 ? normalized : [normalized];
+    }
     return normalized.split("\n");
   }
   const result = normalizeLines(text, "text");

@@ -1,3 +1,11 @@
+## v0.26.28 — 本地内容工作台结构化正文、差异更新与产品化入口
+
+父版本：`v0.26.27` / `e15fa851d2a34f891d254403b0f3559902ad4c93`
+
+- 工作台支持 string、content-rich-text-list-v1、responsive-text-slot-v1 的兼容编解码；正文回车形成真实段落。
+- target identity 重复 block/item ID 在读写前硬失败；TargetImpact consumerViews 只刷新受影响 frame。
+- 移除关系线，新增固定 4317 的 `start-content-preview.command`，不连接发布链路。
+
 ## v0.26.27 — 内容工作台页面导航即选择与局部预览
 
 父版本：`v0.26.26` / `18c45c5ddc724c8e6d9be235c63b9a0867a52814`

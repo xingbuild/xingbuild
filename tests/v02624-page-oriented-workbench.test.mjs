@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import { projectRoot } from "../scripts/lib/content-root.mjs";
 
-test("page-oriented workbench uses the real frame navigation and target relation contract", async () => {
+test("page-oriented workbench uses the real frame navigation and target selection contract", async () => {
   const source = await readFile(`${projectRoot}/vite.config.mjs`, "utf8");
   for (const label of ["首页", "B端产品", "经营观察", "观察文章", "关于我"]) assert.match(source, new RegExp(label));
   assert.match(source, /workbench-shell/);
@@ -22,7 +22,7 @@ test("page-oriented workbench uses the real frame navigation and target relation
   assert.match(source, /\.preview-column[^}]*position:\s*sticky/);
   assert.match(source, /data-preview-scroll/);
   assert.match(source, /overflow-y:\s*auto/);
-  assert.match(source, /data-relation-layer/);
+  assert.doesNotMatch(source, /data-relation-layer|relation-layer|is-related|drawRelations/);
   assert.match(source, /data-xingbuild-content-target/);
   assert.match(source, /xingbuild-content-target-marker/);
   assert.match(source, /new EventSource/);

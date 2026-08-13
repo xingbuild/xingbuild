@@ -4,6 +4,7 @@ import path from "node:path";
 import { contentRootDirectory, projectRoot } from "./content-root.mjs";
 import {
   readContentTargetRegistry,
+  assertUniqueContentIds,
   readFieldValue,
   resolveContentSourceFile,
   resolveContentTarget,
@@ -303,6 +304,7 @@ export async function resolveContentPreviewTarget(targetId, { rootDirectory = pr
 
 export async function readContentPreviewSourceState({ sourcePath, fieldPath, valueType, projectionKeys = [], maxLength = 400 } = {}) {
   const sourceDocument = await readJsonFile(sourcePath, "CONTENT_PREVIEW_SOURCE_MISSING");
+  assertUniqueContentIds(sourceDocument.value, { sourcePath });
   let current;
   try {
     current = readFieldValue(sourceDocument.value, fieldPath);
@@ -318,12 +320,13 @@ export async function readContentPreviewSourceState({ sourcePath, fieldPath, val
       throw error;
     }
   } else if (valueType === RICH_TEXT_LIST_SCHEMA) {
-    if (!Array.isArray(current) || current.some((line) => typeof line !== "string" || line.trim() === "")) {
-      const error = new Error("content preview rich text list must contain non-empty strings");
+    const lines = typeof current === "string" ? [current] : current;
+    if (!Array.isArray(lines) || lines.some((line) => typeof line !== "string" || line.trim() === "")) {
+      const error = new Error("content preview rich text list must contain non-empty strings or a legacy string");
       error.code = "CONTENT_PREVIEW_VALUE_INVALID";
       throw error;
     }
-    if (maxLength && current.join("\n").length > maxLength) {
+    if (maxLength && lines.join("\n").length > maxLength) {
       const error = new Error(`content preview rich text list exceeds maxLength ${maxLength}`);
       error.code = "CONTENT_PREVIEW_VALUE_INVALID";
       throw error;

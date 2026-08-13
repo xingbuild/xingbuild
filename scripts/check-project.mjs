@@ -100,6 +100,7 @@ const requiredFiles = [
   "scripts/release-build.mjs",
   "scripts/content-set-migrate.mjs",
   "scripts/content-site-preview.mjs",
+  "start-content-preview.command",
   "scripts/lib/content-lifecycle-time.mjs",
   "tests/product-content-isolation.test.mjs",
   "scripts/verify-public-release.mjs",
@@ -121,6 +122,7 @@ const requiredFiles = [
   "tests/v02621-content-preview.test.mjs",
   "tests/v02622-content-preview-runtime.test.mjs",
   "tests/v02627-content-preview-navigation.test.mjs",
+  "tests/v02628-content-preview.test.mjs",
 ];
 
 for (const file of requiredFiles) {

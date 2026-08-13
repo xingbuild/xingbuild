@@ -29,6 +29,41 @@ export function hashValue(value) {
 }
 
 /**
+ * Array item ids are content identity, not a convenience lookup key.  A
+ * duplicate makes a target path ambiguous; fail before authoring can read or
+ * write anything instead of silently selecting the first item.
+ */
+export function assertUniqueContentIds(document, { sourcePath = "content source", targetId = null } = {}) {
+  const visit = (value, location = "$", seen = new WeakSet()) => {
+    if (!value || typeof value !== "object") return;
+    if (seen.has(value)) return;
+    seen.add(value);
+    if (Array.isArray(value)) {
+      const ids = new Map();
+      for (const [index, entry] of value.entries()) {
+        if (entry && typeof entry === "object" && typeof entry.id === "string") {
+          const prior = ids.get(entry.id);
+          if (prior !== undefined) {
+            const error = new Error(`ambiguous content target${targetId ? ` ${targetId}` : ""}: duplicate id "${entry.id}" at ${location}[${prior}] and ${location}[${index}] in ${sourcePath}`);
+            error.code = "CONTENT_TARGET_AMBIGUOUS_ID";
+            error.sourcePath = sourcePath;
+            error.targetId = targetId;
+            error.id = entry.id;
+            throw error;
+          }
+          ids.set(entry.id, index);
+        }
+        visit(entry, `${location}[${index}]`, seen);
+      }
+      return;
+    }
+    for (const [key, child] of Object.entries(value)) visit(child, `${location}.${key}`, seen);
+  };
+  visit(document);
+  return document;
+}
+
+/**
  * Stable identity for a logical content object.  The content snapshot hash is
  * intentionally not part of this value: a later approved ChangeSet is a new
  * physical revision of the same object, not a new logical object.
@@ -213,7 +248,13 @@ export function readFieldValue(document, fieldPath) {
   for (const part of parseFieldPath(fieldPath)) {
     if (part && typeof part === "object" && "id" in part) {
       if (!Array.isArray(cursor)) throw new Error(`fieldPath selector is not applied to an array: ${fieldPath}`);
-      cursor = cursor.find((entry) => entry?.id === part.id);
+      const matches = cursor.filter((entry) => entry?.id === part.id);
+      if (matches.length > 1) {
+        const error = new Error(`ambiguous content target fieldPath selector: ${fieldPath} matches duplicate id "${part.id}"`);
+        error.code = "CONTENT_TARGET_AMBIGUOUS_ID";
+        throw error;
+      }
+      cursor = matches[0];
     } else {
       cursor = cursor?.[part];
     }
@@ -230,7 +271,13 @@ export function writeFieldValue(document, fieldPath, value) {
     const part = parts[index];
     if (part && typeof part === "object" && "id" in part) {
       if (!Array.isArray(cursor)) throw new Error(`fieldPath selector is not applied to an array: ${fieldPath}`);
-      let next = cursor.find((entry) => entry?.id === part.id);
+      const matches = cursor.filter((entry) => entry?.id === part.id);
+      if (matches.length > 1) {
+        const error = new Error(`ambiguous content target fieldPath selector: ${fieldPath} matches duplicate id "${part.id}"`);
+        error.code = "CONTENT_TARGET_AMBIGUOUS_ID";
+        throw error;
+      }
+      let next = matches[0];
       if (!next) {
         if (!String(fieldPath).startsWith("assets[id=")) throw new Error(`fieldPath selector does not resolve: ${fieldPath}`);
         next = { id: part.id };
@@ -257,9 +304,10 @@ function validateAfter(target, after) {
     return;
   }
   if (target.valueType === RICH_TEXT_LIST_SCHEMA) {
-    if (!Array.isArray(after) || after.some((line) => typeof line !== "string" || line.trim() === "")) throw new Error("ChangeSet after must be a non-empty text list");
+    const lines = typeof after === "string" ? [after] : after;
+    if (!Array.isArray(lines) || lines.some((line) => typeof line !== "string" || line.trim() === "")) throw new Error("ChangeSet after must be a legacy string or non-empty text list");
     const maxLength = target.constraints?.maxLength;
-    if (maxLength && after.join("\n").length > maxLength) throw new Error(`${target.targetId} after exceeds maxLength`);
+    if (maxLength && lines.join("\n").length > maxLength) throw new Error(`${target.targetId} after exceeds maxLength`);
     return;
   }
   if (typeof after !== "string") throw new Error("ChangeSet after must be a string field value");

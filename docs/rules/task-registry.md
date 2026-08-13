@@ -40,3 +40,7 @@ flowchart TD
 - `sourceThreadId` 只作来源追溯；发送目标只能使用登记的 `threadId`，回传只能使用登记的 `returnThreadId`。
 - ID、宿主或责任无法核验时立即报告用户，不得按职责名称猜测、轮询、替代或创建 task。
 - 归档 task 必须标记 `archived`；新 task 完成登记后才能成为 active。
+
+## Xing 注意状态的来源
+
+任务是否需要 Xing 介入，以 Codex 任务标题的单一前缀为准：无前缀=可继续或正在执行，`✅`=当前无需 Xing 处理，`⚠️`=因 Xing 决策/授权/必要信息阻断。这里不复制动态标记，避免注册表变成第二个易过期状态源；本表只核验 task 身份、通信地址和 active/archived 生命周期。标记不等同于测试、验收、提交、部署或发布事实。

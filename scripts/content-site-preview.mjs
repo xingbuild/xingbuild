@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import net from "node:net";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -18,6 +19,49 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 function option(argv, name) {
   const index = argv.indexOf(name);
   return index >= 0 ? argv[index + 1] || null : null;
+}
+
+function samePreviewOwner(served, expected) {
+  return served?.mode === CONTENT_PREVIEW_MODE
+    && served?.cwd === expected.cwd
+    && served?.commit === expected.commit
+    && served?.version === expected.version
+    && served?.taskId === expected.taskId;
+}
+
+async function probePreviewPort({ identity } = {}) {
+  const url = `http://127.0.0.1:${previewPort}/__xingbuild/preview-meta`;
+  try {
+    const response = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(800) });
+    let served = null;
+    try { served = await response.json(); } catch { /* an occupied non-preview port is still a hard failure */ }
+    if (samePreviewOwner(served, identity)) return { occupied: true, reusable: true, served };
+    const error = new Error(`CONTENT_PREVIEW_PORT_OCCUPIED: 4317 is served by an unknown or mismatched process${served ? ` (${JSON.stringify(served)})` : ""}`);
+    error.code = "CONTENT_PREVIEW_PORT_OCCUPIED";
+    throw error;
+  } catch (error) {
+    if (error.code === "CONTENT_PREVIEW_PORT_OCCUPIED") throw error;
+    await new Promise((resolve, reject) => {
+      const socket = net.createConnection({ host: "127.0.0.1", port: previewPort });
+      let settled = false;
+      const finish = (fn, value) => { if (settled) return; settled = true; socket.destroy(); fn(value); };
+      socket.setTimeout(600, () => finish(resolve));
+      socket.once("connect", () => {
+        const occupied = new Error("CONTENT_PREVIEW_PORT_OCCUPIED: 4317 is occupied by a non-preview process");
+        occupied.code = "CONTENT_PREVIEW_PORT_OCCUPIED";
+        finish(reject, occupied);
+      });
+      socket.once("error", (socketError) => {
+        if (socketError.code === "ECONNREFUSED" || socketError.code === "EHOSTUNREACH") finish(resolve);
+        else {
+          const occupied = new Error(`CONTENT_PREVIEW_PORT_OCCUPIED: unable to classify 4317 (${socketError.code || socketError.message})`);
+          occupied.code = "CONTENT_PREVIEW_PORT_OCCUPIED";
+          finish(reject, occupied);
+        }
+      });
+    });
+    return { occupied: false, reusable: false };
+  }
 }
 
 export async function createContentPreviewSession({ targetId, rootDirectory = root, taskId = process.env.XBUILD_TASK_ID || "local" } = {}) {
@@ -60,6 +104,12 @@ export async function createContentPreviewSession({ targetId, rootDirectory = ro
 
 export async function runContentPreview({ targetId, rootDirectory = root, taskId = process.env.XBUILD_TASK_ID || "local", noOpen = false } = {}) {
   const session = await createContentPreviewSession({ targetId, rootDirectory, taskId });
+  const portState = await probePreviewPort({ identity: session.identity });
+  if (portState.reusable) {
+    console.log(JSON.stringify({ ...session.output, reused: true, served: portState.served }, null, 2));
+    console.log(`Content preview workbench already running: http://127.0.0.1:${previewPort}/__xingbuild/content-preview`);
+    return { ...session, output: { ...session.output, reused: true, served: portState.served } };
+  }
   const environment = {
     ...process.env,
     ...session.environment,
