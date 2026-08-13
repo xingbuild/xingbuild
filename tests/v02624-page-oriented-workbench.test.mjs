@@ -7,9 +7,15 @@ test("page-oriented workbench keeps one page-first navigation and real preview r
   const source = await readFile(`${projectRoot}/vite.config.mjs`, "utf8");
   for (const label of ["首页", "B端产品", "经营观察", "观察文章", "关于我"]) assert.match(source, new RegExp(label));
   assert.match(source, /workbench-shell/);
+  assert.match(source, /本地编辑预览工具/);
   assert.match(source, /data-page-select/);
-  assert.match(source, /data-field-list/);
-  assert.match(source, /overflow-x:\s*auto/);
+  assert.doesNotMatch(source, /data-field-list/);
+  assert.doesNotMatch(source, /class="status"/);
+  assert.match(source, /data-editor-context/);
+  assert.match(source, /xingbuild-content-target-click/);
+  assert.match(source, /targets:\s*pageTargets\.map/);
+  assert.match(source, /\.editor-column[^}]*overflow-y:\s*auto/);
+  assert.match(source, /\.preview-column[^}]*position:\s*sticky/);
   assert.match(source, /data-preview-scroll/);
   assert.match(source, /overflow-y:\s*auto/);
   assert.match(source, /data-relation-layer/);

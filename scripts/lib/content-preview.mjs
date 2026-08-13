@@ -10,6 +10,7 @@ import {
 } from "./content-targets.mjs";
 import { validateContentSet } from "./content-set.mjs";
 import { normalizeResponsiveTextSlot, RESPONSIVE_TEXT_SLOT_SCHEMA } from "./responsive-text-slot.mjs";
+import { RICH_TEXT_LIST_SCHEMA } from "./content-authoring.mjs";
 import { pageDefinitions } from "../../src/content/pageDefinitions.js";
 
 export const CONTENT_PREVIEW_MODE = "content-preview";
@@ -75,7 +76,7 @@ function pageHasReference(definition, expected) {
   return Object.values(definition?.contentRefs || {}).some((reference) => reference?.type === expected.type && reference?.id === expected.id);
 }
 
-function templateIds(template, sourceDocument, sourcePath) {
+function templateIds(template, sourceDocument, sourcePath, context = {}) {
   const pattern = String(template.targetIdPattern || "");
   const ids = [];
   const values = {
@@ -83,13 +84,27 @@ function templateIds(template, sourceDocument, sourcePath) {
     itemId: sourceDocument?.why?.items?.map?.((item) => item.id) || [],
     moduleId: sourceDocument?.modules?.map?.((item) => item.id) || [],
     assetId: sourceDocument?.assets?.map?.((item) => item.id) || [],
+    blockId: sourceDocument?.blocks?.map?.((item) => item.id) || [],
+    evidenceId: sourceDocument?.evidenceUnits?.map?.((item) => item.id) || [],
     field: Object.keys(sourceDocument || {}),
   };
   const placeholder = [...pattern.matchAll(/\{([a-zA-Z][a-zA-Z0-9_]*)\}/g)].map((match) => match[1]);
-  if (placeholder.length !== 1 || !values[placeholder[0]]?.length) return ids;
-  for (const value of values[placeholder[0]]) {
-    ids.push(pattern.replace(`{${placeholder[0]}}`, value));
+  const replace = (valueMap) => pattern.replace(/\{([a-zA-Z][a-zA-Z0-9_]*)\}/g, (_, name) => valueMap[name]);
+  const pathFor = (valueMap) => String(template.fieldPathTemplate || template.fieldPath || "").replace(/\{([a-zA-Z][a-zA-Z0-9_]*)\}/g, (_, name) => valueMap[name]);
+  const addIfPresent = (valueMap) => {
+    try { readFieldValue(sourceDocument, pathFor(valueMap)); ids.push(replace(valueMap)); } catch { /* target is not present in this source variant */ }
+  };
+  const fixed = { ...context };
+  const remaining = placeholder.filter((name) => !Object.prototype.hasOwnProperty.call(fixed, name));
+  if (remaining.length === 0) { addIfPresent(fixed); return ids; }
+  if (remaining.includes("blockId") && remaining.includes("itemId")) {
+    for (const block of sourceDocument?.blocks || []) {
+      for (const item of block.items || []) if (block.id && item.id) addIfPresent({ ...fixed, blockId: block.id, itemId: item.id });
+    }
+    return ids;
   }
+  if (remaining.length !== 1 || !values[remaining[0]]?.length) return ids;
+  for (const value of values[remaining[0]]) addIfPresent({ ...fixed, [remaining[0]]: value });
   return ids;
 }
 
@@ -105,7 +120,13 @@ export async function listContentPreviewTargetIds({ rootDirectory = projectRoot 
       try { names = await readdir(directory); } catch { names = []; }
       for (const name of names.filter((item) => item.endsWith(".json"))) {
         const slug = name.slice(0, -5);
-        ids.add(template.targetIdPattern.replaceAll("{slug}", slug));
+        try {
+          const sourcePath = resolveContentSourceFile(sourceTemplate.replace("{slug}", slug), { rootDirectory });
+          const source = JSON.parse(await readFile(sourcePath, "utf8"));
+          for (const targetId of templateIds(template, source, sourcePath, { slug })) ids.add(targetId);
+        } catch {
+          // Missing or invalid sources stay out of the workbench until repaired.
+        }
       }
       continue;
     }
@@ -294,6 +315,17 @@ export async function readContentPreviewSourceState({ sourcePath, fieldPath, val
       normalizeResponsiveTextSlot(current, { projections: projectionKeys, maxLength });
     } catch (error) {
       error.code ||= "CONTENT_PREVIEW_VALUE_INVALID";
+      throw error;
+    }
+  } else if (valueType === RICH_TEXT_LIST_SCHEMA) {
+    if (!Array.isArray(current) || current.some((line) => typeof line !== "string" || line.trim() === "")) {
+      const error = new Error("content preview rich text list must contain non-empty strings");
+      error.code = "CONTENT_PREVIEW_VALUE_INVALID";
+      throw error;
+    }
+    if (maxLength && current.join("\n").length > maxLength) {
+      const error = new Error(`content preview rich text list exceeds maxLength ${maxLength}`);
+      error.code = "CONTENT_PREVIEW_VALUE_INVALID";
       throw error;
     }
   } else if (typeof current !== "string") {

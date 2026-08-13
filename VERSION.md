@@ -1,3 +1,17 @@
+## v0.26.26 — 页面点击选择与全正文内容编辑工作台
+
+父版本：`v0.26.25` / `aee49a3a4a6801fc43d82374a37ad99703c35dc9`
+
+- 工作台只保留标题与页面下拉；右侧真实页面文字可点击选中，左侧编辑并即时查看。
+- 覆盖文章、关于我和观察正文文字；保留稳定 block/item identity 与 observation 段落结构。
+- 左侧编辑器与右侧页面独立滚动，右侧占主要空间；移除可见技术 target 元数据和横向字段卡。
+- 预览只写 canonical ignored content source，TargetImpact 精确刷新，不触发产品 build、ContentSet 或发布。
+
+## 验证合同
+
+- 固定 4317 五类页面下拉、页面点击文字选择、正文编辑与 Web/Mobile 局部刷新。
+- active ContentSet、review/recovery/release/SitePublication/ProductArtifact 不变；未执行 product transport 或 content publish。
+
 ## v0.26.25 — 工作台固定选择区与独立预览滚动
 
 父版本：`v0.26.24` / `4d26a16fc332c3399d9fe5fb15130235a9d44633`

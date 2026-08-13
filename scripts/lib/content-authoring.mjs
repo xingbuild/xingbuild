@@ -1,6 +1,7 @@
 import { normalizeResponsiveTextSlot, responsiveTextValue, RESPONSIVE_TEXT_SLOT_SCHEMA } from "./responsive-text-slot.mjs";
 
 export const CONTENT_AUTHORING_SCHEMA = "content-authoring-value-v1";
+export const RICH_TEXT_LIST_SCHEMA = "content-rich-text-list-v1";
 
 function normalizeLines(value, field) {
   if (typeof value !== "string") throw new Error(`${field} must be text`);
@@ -94,6 +95,11 @@ export function decompileResponsiveAuthoringValue(value, { projectionKeys = [] }
 
 export function decompileAuthoringValue(value, { valueType, projectionKeys = [] } = {}) {
   if (valueType === RESPONSIVE_TEXT_SLOT_SCHEMA) return decompileResponsiveAuthoringValue(value, { projectionKeys });
+  if (valueType === RICH_TEXT_LIST_SCHEMA) {
+    if (!Array.isArray(value) || value.some((line) => typeof line !== "string")) throw new Error("rich text list must be an array of strings");
+    const text = value.join("\n");
+    return { schemaVersion: CONTENT_AUTHORING_SCHEMA, valueType: RICH_TEXT_LIST_SCHEMA, text, mobileText: text, projection: null };
+  }
   if (typeof value !== "string") throw new Error("authoring value must be a string or responsive text slot");
   return { schemaVersion: CONTENT_AUTHORING_SCHEMA, valueType: "string", text: value, mobileText: null, projection: null };
 }
@@ -101,6 +107,11 @@ export function decompileAuthoringValue(value, { valueType, projectionKeys = [] 
 export function compileAuthoringValue({ text, mobileText = undefined, valueType, projectionKeys = [], maxLength = 400, existingValue = undefined } = {}) {
   if (valueType === RESPONSIVE_TEXT_SLOT_SCHEMA) {
     return compileResponsiveAuthoringValue({ text, mobileText, projectionKeys, maxLength, existingValue });
+  }
+  if (valueType === RICH_TEXT_LIST_SCHEMA) {
+    const normalized = normalizeLines(text, "rich text");
+    if (normalized.length > maxLength) throw new Error(`text exceeds maxLength ${maxLength}`);
+    return normalized.split("\n");
   }
   const result = normalizeLines(text, "text");
   if (result.length > maxLength) throw new Error(`text exceeds maxLength ${maxLength}`);

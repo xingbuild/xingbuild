@@ -4,6 +4,7 @@ import path from "node:path";
 import { projectRoot } from "./observation-content.mjs";
 import { contentRootDirectory } from "./content-root.mjs";
 import { normalizeResponsiveTextSlot, RESPONSIVE_TEXT_SLOT_SCHEMA } from "./responsive-text-slot.mjs";
+import { RICH_TEXT_LIST_SCHEMA } from "./content-authoring.mjs";
 
 export const contentTargetsPath = "content/registry/content-targets.json";
 export const changesDirectory = ".content-workspace/changes";
@@ -79,7 +80,7 @@ export function validateContentTargetRegistry(registry) {
   }
   for (const template of registry.templates) {
     if (!safeRelativePath(template?.sourcePathTemplate, { allowSrc: false })) throw new Error("content target registry has unsafe template source");
-    if (!hasText(template.targetIdPattern) || !hasText(template.fieldPathTemplate || template.fieldPath) || template.scope !== "field" || template.editable !== true || !["string", RESPONSIVE_TEXT_SLOT_SCHEMA].includes(template.valueType)) throw new Error("content target registry template contract is invalid");
+    if (!hasText(template.targetIdPattern) || !hasText(template.fieldPathTemplate || template.fieldPath) || template.scope !== "field" || template.editable !== true || !["string", RESPONSIVE_TEXT_SLOT_SCHEMA, RICH_TEXT_LIST_SCHEMA].includes(template.valueType)) throw new Error("content target registry template contract is invalid");
     if (template.kind === "product-content" && !template.targetIdPattern.startsWith("products.robotaxi.")) throw new Error("Robotaxi product template contract is invalid");
     if (template.kind === "site-content" && !siteTargetIdPattern.test(template.targetIdPattern.replace(/\{[^}]+\}/g, "sample-field"))) throw new Error("Site content template contract is invalid");
     if (template.kind === "media-content" && (!/^(?:media\.robotaxi\.|products\.robotaxi\.module\.)/.test(template.targetIdPattern) || !["content/media/robotaxi/manifest.json", "content/products/robotaxi.json"].includes(template.sourcePathTemplate))) throw new Error("Robotaxi media template contract is invalid");
@@ -179,7 +180,7 @@ export async function createContentTargetCard(targetId, { rootDirectory = projec
     if (target.kind === "media-content" && (target.fieldPath.startsWith("assets[id=") || target.fieldPath.includes("].mediaId"))) current = null;
     else throw error;
   }
-  if (current !== null && typeof current !== "string" && target.valueType !== RESPONSIVE_TEXT_SLOT_SCHEMA) throw new Error(`registered target is not a supported field: ${targetId}`);
+  if (current !== null && typeof current !== "string" && target.valueType !== RESPONSIVE_TEXT_SLOT_SCHEMA && target.valueType !== RICH_TEXT_LIST_SCHEMA) throw new Error(`registered target is not a supported field: ${targetId}`);
   return {
     targetId: target.targetId,
     scope: target.scope,
@@ -255,6 +256,12 @@ function validateAfter(target, after) {
     catch (error) { throw new Error(`${target.targetId} after responsive text is invalid: ${error.message}`); }
     return;
   }
+  if (target.valueType === RICH_TEXT_LIST_SCHEMA) {
+    if (!Array.isArray(after) || after.some((line) => typeof line !== "string" || line.trim() === "")) throw new Error("ChangeSet after must be a non-empty text list");
+    const maxLength = target.constraints?.maxLength;
+    if (maxLength && after.join("\n").length > maxLength) throw new Error(`${target.targetId} after exceeds maxLength`);
+    return;
+  }
   if (typeof after !== "string") throw new Error("ChangeSet after must be a string field value");
   const constraints = target.constraints || {};
   if (constraints.nonEmpty && !hasText(after)) throw new Error(`${target.targetId} after must be non-empty`);
@@ -283,6 +290,7 @@ function normalizeTargetValue(target, value) {
   if (target?.valueType === RESPONSIVE_TEXT_SLOT_SCHEMA && typeof value !== "string") {
     return normalizeResponsiveTextSlot(value, { projections: target.projectionKeys, maxLength: target.constraints?.maxLength || 400 });
   }
+  if (target?.valueType === RICH_TEXT_LIST_SCHEMA && Array.isArray(value)) return value.map((line) => String(line));
   return value;
 }
 
@@ -364,9 +372,9 @@ function validateOperation(operation, target, { index = 0, fallbackSourceRefs = 
       throw new Error(`ChangeSet operation ${index + 1} media approval/provenance is required`);
     }
   }
-  if (target.valueType !== RESPONSIVE_TEXT_SLOT_SCHEMA && (Array.isArray(after) || (after && typeof after === "object"))) throw new Error("ChangeSet cannot replace an array or object");
+  if (![RESPONSIVE_TEXT_SLOT_SCHEMA, RICH_TEXT_LIST_SCHEMA].includes(target.valueType) && (Array.isArray(after) || (after && typeof after === "object"))) throw new Error("ChangeSet cannot replace an array or object");
   validateAfter(target, after);
-  if (target.valueType !== RESPONSIVE_TEXT_SLOT_SCHEMA && before !== undefined && before !== null && typeof before !== "string") throw new Error(`ChangeSet operation ${index + 1} before must match the registered value type`);
+  if (![RESPONSIVE_TEXT_SLOT_SCHEMA, RICH_TEXT_LIST_SCHEMA].includes(target.valueType) && before !== undefined && before !== null && typeof before !== "string") throw new Error(`ChangeSet operation ${index + 1} before must match the registered value type`);
   const normalizedBefore = before && typeof before === "object" ? normalizeTargetValue(target, before) : before;
   const normalizedAfter = normalizeTargetValue(target, after);
   return { ...operation, ...operationDescriptor({ ...operation, afterHash: operation.afterHash || hashValue(normalizedAfter) }, target, { before: normalizedBefore, after: normalizedAfter }), sourceRefs, boundary, authority };
@@ -437,7 +445,7 @@ export async function createContentChangeSet({
         if (target.kind === "media-content" && (target.fieldPath.startsWith("assets[id=") || target.fieldPath.includes("].mediaId"))) before = null;
         else throw error;
       }
-      if (before !== null && typeof before !== "string" && target.valueType !== RESPONSIVE_TEXT_SLOT_SCHEMA) throw new Error(`registered target is not a supported field: ${operation.targetId}`);
+      if (before !== null && typeof before !== "string" && target.valueType !== RESPONSIVE_TEXT_SLOT_SCHEMA && target.valueType !== RICH_TEXT_LIST_SCHEMA) throw new Error(`registered target is not a supported field: ${operation.targetId}`);
       const nextAfter = normalizeTargetValue(target, operationAfter(operation));
       validateAfter(target, nextAfter);
       const actualBeforeHash = hashValue(before);
@@ -512,7 +520,7 @@ export async function createContentChangeSet({
     if (target.kind === "media-content" && (target.fieldPath.startsWith("assets[id=") || target.fieldPath.includes("].mediaId"))) before = null;
     else throw error;
   }
-  if (before !== null && typeof before !== "string" && target.valueType !== RESPONSIVE_TEXT_SLOT_SCHEMA) throw new Error(`registered target is not a supported field: ${targetId}`);
+  if (before !== null && typeof before !== "string" && target.valueType !== RESPONSIVE_TEXT_SLOT_SCHEMA && target.valueType !== RICH_TEXT_LIST_SCHEMA) throw new Error(`registered target is not a supported field: ${targetId}`);
   const actualBeforeHash = hashValue(before);
   if (beforeHash && beforeHash !== actualBeforeHash) throw new Error(`ChangeSet beforeHash conflict for ${targetId}`);
   const normalizedAfter = normalizeTargetValue(target, after);
@@ -577,7 +585,7 @@ export function validateContentChangeSet(changeSet, { target } = {}) {
   if (!/^[a-f0-9]{64}$/.test(changeSet.beforeHash || "")) throw new Error("ChangeSet beforeHash must be sha256");
   if (!Array.isArray(changeSet.sourceRefs) || changeSet.sourceRefs.length === 0 || changeSet.sourceRefs.some((source) => !hasText(source))) throw new Error("ChangeSet sourceRefs are required");
   if (!hasText(changeSet.boundary) || !hasText(changeSet.authority)) throw new Error("ChangeSet boundary and authority are required");
-  if (target.valueType !== RESPONSIVE_TEXT_SLOT_SCHEMA && (Array.isArray(changeSet.after) || (changeSet.after && typeof changeSet.after === "object"))) throw new Error("ChangeSet cannot replace an array or object");
+  if (![RESPONSIVE_TEXT_SLOT_SCHEMA, RICH_TEXT_LIST_SCHEMA].includes(target.valueType) && (Array.isArray(changeSet.after) || (changeSet.after && typeof changeSet.after === "object"))) throw new Error("ChangeSet cannot replace an array or object");
   validateAfter(target, changeSet.after);
   if (changeSet.recovery) {
     if (changeSet.recovery.type !== "field-reverse" || !hasText(changeSet.recovery.rollbackChangeId) || !sameValue(changeSet.recovery.originalBefore, changeSet.before) || !sameValue(changeSet.recovery.originalAfter, changeSet.after)) {

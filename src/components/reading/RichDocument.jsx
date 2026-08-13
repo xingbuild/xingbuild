@@ -18,7 +18,7 @@ export function RichDocument({ blocks = [], sources, showFigures = true, showArc
         if (block.type === "lead") return <p className="rich-document__lead" key={index}>{block.text}</p>;
         if (block.type === "heading") { const Heading = `h${block.level || 2}`; return <Heading id={block.id} key={index}>{block.text}</Heading>; }
         if (block.type === "paragraph") return <p key={index}>{block.text}</p>;
-        if (block.type === "list") return <ul key={index}>{block.items.map((item) => <li key={item}>{item}</li>)}</ul>;
+        if (block.type === "list") return <ul key={index}>{block.items.map((item, itemIndex) => { const value = typeof item === "string" ? item : item.text; return <li key={item.id || value || itemIndex}>{value}</li>; })}</ul>;
         if (block.type === "definitionList") return <dl key={index}>{block.items.map((item) => <div key={item.term}><dt>{item.term}</dt><dd>{item.description}</dd></div>)}</dl>;
         if (block.type === "callout") return <div className="rich-document__callout" role="note" key={index}>{block.text}</div>;
         if (block.type === "figure") {
