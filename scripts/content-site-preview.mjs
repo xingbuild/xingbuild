@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -25,7 +26,8 @@ export async function createContentPreviewSession({ targetId, rootDirectory = ro
     throw error;
   }
   const context = await resolveContentPreviewTarget(targetId, { rootDirectory });
-  const identity = currentIdentity(rootDirectory, { mode: CONTENT_PREVIEW_MODE });
+  const sessionId = process.env.XINGBUILD_PREVIEW_SESSION_ID || `content-preview-${randomUUID()}`;
+  const identity = currentIdentity(rootDirectory, { mode: CONTENT_PREVIEW_MODE, sessionId });
   return {
     context,
     identity,

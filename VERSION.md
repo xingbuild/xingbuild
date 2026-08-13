@@ -1,3 +1,16 @@
+## v0.26.22 — 内容预览运行时 v2 与局部刷新闭环
+
+父版本：`v0.26.21` / `3bde62d80a1bb666ee5846e30dd10fa631fbf29f`
+
+- 建立独立 content-preview runtime v2：绑定 session、selected target、TargetImpact 与显式 SSE 事件通道；不依赖 Vite HMR 或全站 reload。
+- `products.robotaxi.intro` 只刷新 `/` 与 `/products` 的 Web1280/Mobile390 frame；`invalid` 保留 last-valid，`outside-selected-target` 不刷新。
+- 处理原子保存/半写入的有界校验与恢复，并在退出时清理固定 4317 lease/进程。
+
+## 验证合同
+
+- `npm run check`、内容/target 定向测试、固定 4317 真实浏览器编辑→局部更新→invalid→恢复→零写入证据、`git diff --check`。
+- 预览只读，不修改 ContentSet、审核/恢复/发布状态、ProductArtifact、SitePublication 或线上状态；不执行 content publish/product transport。
+
 ## v0.26.21 — 精准内容预览与局部刷新闭环
 
 父版本：`v0.26.20` / `3ee065faa1ef3c847e221743052e686cd2e5525b`

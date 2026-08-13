@@ -82,6 +82,7 @@ const requiredFiles = [
   "scripts/lib/content-targets.mjs",
   "scripts/lib/content-root.mjs",
   "scripts/lib/content-preview.mjs",
+  "scripts/lib/content-preview-runtime-v2.mjs",
   "scripts/lib/base-site-artifact.mjs",
   "scripts/lib/content-finalize.mjs",
   "scripts/lib/content-approval.mjs",
@@ -118,6 +119,7 @@ const requiredFiles = [
   "tests/content-lifecycle-adapter.test.mjs",
   "tests/v02620-content-preview.test.mjs",
   "tests/v02621-content-preview.test.mjs",
+  "tests/v02622-content-preview-runtime.test.mjs",
 ];
 
 for (const file of requiredFiles) {
@@ -211,6 +213,10 @@ assert(app.includes("findPageDefinitionByRoute"), "app routes must resolve throu
 assert(app.includes("PageCompositionRenderer"), "app routes must use the shared composition renderer");
 const viteConfig = await readFile(new URL("../vite.config.mjs", import.meta.url), "utf8");
 assert(viteConfig.includes("xingbuild:content-target-update"), "content preview must use the target update event");
+assert(viteConfig.includes("contentPreviewRuntimeV2"), "content preview must use the explicit runtime v2");
+assert(viteConfig.includes("preview-events"), "content preview must expose the explicit event channel");
+assert(viteConfig.includes("new EventSource"), "content preview workbench must use the explicit event channel");
+assert(!viteConfig.includes("import.meta.hot"), "content preview workbench must not depend on implicit Vite HMR");
 assert(!viteConfig.includes('type: "full-reload"'), "content preview must not trigger a global full reload");
 for (const route of ["/products", "/business-observations", "/observations", "/about"]) {
   assert(app.includes(route), `app must include the ${route} route`);

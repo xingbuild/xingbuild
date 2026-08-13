@@ -267,7 +267,7 @@ export function createContentPreviewRevisionState(context, { revision = 0 } = {}
   };
 }
 
-export function reduceContentPreviewTargetUpdate({ state, targetId, consumerRoutes, sourceState = null, error = null, now = new Date().toISOString() } = {}) {
+export function reduceContentPreviewTargetUpdate({ state, targetId, consumerRoutes, consumerViews = [], sourceState = null, error = null, now = new Date().toISOString() } = {}) {
   const current = state || {};
   if (error) {
     const next = { ...current, status: "invalid", lastError: { code: error.code || "CONTENT_PREVIEW_VALUE_INVALID", message: error.message }, lastObservedAt: now };
@@ -283,6 +283,7 @@ export function reduceContentPreviewTargetUpdate({ state, targetId, consumerRout
         beforeValueHash: current.lastValidValueHash || current.valueHash || null,
         afterValueHash: null,
         consumerRoutes: [...(consumerRoutes || [])],
+        consumerViews: [...(consumerViews || [])],
         error: next.lastError,
         observedAt: now,
       },
@@ -302,6 +303,7 @@ export function reduceContentPreviewTargetUpdate({ state, targetId, consumerRout
         beforeValueHash: current.lastValidValueHash || current.valueHash || null,
         afterValueHash: current.lastValidValueHash || current.valueHash || null,
         consumerRoutes: [...(consumerRoutes || [])],
+        consumerViews: [...(consumerViews || [])],
         error: null,
         observedAt: now,
       },
@@ -330,6 +332,7 @@ export function reduceContentPreviewTargetUpdate({ state, targetId, consumerRout
         beforeValueHash: current.lastValidValueHash || current.valueHash || null,
         afterValueHash: sourceState.valueHash,
         consumerRoutes: [...(consumerRoutes || [])],
+        consumerViews: [...(consumerViews || [])],
         error: null,
         observedAt: now,
       },
@@ -359,6 +362,7 @@ export function reduceContentPreviewTargetUpdate({ state, targetId, consumerRout
       beforeValueHash: current.lastValidValueHash || current.valueHash || null,
       afterValueHash: sourceState.valueHash,
       consumerRoutes: [...(consumerRoutes || [])],
+      consumerViews: [...(consumerViews || [])],
       error: null,
       observedAt: now,
     },
@@ -374,6 +378,9 @@ export function sessionEnvironment(context, { identity, taskId = process.env.XBU
     XINGBUILD_PREVIEW_COMMIT: identity.commit,
     XINGBUILD_PREVIEW_VERSION: identity.version,
     XINGBUILD_PREVIEW_TASK_ID: taskId,
+    XINGBUILD_PREVIEW_SESSION_ID: identity.sessionId,
+    XINGBUILD_CONTENT_PREVIEW_SESSION_ID: identity.sessionId,
+    XINGBUILD_PREVIEW_RUNTIME: "content-preview-runtime-v2",
     XINGBUILD_PREVIEW_OPEN_PATH: `/__xingbuild/content-preview?target-id=${encodeURIComponent(context.targetId)}`,
     XINGBUILD_CONTENT_PREVIEW_TARGET_ID: context.targetId,
     XINGBUILD_CONTENT_PREVIEW_SOURCE_PATH: context.sourcePath,
@@ -399,6 +406,7 @@ export function sessionOutput(context, { identity, pid = null, port = 4317, task
     commit: identity.commit,
     version: identity.version,
     taskId,
+    sessionId: identity.sessionId,
     pid,
     port,
     targetId: context.targetId,

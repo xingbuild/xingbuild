@@ -13,7 +13,9 @@ import {
   createContentPreviewRevisionState,
   readContentPreviewSourceState,
   reduceContentPreviewTargetUpdate,
+  resolveContentPreviewTarget,
 } from "./scripts/lib/content-preview.mjs";
+import { createPreviewRuntimeV2 } from "./scripts/lib/content-preview-runtime-v2.mjs";
 
 const ROBOTAXI_RELEASE_ENDPOINT = "https://robotaxi.xingbuild.top/deployment-manifest.json";
 
@@ -139,6 +141,8 @@ function previewMetadata() {
           commit: process.env.XINGBUILD_PREVIEW_COMMIT || null,
           version: process.env.XINGBUILD_PREVIEW_VERSION || null,
           taskId: process.env.XINGBUILD_PREVIEW_TASK_ID || null,
+          sessionId: process.env.XINGBUILD_PREVIEW_SESSION_ID || process.env.XINGBUILD_CONTENT_PREVIEW_SESSION_ID || null,
+          previewRuntime: process.env.XINGBUILD_PREVIEW_RUNTIME || null,
           mode: process.env.XINGBUILD_PREVIEW_MODE || "product-preview",
           targetId: process.env.XINGBUILD_CONTENT_PREVIEW_TARGET_ID || null,
           sourcePath: process.env.XINGBUILD_CONTENT_PREVIEW_SOURCE_PATH || null,
@@ -199,14 +203,20 @@ export function contentPreviewWorkbench() {
         const sourceHash = process.env.XINGBUILD_CONTENT_PREVIEW_SOURCE_HASH || "";
         const valueHash = process.env.XINGBUILD_CONTENT_PREVIEW_VALUE_HASH || "";
         const consumerViews = parsePreviewJson("XINGBUILD_CONTENT_PREVIEW_CONSUMER_VIEWS") || [];
-        const frames = routes.flatMap((route) => [
+        const frames = consumerViews.length ? consumerViews.map((view) => ({
+          route: view.route,
+          viewport: view.viewport,
+          title: `${view.route} · ${view.viewport === "mobile-390" ? "Mobile 390" : "Web 1280"}`,
+          width: view.viewport === "mobile-390" ? 390 : 1280,
+          height: view.viewport === "mobile-390" ? 844 : 900,
+        })) : routes.flatMap((route) => [
           { route, viewport: "web-1280", title: `${route} · Web 1280`, width: 1280, height: 900 },
           { route, viewport: "mobile-390", title: `${route} · Mobile 390`, width: 390, height: 844 },
         ]);
         const frameHtml = frames.map((frame) => `
       <section class="view" aria-label="${escapeHtml(frame.title)}">
         <h2>${escapeHtml(frame.title)}</h2>
-        <iframe data-preview-frame data-route="${escapeHtml(frame.route)}" data-revision="0" data-base-src="${escapeHtml(routeUrl(frame.route, frame.viewport))}" title="${escapeHtml(frame.title)}" width="${frame.width}" height="${frame.height}" src="${escapeHtml(routeUrl(frame.route, frame.viewport))}"></iframe>
+        <iframe data-preview-frame data-route="${escapeHtml(frame.route)}" data-viewport="${escapeHtml(frame.viewport)}" data-revision="0" data-base-src="${escapeHtml(routeUrl(frame.route, frame.viewport))}" title="${escapeHtml(frame.title)}" width="${frame.width}" height="${frame.height}" src="${escapeHtml(routeUrl(frame.route, frame.viewport))}"></iframe>
       </section>`).join("");
         const html = `<!doctype html>
 <html lang="zh-CN">
@@ -251,25 +261,31 @@ export function contentPreviewWorkbench() {
       ${frameHtml}
     </main>
     <script type="module">
-      const hot = import.meta.hot;
       const statusNode = document.querySelector("[data-preview-status]");
       const revisionNode = document.querySelector("[data-preview-revision]");
       const errorNode = document.querySelector("[data-preview-error]");
       const frames = Array.from(document.querySelectorAll("[data-preview-frame]"));
       const routes = ${JSON.stringify(routes)};
+      const consumerViews = ${JSON.stringify(consumerViews)};
+      const targetId = ${JSON.stringify(targetId)};
       function applyUpdate(payload) {
-        if (!payload || payload.targetId !== ${JSON.stringify(targetId)}) return;
-        statusNode.textContent = payload.sessionStatus || payload.status || "unknown";
+        if (!payload || payload.targetId !== targetId) return;
+        statusNode.textContent = payload.status || payload.sessionStatus || "unknown";
         revisionNode.textContent = String(payload.revision || 0);
         errorNode.textContent = payload.error ? (payload.error.code + ": " + payload.error.message) : "无";
-        if (payload.refresh !== true || payload.status !== "valid") return;
-        frames.filter((frame) => (payload.consumerRoutes || routes).includes(frame.dataset.route)).forEach((frame) => {
+        if (payload.refresh !== true || !["valid", "valid-updated", "ready"].includes(payload.status || payload.sessionStatus)) return;
+        const affected = new Set((payload.consumerViews || consumerViews).map((view) => view.route + ":" + view.viewport));
+        frames.filter((frame) => affected.has(frame.dataset.route + ":" + frame.dataset.viewport)).forEach((frame) => {
           const separator = frame.dataset.baseSrc.includes("?") ? "&" : "?";
           frame.dataset.revision = String(payload.revision || 0);
           frame.src = frame.dataset.baseSrc + separator + "__xingbuild_content_preview_revision=" + encodeURIComponent(String(payload.revision || 0));
         });
       }
-      hot?.on("xingbuild:content-target-update", applyUpdate);
+      const eventSource = new EventSource("/__xingbuild/preview-events?target-id=" + encodeURIComponent(targetId));
+      eventSource.addEventListener("preview-state", (event) => {
+        try { applyUpdate(JSON.parse(event.data)); } catch (error) { errorNode.textContent = "PREVIEW_EVENT_INVALID: " + error.message; }
+      });
+      eventSource.onerror = () => { errorNode.textContent = "PREVIEW_RUNTIME_DISCONNECTED"; };
     </script>
   </body>
 </html>`;
@@ -278,6 +294,56 @@ export function contentPreviewWorkbench() {
         response.setHeader("Cache-Control", "no-store");
         response.end(request.method === "HEAD" ? undefined : html);
       });
+    },
+  };
+}
+
+/**
+ * Preview Runtime v2 owns the source watcher and a single explicit SSE event
+ * channel. Vite HMR is deliberately not used as a content preview protocol.
+ */
+export function contentPreviewRuntimeV2() {
+  return {
+    name: "xingbuild-content-preview-runtime-v2",
+    apply: "serve",
+    configureServer(server) {
+      const enabled = process.env.XINGBUILD_PREVIEW_MODE === "content-preview"
+        && Boolean(process.env.XINGBUILD_CONTENT_PREVIEW_TARGET_ID);
+      if (!enabled) return;
+      const targetId = process.env.XINGBUILD_CONTENT_PREVIEW_TARGET_ID;
+      const sessionId = process.env.XINGBUILD_CONTENT_PREVIEW_SESSION_ID
+        || process.env.XINGBUILD_PREVIEW_SESSION_ID
+        || "preview-session-unknown";
+      const runtimePromise = resolveContentPreviewTarget(targetId)
+        .then((context) => createPreviewRuntimeV2({ context, sessionId, server }));
+      server.middlewares.use("/__xingbuild/preview-events", async (request, response, next) => {
+        if (request.method !== "GET" && request.method !== "HEAD") return next();
+        const query = new URL(request.url || "/", "http://127.0.0.1").searchParams;
+        if (query.get("target-id") && query.get("target-id") !== targetId) {
+          response.statusCode = 409;
+          response.setHeader("Content-Type", "text/plain; charset=utf-8");
+          response.end("Content preview target identity mismatch");
+          return;
+        }
+        try {
+          const runtime = await runtimePromise;
+          if (request.method === "HEAD") {
+            response.statusCode = 200;
+            response.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+            response.end();
+            return;
+          }
+          runtime.broker.connect(request, response);
+        } catch (error) {
+          response.statusCode = 503;
+          response.setHeader("Content-Type", "application/json; charset=utf-8");
+          response.end(JSON.stringify({ error: "CONTENT_PREVIEW_RUNTIME_UNAVAILABLE", detail: error.message }));
+        }
+      });
+      server.httpServer?.once("close", () => runtimePromise.then((runtime) => runtime.close()).catch(() => {}));
+    },
+    handleHotUpdate() {
+      return [];
     },
   };
 }
@@ -345,5 +411,5 @@ export default defineConfig({
       clientFiles: ["./src/main.jsx"],
     },
   },
-  plugins: [isolatedDraftPreview(), previewMetadata(), contentPreviewWorkbench(), contentPreviewHmr(), robotaxiReleaseAdapter(), contentMediaPreview(), react()],
+  plugins: [isolatedDraftPreview(), previewMetadata(), contentPreviewWorkbench(), contentPreviewRuntimeV2(), robotaxiReleaseAdapter(), contentMediaPreview(), react()],
 });

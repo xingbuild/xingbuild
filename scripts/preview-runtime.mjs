@@ -12,7 +12,7 @@ function projectRoot() {
   return path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 }
 
-export function currentIdentity(root = projectRoot(), { mode = process.env.XINGBUILD_PREVIEW_MODE || "product-preview" } = {}) {
+export function currentIdentity(root = projectRoot(), { mode = process.env.XINGBUILD_PREVIEW_MODE || "product-preview", sessionId = null } = {}) {
   const packageJson = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8"));
   const jsonEnv = (name) => {
     try { return process.env[name] ? JSON.parse(process.env[name]) : null; } catch { return null; }
@@ -23,6 +23,7 @@ export function currentIdentity(root = projectRoot(), { mode = process.env.XINGB
     version: `v${packageJson.version}`,
     mode,
     taskId: process.env.XINGBUILD_PREVIEW_TASK_ID || process.env.XBUILD_TASK_ID || "local",
+    sessionId: sessionId || process.env.XINGBUILD_PREVIEW_SESSION_ID || process.env.XINGBUILD_CONTENT_PREVIEW_SESSION_ID || null,
     targetId: process.env.XINGBUILD_CONTENT_PREVIEW_TARGET_ID || null,
     sourcePath: process.env.XINGBUILD_CONTENT_PREVIEW_SOURCE_PATH || null,
     fieldPath: process.env.XINGBUILD_CONTENT_PREVIEW_FIELD_PATH || null,
@@ -38,7 +39,7 @@ export function currentIdentity(root = projectRoot(), { mode = process.env.XINGB
 
 export function isPreviewRecordFor(record, identity) {
   if (!record || record.port !== previewPort) return false;
-  for (const key of ["cwd", "commit", "version", "mode", "taskId", "targetId", "sourcePath", "fieldPath"]) {
+  for (const key of ["cwd", "commit", "version", "mode", "taskId", "sessionId", "targetId", "sourcePath", "fieldPath"]) {
     if (identity[key] !== undefined && identity[key] !== null && record[key] !== identity[key]) return false;
   }
   for (const key of ["projectionRoutes", "consumerRoutes", "consumerViews", "projectionKeys", "activeBaseline"]) {

@@ -131,7 +131,7 @@ test("workbench renders every consumer route frame and local event status surfac
     assert.equal((html.match(/data-preview-frame data-route/g) || []).length, 4);
     assert.match(html, /data-route="\/"/);
     assert.match(html, /data-route="\/products"/);
-    assert.match(html, /xingbuild:content-target-update/);
+    assert.match(html, /preview-events/);
     assert.match(html, /data-preview-status/);
   } finally {
     for (const key of Object.keys(process.env)) if (!(key in previous)) delete process.env[key];
