@@ -333,9 +333,16 @@ export function contentPreviewWorkbench() {
       p { margin: 4px 0; color: #475569; }
       code { font-family: ui-monospace, SFMono-Regular, monospace; word-break: break-all; }
       .status { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px 18px; margin-top: 16px; padding: 14px 16px; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; }
-      .workbench-shell { position: relative; display: grid; grid-template-columns: minmax(300px, 360px) minmax(0, 1fr); gap: 20px; max-width: 1600px; margin: 0 auto; align-items: start; }
-      .editor-column { position: sticky; top: 16px; z-index: 2; display: grid; gap: 12px; min-width: 0; }
-      .preview-column { min-width: 0; }
+      .workbench-shell { position: relative; max-width: 1600px; margin: 0 auto; }
+      .workbench-controls { position: sticky; top: 0; z-index: 5; padding: 12px 0 10px; background: rgba(248,250,252,.97); border-bottom: 1px solid #e2e8f0; backdrop-filter: blur(8px); }
+      .page-select-row { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 10px; }
+      .page-select-row label { display: grid; gap: 3px; color: #475569; font-size: 12px; font-weight: 600; }
+      .page-select-row select { min-width: 220px; padding: 9px 34px 9px 11px; color: #0f172a; background: #fff; border: 1px solid #94a3b8; border-radius: 8px; font: inherit; font-size: 14px; }
+      .page-select-help { color: #64748b; font-size: 12px; }
+      .field-strip-panel { padding: 11px 12px 8px; }
+      .workbench-body { display: grid; grid-template-columns: minmax(300px, 360px) minmax(0, 1fr); gap: 20px; margin-top: 14px; align-items: start; }
+      .editor-column { position: sticky; top: 112px; z-index: 2; display: grid; gap: 12px; min-width: 0; }
+      .preview-column { min-width: 0; max-height: calc(100vh - 180px); overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; }
       .preview-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin: 0 0 10px; }
       .preview-heading h2 { margin: 0; font-size: 18px; }
       .preview-heading span { color: #64748b; font-size: 12px; }
@@ -356,12 +363,8 @@ export function contentPreviewWorkbench() {
       button { border: 0; border-radius: 8px; padding: 10px 16px; color: #fff; background: #0f766e; font: inherit; cursor: pointer; }
       button:disabled { background: #94a3b8; cursor: not-allowed; }
       .pill { background: #e0f2fe; color: #075985; padding: 4px 8px; border-radius: 999px; font-size: 12px; }
-      .page-nav { display: grid; gap: 6px; }
-      .page-nav button { display: flex; justify-content: space-between; align-items: center; width: 100%; padding: 9px 10px; color: #0f172a; background: #f8fafc; border: 1px solid #e2e8f0; text-align: left; }
-      .page-nav button.is-active { color: #0f766e; background: #f0fdfa; border-color: #5eead4; }
-      .page-nav small { color: #64748b; font-size: 11px; }
-      .field-list { display: grid; gap: 7px; }
-      .field-card { display: block; width: 100%; padding: 10px; color: #0f172a; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; text-align: left; cursor: pointer; }
+      .field-list { display: flex; gap: 8px; overflow-x: auto; padding: 2px 1px 6px; scrollbar-width: thin; }
+      .field-card { display: block; flex: 0 0 clamp(210px, 24vw, 280px); width: clamp(210px, 24vw, 280px); padding: 10px; color: #0f172a; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; text-align: left; cursor: pointer; }
       .field-card:hover, .field-card.is-selected { border-color: #0f766e; background: #f0fdfa; }
       .field-card strong, .field-card span { display: block; }
       .field-card strong { font-size: 13px; }
@@ -375,7 +378,7 @@ export function contentPreviewWorkbench() {
       .relation-layer path { fill: none; stroke: #0f766e; stroke-width: 2; stroke-dasharray: 5 4; opacity: .82; }
       .relation-layer circle { fill: #0f766e; }
       .relation-caption { fill: #0f766e; font-size: 11px; font-weight: 600; }
-      @media (max-width: 980px) { .workbench-shell { grid-template-columns: 1fr; } .editor-column { position: static; } .views { grid-template-columns: 1fr; } .relation-layer { display: none; } }
+      @media (max-width: 980px) { .workbench-body { grid-template-columns: 1fr; } .editor-column { position: static; } .preview-column { max-height: none; overflow: visible; } .views { grid-template-columns: 1fr; } .relation-layer { display: none; } }
       @media (max-width: 700px) { body { padding: 12px; } .status { grid-template-columns: 1fr 1fr; } }
     </style>
   </head>
@@ -391,23 +394,24 @@ export function contentPreviewWorkbench() {
       </div>
     </header>
     <main class="workbench-shell">
-      <aside class="editor-column">
-        <section class="page-panel">
-          <h2>选择页面</h2>
-          <p>先选页面，再选要修改的区域。</p>
-          <nav class="page-nav" data-page-nav aria-label="页面分类"><span>正在读取页面…</span></nav>
-        </section>
-        <section class="field-panel">
+      <section class="workbench-controls" data-workbench-controls>
+        <div class="page-select-row">
+          <label for="content-preview-page">选择页面<select id="content-preview-page" data-page-select aria-label="选择页面"><option>正在读取页面…</option></select></label>
+          <span class="page-select-help">页面入口固定；下方内容可左右滑动选择</span>
+        </div>
+        <section class="field-panel field-strip-panel">
           <h2 data-field-heading>页面内容</h2>
           <div class="field-list" data-field-list><span class="empty-editor">正在读取页面字段…</span></div>
         </section>
-        ${editorHtml || `<section class="editor empty-editor" data-editor-empty>选择左侧字段后，在这里输入内容；右侧会显示对应页面。</section>`}
-      </aside>
-      <section class="preview-column">
-        <div class="preview-heading"><h2>页面实时预览</h2><span>选中左侧字段后，右侧会高亮对应区域并显示连线</span></div>
-        <div class="views" data-views>
-          ${frameHtml || `<section class="view empty-editor">请选择一个字段查看真实页面预览</section>`}
-        </div>
+      </section>
+      <section class="workbench-body">
+        <aside class="editor-column">${editorHtml || `<section class="editor empty-editor" data-editor-empty>选择上方内容字段后，在这里输入内容；下方会显示真实页面预览。</section>`}</aside>
+        <section class="preview-column" data-preview-scroll>
+          <div class="preview-heading"><h2>页面实时预览</h2><span>预览区可独立上下移动；选中字段会高亮并显示连线</span></div>
+          <div class="views" data-views>
+            ${frameHtml || `<section class="view empty-editor">请选择一个字段查看真实页面预览</section>`}
+          </div>
+        </section>
       </section>
       <svg class="relation-layer" data-relation-layer aria-hidden="true"></svg>
     </main>
@@ -427,7 +431,7 @@ export function contentPreviewWorkbench() {
       const mobileEditor = document.querySelector("[data-editor-mobile]");
       const shell = document.querySelector(".workbench-shell");
       const relationLayer = document.querySelector("[data-relation-layer]");
-      const pageNav = document.querySelector("[data-page-nav]");
+      const pageSelect = document.querySelector("[data-page-select]");
       const fieldList = document.querySelector("[data-field-list]");
       const fieldHeading = document.querySelector("[data-field-heading]");
       const PAGE_LABELS = { "/": "首页", "/products": "B端产品", "/business-observations": "经营观察", "/observations": "观察文章", "/about": "关于我" };
@@ -444,20 +448,19 @@ export function contentPreviewWorkbench() {
       };
       const targetRoutes = (target) => (target.projectionRoutes || []).map(routeGroup);
       const fieldHref = (id, page) => "?target-id=" + encodeURIComponent(id) + "&page=" + encodeURIComponent(page);
-      function renderPageNav() {
-        if (!pageNav) return;
+      function renderPageSelect() {
+        if (!pageSelect) return;
         const routesInCatalog = new Set(targetCatalog.flatMap((target) => targetRoutes(target)));
         Object.keys(PAGE_LABELS).forEach((route) => routesInCatalog.add(route));
-        pageNav.replaceChildren(...[...routesInCatalog].map((route) => {
-          const button = document.createElement("button");
-          button.type = "button";
-          button.dataset.page = route;
-          if (route === activePage) button.classList.add("is-active");
+        pageSelect.replaceChildren(...[...routesInCatalog].map((route) => {
+          const option = document.createElement("option");
+          option.value = route;
+          option.textContent = pageLabel(route);
           const count = targetCatalog.filter((target) => targetRoutes(target).includes(route)).length;
-          button.innerHTML = "<span>" + pageLabel(route) + "</span><small>" + count + " 项</small>";
-          button.addEventListener("click", () => { activePage = route; renderPageNav(); renderFieldList(); });
-          return button;
+          option.textContent += "（" + count + " 项）";
+          return option;
         }));
+        pageSelect.value = activePage;
       }
       function renderFieldList() {
         if (!fieldList) return;
@@ -477,9 +480,10 @@ export function contentPreviewWorkbench() {
         drawRelations();
       }
       async function loadTargetCatalog() {
-        try { const response = await fetch("/__xingbuild/content-targets"); const payload = await response.json(); targetCatalog = payload.targets || []; renderPageNav(); renderFieldList(); }
+        try { const response = await fetch("/__xingbuild/content-targets"); const payload = await response.json(); targetCatalog = payload.targets || []; renderPageSelect(); renderFieldList(); }
         catch (error) { if (fieldList) fieldList.textContent = "页面字段读取失败：" + error.message; }
       }
+      pageSelect?.addEventListener("change", () => { activePage = pageSelect.value; renderFieldList(); });
       if (mobileEnabled && mobileEditor) {
         mobileEditor.hidden = !mobileEnabled.checked;
         mobileEnabled.addEventListener("change", () => { mobileEditor.hidden = !mobileEnabled.checked; });
@@ -552,6 +556,7 @@ export function contentPreviewWorkbench() {
       }
       frames.forEach((frame) => frame.addEventListener("load", () => setTimeout(requestMarkers, 220)));
       window.addEventListener("resize", () => setTimeout(drawRelations, 30));
+      document.querySelector("[data-preview-scroll]")?.addEventListener("scroll", () => drawRelations(), { passive: true });
       setTimeout(requestMarkers, 600);
       function applyUpdate(payload) {
         if (!payload || payload.targetId !== targetId) return;
