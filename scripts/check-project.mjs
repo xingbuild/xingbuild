@@ -120,6 +120,7 @@ const requiredFiles = [
   "tests/v02620-content-preview.test.mjs",
   "tests/v02621-content-preview.test.mjs",
   "tests/v02622-content-preview-runtime.test.mjs",
+  "tests/v02627-content-preview-navigation.test.mjs",
 ];
 
 for (const file of requiredFiles) {

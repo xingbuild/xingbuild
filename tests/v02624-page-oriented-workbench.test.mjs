@@ -3,12 +3,16 @@ import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import { projectRoot } from "../scripts/lib/content-root.mjs";
 
-test("page-oriented workbench keeps one page-first navigation and real preview relation contract", async () => {
+test("page-oriented workbench uses the real frame navigation and target relation contract", async () => {
   const source = await readFile(`${projectRoot}/vite.config.mjs`, "utf8");
   for (const label of ["首页", "B端产品", "经营观察", "观察文章", "关于我"]) assert.match(source, new RegExp(label));
   assert.match(source, /workbench-shell/);
   assert.match(source, /本地编辑预览工具/);
-  assert.match(source, /data-page-select/);
+  assert.doesNotMatch(source, /data-page-select/);
+  assert.doesNotMatch(source, /选择页面/);
+  assert.match(source, /preview-navigation-click/);
+  assert.match(source, /target-select/);
+  assert.match(source, /CONTENT_PREVIEW_PAGE_ROUTES/);
   assert.doesNotMatch(source, /data-field-list/);
   assert.doesNotMatch(source, /class="status"/);
   assert.match(source, /data-editor-context/);

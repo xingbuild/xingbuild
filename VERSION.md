@@ -1,3 +1,16 @@
+## v0.26.27 — 内容工作台页面导航即选择与局部预览
+
+父版本：`v0.26.26` / `18c45c5ddc724c8e6d9be235c63b9a0867a52814`
+
+- 移除工作台顶部页面下拉；右侧真实站点导航成为唯一页面选择入口。
+- 预览 frame 通过受控 `preview-navigation-click` 同步 Web/Mobile route；正文 target 使用独立 `target-select` 消息进入左侧编辑器。
+- 导航切换清理旧 marker/editor 并重新请求当前 route target；保留 TargetImpact 局部刷新、左右独立滚动与零发布边界。
+
+## 验证合同
+
+- 定向覆盖页面导航、移动菜单、target 选择优先级、双 frame route 同步、局部刷新与无 full reload。
+- 固定 4317 真实使用验证：站点导航切换 → 正文 target 编辑 → 受影响 frame 更新 → 原值恢复；active/review/release/SitePublication/ProductArtifact 只读不变。
+
 ## v0.26.26 — 页面点击选择与全正文内容编辑工作台
 
 父版本：`v0.26.25` / `aee49a3a4a6801fc43d82374a37ad99703c35dc9`

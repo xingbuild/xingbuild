@@ -97,7 +97,7 @@ test("preview implementation has no global full reload and exposes the local-onl
   assert.doesNotMatch(viteConfig, /server\.ws\.send\(\{\s*type:\s*["']full-reload/);
 });
 
-test("workbench renders every consumer route frame and local event status surface", async () => {
+test("workbench renders two synchronized route frames and local event status surface", async () => {
   const previous = { ...process.env };
   let handler;
   try {
@@ -128,9 +128,11 @@ test("workbench renders every consumer route frame and local event status surfac
     };
     await handler({ method: "GET", url: "/?target-id=products.robotaxi.intro" }, response, () => {});
     const html = chunks.join("");
-    assert.equal((html.match(/data-preview-frame data-route/g) || []).length, 4);
+    assert.equal((html.match(/data-preview-frame data-route/g) || []).length, 2);
     assert.match(html, /data-route="\/"/);
-    assert.match(html, /data-route="\/products"/);
+    assert.match(html, /preview-navigation-click/);
+    assert.match(html, /target-select/);
+    assert.doesNotMatch(html, /data-page-select/);
     assert.match(html, /preview-events/);
     assert.match(html, /data-preview-status/);
   } finally {

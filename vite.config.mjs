@@ -18,8 +18,13 @@ import {
 } from "./scripts/lib/content-preview.mjs";
 import { createPreviewRuntimeV2 } from "./scripts/lib/content-preview-runtime-v2.mjs";
 import { readContentAuthoringTarget, writeContentAuthoringTarget } from "./scripts/lib/content-preview-authoring.mjs";
+import { pageDefinitions } from "./src/content/pageDefinitions.js";
 
 const ROBOTAXI_RELEASE_ENDPOINT = "https://robotaxi.xingbuild.top/deployment-manifest.json";
+// The preview route allow-list is derived from the product page-definition
+// registry. It is used only inside the dev-only frame bridge; it is not a
+// second navigation or content registry.
+const CONTENT_PREVIEW_PAGE_ROUTES = Object.freeze(pageDefinitions.map((definition) => definition.route));
 
 function projectRobotaxiRelease(payload) {
   if (!payload || typeof payload !== "object" || !/^v\d+\.\d+\.\d+$/.test(payload.version || "") || !/^[a-f0-9]{40}$/.test(payload.commit || "")) return null;
@@ -290,8 +295,10 @@ export function contentPreviewWorkbench() {
         const routes = authored?.projectionRoutes || parsePreviewJson("XINGBUILD_CONTENT_PREVIEW_CONSUMER_ROUTES")
           || parsePreviewJson("XINGBUILD_CONTENT_PREVIEW_ROUTES") || [];
         const requestedPage = query.get("page");
-        const activeRoute = (requestedPage === "/observations" && routes.find((route) => route.startsWith("/observations/")))
-          || (requestedPage && requestedPage.startsWith("/") ? requestedPage : routes[0] || "/");
+        const registeredRoutes = new Set(CONTENT_PREVIEW_PAGE_ROUTES);
+        const activeRoute = requestedPage && registeredRoutes.has(requestedPage)
+          ? requestedPage
+          : (routes.find((route) => registeredRoutes.has(route)) || "/");
         const routeUrl = (route, viewport) => `${route}${route.includes("?") ? "&" : "?"}__xingbuild_content_preview=${viewport}`;
         const baseline = authored?.activeBaseline || parsePreviewJson("XINGBUILD_CONTENT_PREVIEW_ACTIVE_BASELINE") || {};
         const sourcePath = authored?.sourcePath || process.env.XINGBUILD_CONTENT_PREVIEW_SOURCE_PATH || "";
@@ -338,10 +345,8 @@ export function contentPreviewWorkbench() {
       .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
       .workbench-shell { position: relative; max-width: 1600px; margin: 0 auto; }
       .workbench-controls { position: sticky; top: 0; z-index: 5; padding: 10px 0; background: rgba(248,250,252,.97); border-bottom: 1px solid #e2e8f0; backdrop-filter: blur(8px); }
-      .page-select-row { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 10px; }
-      .page-select-row label { display: grid; gap: 3px; color: #475569; font-size: 12px; font-weight: 600; }
-      .page-select-row select { min-width: 220px; padding: 9px 34px 9px 11px; color: #0f172a; background: #fff; border: 1px solid #94a3b8; border-radius: 8px; font: inherit; font-size: 14px; }
-      .page-select-help { color: #64748b; font-size: 12px; }
+      .preview-route-status { display: inline-flex; align-items: center; gap: 6px; color: #475569; font-size: 12px; }
+      .preview-route-status strong { color: #0f766e; font-weight: 700; }
       .workbench-body { display: grid; grid-template-columns: minmax(240px, 300px) minmax(0, 1fr); gap: 16px; height: calc(100vh - 118px); margin-top: 14px; align-items: start; }
       .editor-column { min-width: 0; height: 100%; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; }
       .preview-column { position: sticky; top: 98px; min-width: 0; max-height: 100%; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; }
@@ -372,7 +377,7 @@ export function contentPreviewWorkbench() {
       .relation-layer circle { fill: #0f766e; }
       .relation-caption { fill: #0f766e; font-size: 11px; font-weight: 600; }
       @media (max-width: 980px) { .workbench-body { grid-template-columns: 1fr; height: auto; } .editor-column, .preview-column { position: static; height: auto; max-height: none; overflow: visible; } .views { grid-template-columns: 1fr; } .relation-layer { display: none; } }
-      @media (max-width: 700px) { body { padding: 12px; } .page-select-row { align-items: start; flex-direction: column; gap: 8px; } }
+      @media (max-width: 700px) { body { padding: 12px; } }
     </style>
   </head>
   <body data-content-preview-mode="content-preview" data-target-id="${escapeHtml(targetId || "__all__")}">
@@ -382,10 +387,7 @@ export function contentPreviewWorkbench() {
     </header>
     <main class="workbench-shell">
       <section class="workbench-controls" data-workbench-controls>
-        <div class="page-select-row">
-          <label for="content-preview-page">选择页面<select id="content-preview-page" data-page-select aria-label="选择页面"><option>正在读取页面…</option></select></label>
-          <span class="page-select-help">点击右侧页面内容选择要编辑的位置</span>
-        </div>
+        <div class="preview-route-status" data-preview-route aria-live="polite">当前预览页面：<strong>${escapeHtml(pageLabels[activeRoute] || activeRoute)}</strong></div>
       </section>
       <section class="workbench-body">
         <aside class="editor-column">${editorHtml || `<section class="editor empty-editor" data-editor-empty>选择上方内容字段后，在这里输入内容；下方会显示真实页面预览。</section>`}</aside>
@@ -408,19 +410,19 @@ export function contentPreviewWorkbench() {
       const targetId = ${safeJson(targetId)};
       const sessionTargetId = ${safeJson(sessionTargetId)};
       const authored = ${safeJson(authored)};
-      const editor = document.querySelector("[data-editor]");
+      const previewRouteNode = document.querySelector("[data-preview-route]");
+      const editorColumn = document.querySelector(".editor-column");
       const saveStatus = document.querySelector("[data-save-status]");
       const mobileEnabled = document.querySelector("[data-mobile-enabled]");
       const mobileEditor = document.querySelector("[data-editor-mobile]");
       const shell = document.querySelector(".workbench-shell");
       const relationLayer = document.querySelector("[data-relation-layer]");
-      const pageSelect = document.querySelector("[data-page-select]");
       const PAGE_LABELS = { "/": "首页", "/products": "B端产品", "/business-observations": "经营观察", "/observations": "观察文章", "/about": "关于我" };
+      const PAGE_ROUTES = ${safeJson(CONTENT_PREVIEW_PAGE_ROUTES)};
       const queryPage = new URLSearchParams(location.search).get("page");
-      const currentTargetId = targetId;
+      let selectedTargetId = targetId;
       let targetCatalog = [];
-      let activePage = queryPage || routes[0] || "/";
-      const activeRoute = frames[0]?.dataset.route || activePage;
+      let activeRoute = PAGE_ROUTES.includes(queryPage) ? queryPage : (frames[0]?.dataset.route || routes.find((route) => PAGE_ROUTES.includes(route)) || "/");
       let saveTimer = null;
       const routeGroup = (route) => route === "/" || PAGE_LABELS[route] ? route : route.startsWith("/observations/") ? "/observations" : route;
       const pageLabel = (route) => PAGE_LABELS[route] || route;
@@ -430,29 +432,15 @@ export function contentPreviewWorkbench() {
       };
       const targetRoutes = (target) => (target.projectionRoutes || []).map(routeGroup);
       const fieldHref = (id, page) => "?target-id=" + encodeURIComponent(id) + "&page=" + encodeURIComponent(page);
-      function renderPageSelect() {
-        if (!pageSelect) return;
-        const routesInCatalog = new Set(targetCatalog.flatMap((target) => targetRoutes(target)));
-        Object.keys(PAGE_LABELS).forEach((route) => routesInCatalog.add(route));
-        pageSelect.replaceChildren(...[...routesInCatalog].map((route) => {
-          const option = document.createElement("option");
-          option.value = route;
-          option.textContent = pageLabel(route);
-          return option;
-        }));
-        pageSelect.value = activePage;
+      const routeUrl = (route, viewport) => route + (route.includes("?") ? "&" : "?") + "__xingbuild_content_preview=" + encodeURIComponent(viewport);
+      const isRegisteredRoute = (route) => PAGE_ROUTES.includes(route);
+      function updateRouteStatus() {
+        if (previewRouteNode) previewRouteNode.innerHTML = "当前预览页面：<strong>" + pageLabel(activeRoute) + "</strong>";
       }
       async function loadTargetCatalog() {
-        try { const response = await fetch("/__xingbuild/content-targets"); const payload = await response.json(); targetCatalog = payload.targets || []; renderPageSelect(); requestMarkers(); }
+        try { const response = await fetch("/__xingbuild/content-targets"); const payload = await response.json(); targetCatalog = payload.targets || []; requestMarkers(); }
         catch (error) { if (errorNode) errorNode.textContent = "页面内容读取失败：" + error.message; }
       }
-      pageSelect?.addEventListener("change", () => {
-        activePage = pageSelect.value;
-        const next = targetCatalog
-          .filter((target) => target.editable && target.authoring?.text && targetRoutes(target).includes(activePage))
-          .sort((left, right) => targetRoutes(left).length - targetRoutes(right).length)[0];
-        location.href = next ? fieldHref(next.targetId, activePage) : "?page=" + encodeURIComponent(activePage);
-      });
       if (mobileEnabled && mobileEditor) {
         mobileEditor.hidden = !mobileEnabled.checked;
         mobileEnabled.addEventListener("change", () => { mobileEditor.hidden = !mobileEnabled.checked; });
@@ -468,24 +456,55 @@ export function contentPreviewWorkbench() {
         if (relationLayer) relationLayer.replaceChildren();
       }
       const markerMap = new Map();
+      function clearEditorSelection() {
+        selectedTargetId = null;
+        if (editorColumn) editorColumn.innerHTML = '<section class="editor empty-editor" data-editor-empty>点击当前页面中的正文、标题或说明开始编辑；修改只写入本地 canonical 内容源。</section>';
+      }
+      function syncPreviewRoute(nextRoute, sourceFrame = null) {
+        if (!isRegisteredRoute(nextRoute)) {
+          if (errorNode) errorNode.textContent = "CONTENT_PREVIEW_ROUTE_INVALID: " + nextRoute;
+          return false;
+        }
+        activeRoute = nextRoute;
+        updateRouteStatus();
+        clearEditorSelection();
+        clearMarkers();
+        frames.forEach((frame) => {
+          frame.dataset.route = nextRoute;
+          frame.dataset.baseSrc = routeUrl(nextRoute, frame.dataset.viewport);
+          const separator = frame.dataset.baseSrc.includes("?") ? "&" : "?";
+          frame.dataset.revision = "0";
+          frame.src = frame.dataset.baseSrc + separator + "__xingbuild_content_preview_navigation=1";
+        });
+        if (sourceFrame) sourceFrame.dataset.lastNavigationSource = "site-navigation";
+        return true;
+      }
       window.addEventListener("message", (event) => {
         const payload = event.data;
         if (!payload) return;
-        if (payload.type === "xingbuild-content-target-click" && payload.targetId) {
-          const route = routeGroup(payload.route || activePage);
+        const frame = frames.find((candidate) => candidate.contentWindow === event.source);
+        if (!frame) return;
+        if (event.origin && event.origin !== location.origin) return;
+        if (payload.type === "preview-navigation-click" && payload.route) {
+          syncPreviewRoute(routeGroup(payload.route), frame);
+          return;
+        }
+        if ((payload.type === "target-select" || payload.type === "xingbuild-content-target-click") && payload.targetId) {
+          const route = routeGroup(payload.route || activeRoute);
+          const registeredTarget = targetCatalog.find((target) => target.targetId === payload.targetId);
+          if (!registeredTarget || !targetRoutes(registeredTarget).includes(route)) return;
           location.href = fieldHref(payload.targetId, route);
           return;
         }
         if (payload.type !== "xingbuild-content-target-marker" || !payload.targetId) return;
-        const frame = frames.find((candidate) => candidate.dataset.route === payload.route && candidate.dataset.viewport === payload.viewport);
-        if (!frame) return;
+        if (frame.dataset.route !== payload.route || frame.dataset.viewport !== payload.viewport) return;
         markerMap.set(payload.targetId + ":" + payload.route + ":" + payload.viewport, { targetId: payload.targetId, frame, rect: payload.rect, found: payload.found === true });
         drawRelations();
       });
       function requestMarkers() {
         if (!targetCatalog.length) return;
         clearMarkers();
-        const pageTargets = targetCatalog.filter((target) => target.editable && target.authoring?.text && (targetRoutes(target).includes(activePage) || (target.projectionRoutes || []).includes(activeRoute)));
+        const pageTargets = targetCatalog.filter((target) => target.editable && target.authoring?.text && targetRoutes(target).includes(activeRoute));
         frames.forEach((frame) => frame.contentWindow?.postMessage({
           type: "xingbuild-content-target-request",
           targets: pageTargets.map((target) => ({
@@ -493,12 +512,12 @@ export function contentPreviewWorkbench() {
             text: target.authoring.text || "",
             mobileText: target.authoring.mobileText || target.authoring.text || "",
           })),
-          selectedTargetId: currentTargetId,
+          selectedTargetId,
           viewport: frame.dataset.viewport,
         }, "*"));
       }
       function locateFrameTarget(frame) {
-        if (!currentTargetId || !authored?.authoring?.text) return null;
+        if (!selectedTargetId || !authored?.authoring?.text) return null;
         try {
           const doc = frame.contentDocument;
           if (!doc) return null;
@@ -509,7 +528,7 @@ export function contentPreviewWorkbench() {
           if (!element) return null;
           element.dataset.xingbuildOriginalOutline = element.style.outline;
           element.dataset.xingbuildOriginalShadow = element.style.boxShadow;
-          element.dataset.xingbuildContentTarget = currentTargetId;
+          element.dataset.xingbuildContentTarget = selectedTargetId;
           element.style.outline = "3px solid #0f766e";
           element.style.boxShadow = "0 0 0 5px rgba(15,118,110,.14)";
           frame.closest("[data-frame-shell]")?.classList.add("is-related");
@@ -517,14 +536,14 @@ export function contentPreviewWorkbench() {
         } catch { return null; }
       }
       function drawRelations() {
-        if (!relationLayer || !shell || !currentTargetId || window.matchMedia("(max-width: 980px)").matches) return;
+        if (!relationLayer || !shell || !selectedTargetId || window.matchMedia("(max-width: 980px)").matches) return;
         const source = document.querySelector("[data-editor-context]");
         if (!source) return;
         const shellRect = shell.getBoundingClientRect();
         relationLayer.setAttribute("width", String(shell.clientWidth)); relationLayer.setAttribute("height", String(shell.clientHeight)); relationLayer.setAttribute("viewBox", "0 0 " + shell.clientWidth + " " + shell.clientHeight);
         const sourceRect = source.getBoundingClientRect();
         frames.forEach((frame) => {
-          const marker = markerMap.get(currentTargetId + ":" + frame.dataset.route + ":" + frame.dataset.viewport); if (!marker?.found) return;
+          const marker = markerMap.get(selectedTargetId + ":" + frame.dataset.route + ":" + frame.dataset.viewport); if (!marker?.found) return;
           frame.closest("[data-frame-shell]")?.classList.add("is-related");
           const frameRect = frame.getBoundingClientRect(); const elementRect = marker.rect;
           const x1 = sourceRect.right - shellRect.left; const y1 = sourceRect.top + sourceRect.height / 2 - shellRect.top;
@@ -539,7 +558,7 @@ export function contentPreviewWorkbench() {
       document.querySelector("[data-preview-scroll]")?.addEventListener("scroll", () => drawRelations(), { passive: true });
       setTimeout(requestMarkers, 600);
       function applyUpdate(payload) {
-        if (!payload || payload.targetId !== targetId) return;
+        if (!payload || !selectedTargetId || payload.targetId !== selectedTargetId) return;
         statusNode.textContent = payload.status || payload.sessionStatus || "unknown";
         revisionNode.textContent = String(payload.revision || 0);
         errorNode.textContent = payload.error ? (payload.error.code + ": " + payload.error.message) : "无";
@@ -574,6 +593,7 @@ export function contentPreviewWorkbench() {
       }
       document.querySelector("[data-save]")?.addEventListener("click", saveAuthoring);
       document.querySelectorAll("[data-editor-web], [data-editor-mobile]").forEach((input) => input.addEventListener("input", () => { clearTimeout(saveTimer); saveTimer = setTimeout(saveAuthoring, 650); }));
+      updateRouteStatus();
     </script>
   </body>
 </html>`;
@@ -594,7 +614,15 @@ export function contentPreviewFrameMarker() {
       if (process.env.XINGBUILD_PREVIEW_MODE !== "content-preview") return html;
       const script = `<script>
 (() => {
+  const PAGE_ROUTES = ${safeJson(CONTENT_PREVIEW_PAGE_ROUTES)};
   const normalize = (value) => String(value || "").replace(/\\s+/g, "").replace(/[，。！？；：、“”‘’（）()]/g, "");
+  const registeredRoute = (href) => {
+    try {
+      const url = new URL(href, location.href);
+      if (url.origin !== location.origin || url.search || url.hash) return null;
+      return PAGE_ROUTES.includes(url.pathname) ? url.pathname : null;
+    } catch { return null; }
+  };
   const marked = new Map();
   const clear = () => { marked.forEach((element) => { element.style.outline = element.dataset.xingbuildOriginalOutline || ""; element.style.boxShadow = element.dataset.xingbuildOriginalShadow || ""; element.style.cursor = element.dataset.xingbuildOriginalCursor || ""; delete element.dataset.xingbuildContentTarget; }); marked.clear(); };
   const markTarget = (target, viewport, selectedTargetId) => {
@@ -611,7 +639,21 @@ export function contentPreviewFrameMarker() {
     const rect = element.getBoundingClientRect();
     parent.postMessage({ type: "xingbuild-content-target-marker", targetId: target.targetId, route: location.pathname, viewport, found: true, rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height } }, "*");
   };
-  document.addEventListener("click", (event) => { const target = event.target?.closest?.("[data-xingbuild-content-target]"); if (!target) return; event.preventDefault(); event.stopPropagation(); parent.postMessage({ type: "xingbuild-content-target-click", targetId: target.dataset.xingbuildContentTarget, route: location.pathname, viewport: new URL(location.href).searchParams.get("__xingbuild_content_preview") || "web-1280" }, "*"); }, true);
+  document.addEventListener("click", (event) => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    const target = event.target?.closest?.("[data-xingbuild-content-target]");
+    const viewport = new URL(location.href).searchParams.get("__xingbuild_content_preview") || "web-1280";
+    if (target) {
+      event.preventDefault(); event.stopPropagation();
+      parent.postMessage({ schema: "content-preview-interaction-v1", type: "target-select", legacyType: "xingbuild-content-target-click", targetId: target.dataset.xingbuildContentTarget, route: location.pathname, viewport }, "*");
+      return;
+    }
+    const anchor = event.target?.closest?.("a[href]");
+    const route = anchor ? registeredRoute(anchor.getAttribute("href")) : null;
+    if (!route) return;
+    event.preventDefault(); event.stopPropagation();
+    parent.postMessage({ schema: "content-preview-interaction-v1", type: "preview-navigation-click", route, viewport }, "*");
+  }, true);
   window.addEventListener("message", (event) => { if (event.data?.type !== "xingbuild-content-target-request") return; clear(); const viewport = event.data.viewport || "web-1280"; setTimeout(() => (event.data.targets || []).forEach((target) => markTarget(target, viewport, event.data.selectedTargetId)), 80); });
 })();
 </script>`;
