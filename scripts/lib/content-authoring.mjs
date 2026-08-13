@@ -31,22 +31,37 @@ function partId(index) {
 }
 
 /** Convert author-visible Web/Mobile text into the internal responsive slot. */
-export function compileResponsiveAuthoringValue({ text, mobileText = undefined, projectionKeys = [], maxLength = 400 } = {}) {
+export function compileResponsiveAuthoringValue({ text, mobileText = undefined, projectionKeys = [], maxLength = 400, existingValue = undefined } = {}) {
   const web = normalizeLines(text, "web text");
   const mobile = mobileText == null || mobileText === "" ? web : normalizeLines(mobileText, "mobile text");
   const webSource = web.replaceAll("\n", "");
   const mobileSource = mobile.replaceAll("\n", "");
   if (webSource !== mobileSource) throw new Error("Web and Mobile text must contain the same characters; only line breaks may differ");
   if (webSource.length > maxLength) throw new Error(`text exceeds maxLength ${maxLength}`);
+  if (existingValue) {
+    try {
+      const existing = decompileResponsiveAuthoringValue(existingValue, { projectionKeys });
+      if (existing.text === web && existing.mobileText === mobile) return structuredClone(existingValue);
+    } catch {
+      // The normal compiler below is the source of truth for an invalid or
+      // legacy value; callers still receive the same validation guarantees.
+    }
+  }
   const webShape = boundaries(web);
   const mobileShape = boundaries(mobile);
   const allBoundaries = [...new Set([...webShape.indexes, ...mobileShape.indexes])].sort((a, b) => a - b);
   const parts = [];
+  const usedIds = new Set();
   let start = 0;
   for (const end of [...allBoundaries, webSource.length]) {
     const value = webSource.slice(start, end);
     if (!value) throw new Error("authoring text produced an empty part");
-    parts.push({ id: partId(parts.length), text: value });
+    const existingId = existingValue?.parts?.[parts.length]?.id;
+    let id = typeof existingId === "string" && existingId.length > 0 ? existingId : partId(parts.length);
+    let suffix = 2;
+    while (usedIds.has(id)) id = `${partId(parts.length)}-${suffix++}`;
+    usedIds.add(id);
+    parts.push({ id, text: value });
     start = end;
   }
   const boundaryToPart = new Map();
@@ -83,9 +98,9 @@ export function decompileAuthoringValue(value, { valueType, projectionKeys = [] 
   return { schemaVersion: CONTENT_AUTHORING_SCHEMA, valueType: "string", text: value, mobileText: null, projection: null };
 }
 
-export function compileAuthoringValue({ text, mobileText = undefined, valueType, projectionKeys = [], maxLength = 400 } = {}) {
+export function compileAuthoringValue({ text, mobileText = undefined, valueType, projectionKeys = [], maxLength = 400, existingValue = undefined } = {}) {
   if (valueType === RESPONSIVE_TEXT_SLOT_SCHEMA) {
-    return compileResponsiveAuthoringValue({ text, mobileText, projectionKeys, maxLength });
+    return compileResponsiveAuthoringValue({ text, mobileText, projectionKeys, maxLength, existingValue });
   }
   const result = normalizeLines(text, "text");
   if (result.length > maxLength) throw new Error(`text exceeds maxLength ${maxLength}`);

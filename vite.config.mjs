@@ -306,18 +306,17 @@ export function contentPreviewWorkbench() {
           { route, viewport: "mobile-390", title: `${route} · Mobile 390`, width: 390, height: 844 },
         ]);
         const frameHtml = frames.map((frame) => `
-      <section class="view" aria-label="${escapeHtml(frame.title)}">
+      <section class="view" data-frame-shell data-route="${escapeHtml(frame.route)}" data-viewport="${escapeHtml(frame.viewport)}" aria-label="${escapeHtml(frame.title)}">
         <h2>${escapeHtml(frame.title)}</h2>
         <iframe data-preview-frame data-route="${escapeHtml(frame.route)}" data-viewport="${escapeHtml(frame.viewport)}" data-revision="0" data-base-src="${escapeHtml(routeUrl(frame.route, frame.viewport))}" title="${escapeHtml(frame.title)}" width="${frame.width}" height="${frame.height}" src="${escapeHtml(routeUrl(frame.route, frame.viewport))}"></iframe>
       </section>`).join("");
         const authoring = authored?.authoring || null;
         const responsive = authoring?.valueType === "responsive-text-slot-v1";
-        const targetListHtml = !targetId ? `<section class="target-list"><h2>选择要编辑的页面内容</h2><p>按页面和字段选择后，直接输入自然文本；保存只影响该字段对应的页面。</p><div data-target-list>正在读取可编辑字段…</div></section>` : "";
         const editorHtml = targetId ? `<section class="editor" data-editor>
           <div class="editor-heading"><div><h2>直接编辑内容</h2><p>${authored?.editable ? "在这里输入文字并按回车换行。保存只写入本地内容源。" : "该对象属于媒体或非文本内容，当前仅可查看。"}</p></div><span class="pill">${responsive ? "响应式文本" : "普通文本"}</span></div>
-          <label>页面/字段 <code>${escapeHtml(targetId)}</code></label>
+          <div class="selected-target" data-selected-target><span class="selected-target-label">当前页面字段</span><code>${escapeHtml(targetId)}</code><span data-selected-target-routes>${escapeHtml(routes.join(" · "))}</span></div>
           <textarea data-editor-web rows="6" ${authored?.editable ? "" : "readonly"}>${escapeHtml(authoring?.text || "")}</textarea>
-          ${responsive ? `<label class="mobile-toggle"><input type="checkbox" data-mobile-enabled> 移动端需要单独换行</label><textarea data-editor-mobile rows="6" ${authored?.editable ? "" : "readonly"}>${escapeHtml(authoring?.mobileText || authoring?.text || "")}</textarea>` : ""}
+          ${responsive ? `<label class="mobile-toggle"><input type="checkbox" data-mobile-enabled ${authoring?.mobileText && authoring.mobileText !== authoring.text ? "checked" : ""}> 移动端需要单独换行</label><textarea data-editor-mobile rows="6" ${authored?.editable ? "" : "readonly"}>${escapeHtml(authoring?.mobileText || authoring?.text || "")}</textarea>` : ""}
           <div class="editor-actions"><button data-save ${authored?.editable ? "" : "disabled"}>保存并预览</button><span data-save-status>本地草稿，未审核 · 未发布</span></div>
         </section>` : "";
         const html = `<!doctype html>
@@ -329,19 +328,27 @@ export function contentPreviewWorkbench() {
     <style>
       :root { color-scheme: light; font-family: system-ui, -apple-system, sans-serif; color: #0f172a; background: #f8fafc; }
       body { margin: 0; padding: 24px; }
-      header { max-width: 1400px; margin: 0 auto 24px; }
+      header { max-width: 1600px; margin: 0 auto 20px; }
       h1 { font-size: 24px; margin: 0 0 8px; }
       p { margin: 4px 0; color: #475569; }
       code { font-family: ui-monospace, SFMono-Regular, monospace; word-break: break-all; }
-      .status { display: grid; gap: 4px; margin-top: 16px; padding: 16px; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; }
-      .views { display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start; margin: 24px auto 0; max-width: 1400px; }
-      .view { background: #fff; border: 1px solid #cbd5e1; border-radius: 12px; padding: 12px; overflow: auto; }
+      .status { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px 18px; margin-top: 16px; padding: 14px 16px; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; }
+      .workbench-shell { position: relative; display: grid; grid-template-columns: minmax(300px, 360px) minmax(0, 1fr); gap: 20px; max-width: 1600px; margin: 0 auto; align-items: start; }
+      .editor-column { position: sticky; top: 16px; z-index: 2; display: grid; gap: 12px; min-width: 0; }
+      .preview-column { min-width: 0; }
+      .preview-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin: 0 0 10px; }
+      .preview-heading h2 { margin: 0; font-size: 18px; }
+      .preview-heading span { color: #64748b; font-size: 12px; }
+      .views { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+      .view { position: relative; min-width: 0; background: #fff; border: 1px solid #cbd5e1; border-radius: 12px; padding: 12px; overflow: auto; }
+      .view.is-related { border-color: #0f766e; box-shadow: 0 0 0 2px rgba(15,118,110,.14); }
       .view h2 { margin: 0 0 8px; font-size: 16px; }
       iframe { display: block; border: 0; background: #fff; }
       .readonly { color: #0369a1; font-weight: 600; }
-      .editor, .target-list { max-width: 1400px; margin: 24px auto 0; padding: 20px; background: #fff; border: 1px solid #cbd5e1; border-radius: 12px; }
+      .editor, .page-panel, .field-panel { padding: 16px; background: #fff; border: 1px solid #cbd5e1; border-radius: 12px; }
+      .page-panel h2, .field-panel h2 { margin: 0 0 10px; font-size: 17px; }
       .editor-heading { display: flex; justify-content: space-between; gap: 16px; align-items: start; }
-      .editor h2, .target-list h2 { margin: 0 0 8px; font-size: 18px; }
+      .editor h2 { margin: 0 0 8px; font-size: 18px; }
       .editor label { display: block; margin: 14px 0 6px; font-weight: 600; }
       textarea { display: block; width: 100%; box-sizing: border-box; resize: vertical; min-height: 120px; padding: 12px; border: 1px solid #94a3b8; border-radius: 8px; font: inherit; line-height: 1.6; }
       .mobile-toggle { font-weight: 400 !important; color: #475569; }
@@ -349,10 +356,27 @@ export function contentPreviewWorkbench() {
       button { border: 0; border-radius: 8px; padding: 10px 16px; color: #fff; background: #0f766e; font: inherit; cursor: pointer; }
       button:disabled { background: #94a3b8; cursor: not-allowed; }
       .pill { background: #e0f2fe; color: #075985; padding: 4px 8px; border-radius: 999px; font-size: 12px; }
-      [data-target-list] { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px; }
-      [data-target-list] a { display: block; padding: 10px 12px; border: 1px solid #e2e8f0; border-radius: 8px; color: #0f172a; text-decoration: none; }
-      [data-target-list] a:hover { border-color: #0f766e; background: #f0fdfa; }
-      .target-route { display: block; color: #64748b; font-size: 12px; margin-top: 3px; }
+      .page-nav { display: grid; gap: 6px; }
+      .page-nav button { display: flex; justify-content: space-between; align-items: center; width: 100%; padding: 9px 10px; color: #0f172a; background: #f8fafc; border: 1px solid #e2e8f0; text-align: left; }
+      .page-nav button.is-active { color: #0f766e; background: #f0fdfa; border-color: #5eead4; }
+      .page-nav small { color: #64748b; font-size: 11px; }
+      .field-list { display: grid; gap: 7px; }
+      .field-card { display: block; width: 100%; padding: 10px; color: #0f172a; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; text-align: left; cursor: pointer; }
+      .field-card:hover, .field-card.is-selected { border-color: #0f766e; background: #f0fdfa; }
+      .field-card strong, .field-card span { display: block; }
+      .field-card strong { font-size: 13px; }
+      .field-card span { margin-top: 3px; color: #64748b; font-size: 11px; }
+      .field-card .readonly-field { color: #0369a1; }
+      .selected-target { display: grid; gap: 4px; margin: 14px 0 8px; padding: 10px; background: #f0fdfa; border: 1px solid #99f6e4; border-radius: 8px; }
+      .selected-target-label { color: #0f766e; font-size: 12px; font-weight: 600; }
+      .selected-target span:last-child { color: #64748b; font-size: 11px; }
+      .empty-editor { padding: 18px 4px; color: #64748b; font-size: 13px; }
+      .relation-layer { position: absolute; inset: 0; z-index: 3; pointer-events: none; overflow: visible; }
+      .relation-layer path { fill: none; stroke: #0f766e; stroke-width: 2; stroke-dasharray: 5 4; opacity: .82; }
+      .relation-layer circle { fill: #0f766e; }
+      .relation-caption { fill: #0f766e; font-size: 11px; font-weight: 600; }
+      @media (max-width: 980px) { .workbench-shell { grid-template-columns: 1fr; } .editor-column { position: static; } .views { grid-template-columns: 1fr; } .relation-layer { display: none; } }
+      @media (max-width: 700px) { body { padding: 12px; } .status { grid-template-columns: 1fr 1fr; } }
     </style>
   </head>
   <body data-content-preview-mode="content-preview" data-target-id="${escapeHtml(targetId || "__all__")}">
@@ -360,23 +384,32 @@ export function contentPreviewWorkbench() {
       <h1>本地内容预览</h1>
       <p class="readonly">本地内容预览 · 未审核 · 未发布</p>
       <div class="status">
-        <p><strong>targetId：</strong><code>${escapeHtml(targetId || "__all__")}</code></p>
-        <p><strong>source：</strong><code>${escapeHtml(sourcePath)}</code></p>
-        <p><strong>fieldPath：</strong><code>${escapeHtml(fieldPath)}</code></p>
-        <p><strong>projectionRoutes：</strong><code>${escapeHtml(JSON.stringify(routes))}</code></p>
-        <p><strong>consumerViews：</strong><code>${escapeHtml(JSON.stringify(consumerViews))}</code></p>
+        <p><strong>当前字段：</strong><code>${escapeHtml(targetId || "未选择")}</code></p>
+        <p><strong>影响页面：</strong><code>${escapeHtml(JSON.stringify(routes))}</code></p>
         <p><strong>状态：</strong><strong data-preview-status>ready</strong> · revision=<code data-preview-revision>0</code></p>
         <p><strong>最近错误：</strong><code data-preview-error>无</code></p>
-        <p><strong>sourceHash：</strong><code>${escapeHtml(sourceHash)}</code></p>
-        <p><strong>valueHash：</strong><code>${escapeHtml(valueHash)}</code></p>
-        <p><strong>active ContentSet（只读基线）：</strong><code>${escapeHtml(baseline.activeContentSetId || "missing")}</code></p>
-        <p><strong>contentSetHash：</strong><code>${escapeHtml(baseline.contentSetHash || "missing")}</code></p>
       </div>
-      ${targetListHtml}
-      ${editorHtml}
     </header>
-    <main class="views">
-      ${frameHtml}
+    <main class="workbench-shell">
+      <aside class="editor-column">
+        <section class="page-panel">
+          <h2>选择页面</h2>
+          <p>先选页面，再选要修改的区域。</p>
+          <nav class="page-nav" data-page-nav aria-label="页面分类"><span>正在读取页面…</span></nav>
+        </section>
+        <section class="field-panel">
+          <h2 data-field-heading>页面内容</h2>
+          <div class="field-list" data-field-list><span class="empty-editor">正在读取页面字段…</span></div>
+        </section>
+        ${editorHtml || `<section class="editor empty-editor" data-editor-empty>选择左侧字段后，在这里输入内容；右侧会显示对应页面。</section>`}
+      </aside>
+      <section class="preview-column">
+        <div class="preview-heading"><h2>页面实时预览</h2><span>选中左侧字段后，右侧会高亮对应区域并显示连线</span></div>
+        <div class="views" data-views>
+          ${frameHtml || `<section class="view empty-editor">请选择一个字段查看真实页面预览</section>`}
+        </div>
+      </section>
+      <svg class="relation-layer" data-relation-layer aria-hidden="true"></svg>
     </main>
     <script type="module">
       const statusNode = document.querySelector("[data-preview-status]");
@@ -392,28 +425,134 @@ export function contentPreviewWorkbench() {
       const saveStatus = document.querySelector("[data-save-status]");
       const mobileEnabled = document.querySelector("[data-mobile-enabled]");
       const mobileEditor = document.querySelector("[data-editor-mobile]");
+      const shell = document.querySelector(".workbench-shell");
+      const relationLayer = document.querySelector("[data-relation-layer]");
+      const pageNav = document.querySelector("[data-page-nav]");
+      const fieldList = document.querySelector("[data-field-list]");
+      const fieldHeading = document.querySelector("[data-field-heading]");
+      const PAGE_LABELS = { "/": "首页", "/products": "B端产品", "/business-observations": "经营观察", "/observations": "观察文章", "/about": "关于我" };
+      const queryPage = new URLSearchParams(location.search).get("page");
+      const currentTargetId = targetId;
+      let targetCatalog = [];
+      let activePage = queryPage || routes[0] || "/";
+      let saveTimer = null;
+      const routeGroup = (route) => route === "/" || PAGE_LABELS[route] ? route : route.startsWith("/observations/") ? "/observations" : route;
+      const pageLabel = (route) => PAGE_LABELS[route] || route;
+      const targetFieldLabel = (target) => {
+        const field = target.targetId.split(".").at(-1);
+        return ({ title: "标题", summary: "摘要", intro: "页面说明", why: "为什么做", description: "说明", homeTitle: "首页标题", evidenceBoundary: "证据边界", navLabel: "导航名称" })[field] || field;
+      };
+      const targetRoutes = (target) => (target.projectionRoutes || []).map(routeGroup);
+      const fieldHref = (id, page) => "?target-id=" + encodeURIComponent(id) + "&page=" + encodeURIComponent(page);
+      function renderPageNav() {
+        if (!pageNav) return;
+        const routesInCatalog = new Set(targetCatalog.flatMap((target) => targetRoutes(target)));
+        Object.keys(PAGE_LABELS).forEach((route) => routesInCatalog.add(route));
+        pageNav.replaceChildren(...[...routesInCatalog].map((route) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.dataset.page = route;
+          if (route === activePage) button.classList.add("is-active");
+          const count = targetCatalog.filter((target) => targetRoutes(target).includes(route)).length;
+          button.innerHTML = "<span>" + pageLabel(route) + "</span><small>" + count + " 项</small>";
+          button.addEventListener("click", () => { activePage = route; renderPageNav(); renderFieldList(); });
+          return button;
+        }));
+      }
+      function renderFieldList() {
+        if (!fieldList) return;
+        if (fieldHeading) fieldHeading.textContent = pageLabel(activePage) + "内容";
+        const fields = targetCatalog.filter((target) => targetRoutes(target).includes(activePage));
+        fieldList.replaceChildren(...(fields.length ? fields : [{ targetId: "__empty__", editable: false }]).map((target) => {
+          if (target.targetId === "__empty__") { const empty = document.createElement("span"); empty.className = "empty-editor"; empty.textContent = "这个页面暂无登记字段"; return empty; }
+          const link = document.createElement("a");
+          link.className = "field-card" + (target.targetId === currentTargetId ? " is-selected" : "");
+          link.dataset.targetId = target.targetId;
+          link.href = fieldHref(target.targetId, activePage);
+          const name = document.createElement("strong"); name.textContent = targetFieldLabel(target);
+          const id = document.createElement("span"); id.textContent = target.targetId;
+          const scope = document.createElement("span"); scope.className = target.editable ? "" : "readonly-field"; scope.textContent = target.editable ? "可编辑 · " + targetRoutes(target).map(pageLabel).join("、") : "只读对象 · 媒体或非文本字段";
+          link.append(name, id, scope); return link;
+        }));
+        drawRelations();
+      }
+      async function loadTargetCatalog() {
+        try { const response = await fetch("/__xingbuild/content-targets"); const payload = await response.json(); targetCatalog = payload.targets || []; renderPageNav(); renderFieldList(); }
+        catch (error) { if (fieldList) fieldList.textContent = "页面字段读取失败：" + error.message; }
+      }
       if (mobileEnabled && mobileEditor) {
         mobileEditor.hidden = !mobileEnabled.checked;
         mobileEnabled.addEventListener("change", () => { mobileEditor.hidden = !mobileEnabled.checked; });
       }
-      const targetList = document.querySelector("[data-target-list]");
-      if (targetList) {
-        fetch("/__xingbuild/content-targets").then((response) => response.json()).then((payload) => {
-          const links = (payload.targets || []).map((target) => {
-            const link = document.createElement("a");
-            link.href = "?target-id=" + encodeURIComponent(target.targetId);
-            const name = document.createElement("strong");
-            name.textContent = target.targetId;
-            const routes = document.createElement("span");
-            routes.className = "target-route";
-            routes.textContent = (target.projectionRoutes || []).join(" · ");
-            link.append(name, routes);
-            return link;
-          });
-          targetList.replaceChildren(...links);
-          if (!links.length) targetList.textContent = "没有可编辑文本字段";
-        }).catch((error) => { targetList.textContent = "字段清单读取失败：" + error.message; });
+      loadTargetCatalog();
+      function normalizeText(value) { return String(value || "").replace(/\s+/g, "").replace(/[，。！？；：、“”‘’（）()]/g, ""); }
+      function clearMarkers() {
+        frames.forEach((frame) => {
+          frame.closest("[data-frame-shell]")?.classList.remove("is-related");
+          try { frame.contentDocument?.querySelectorAll("[data-xingbuild-content-target]").forEach((element) => { element.style.outline = element.dataset.xingbuildOriginalOutline || ""; element.style.boxShadow = element.dataset.xingbuildOriginalShadow || ""; delete element.dataset.xingbuildContentTarget; }); } catch {}
+        });
+        if (relationLayer) relationLayer.replaceChildren();
       }
+      const markerMap = new Map();
+      window.addEventListener("message", (event) => {
+        const payload = event.data;
+        if (!payload || payload.type !== "xingbuild-content-target-marker" || payload.targetId !== currentTargetId) return;
+        const frame = frames.find((candidate) => candidate.dataset.route === payload.route && candidate.dataset.viewport === payload.viewport);
+        if (!frame) return;
+        markerMap.set(payload.route + ":" + payload.viewport, { frame, rect: payload.rect, found: payload.found === true });
+        drawRelations();
+      });
+      function requestMarkers() {
+        if (!currentTargetId || !authored?.authoring) return;
+        frames.forEach((frame) => frame.contentWindow?.postMessage({
+          type: "xingbuild-content-target-request",
+          targetId: currentTargetId,
+          text: authored.authoring.text || "",
+          mobileText: authored.authoring.mobileText || authored.authoring.text || "",
+          viewport: frame.dataset.viewport,
+        }, "*"));
+      }
+      function locateFrameTarget(frame) {
+        if (!currentTargetId || !authored?.authoring?.text) return null;
+        try {
+          const doc = frame.contentDocument;
+          if (!doc) return null;
+          const expected = normalizeText(frame.dataset.viewport === "mobile-390" && authored.authoring.mobileText ? authored.authoring.mobileText : authored.authoring.text);
+          if (!expected) return null;
+          const candidates = [...doc.querySelectorAll("main h1, main h2, main h3, main p, main article, main section")].filter((element) => normalizeText(element.textContent).includes(expected.slice(0, Math.min(48, expected.length))));
+          const element = candidates.sort((left, right) => left.textContent.length - right.textContent.length)[0];
+          if (!element) return null;
+          element.dataset.xingbuildOriginalOutline = element.style.outline;
+          element.dataset.xingbuildOriginalShadow = element.style.boxShadow;
+          element.dataset.xingbuildContentTarget = currentTargetId;
+          element.style.outline = "3px solid #0f766e";
+          element.style.boxShadow = "0 0 0 5px rgba(15,118,110,.14)";
+          frame.closest("[data-frame-shell]")?.classList.add("is-related");
+          return element;
+        } catch { return null; }
+      }
+      function drawRelations() {
+        if (!relationLayer || !shell || !currentTargetId || window.matchMedia("(max-width: 980px)").matches) return;
+        clearMarkers();
+        const card = document.querySelector(".field-card[data-target-id='" + CSS.escape(currentTargetId) + "']");
+        if (!card) return;
+        const shellRect = shell.getBoundingClientRect();
+        relationLayer.setAttribute("width", String(shell.clientWidth)); relationLayer.setAttribute("height", String(shell.clientHeight)); relationLayer.setAttribute("viewBox", "0 0 " + shell.clientWidth + " " + shell.clientHeight);
+        const cardRect = card.getBoundingClientRect();
+        frames.forEach((frame) => {
+          const marker = markerMap.get(frame.dataset.route + ":" + frame.dataset.viewport); if (!marker?.found) return;
+          frame.closest("[data-frame-shell]")?.classList.add("is-related");
+          const frameRect = frame.getBoundingClientRect(); const elementRect = marker.rect;
+          const x1 = cardRect.right - shellRect.left; const y1 = cardRect.top + cardRect.height / 2 - shellRect.top;
+          const x2 = frameRect.left + elementRect.left - shellRect.left; const y2 = frameRect.top + elementRect.top + elementRect.height / 2 - shellRect.top;
+          const bend = Math.max(24, (x2 - x1) * .45);
+          const path = document.createElementNS("http://www.w3.org/2000/svg", "path"); path.setAttribute("d", "M " + x1 + " " + y1 + " C " + (x1 + bend) + " " + y1 + ", " + (x2 - bend) + " " + y2 + ", " + x2 + " " + y2); relationLayer.append(path);
+          [ [x1, y1], [x2, y2] ].forEach(([x, y]) => { const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle"); circle.setAttribute("cx", String(x)); circle.setAttribute("cy", String(y)); circle.setAttribute("r", "3"); relationLayer.append(circle); });
+        });
+      }
+      frames.forEach((frame) => frame.addEventListener("load", () => setTimeout(requestMarkers, 220)));
+      window.addEventListener("resize", () => setTimeout(drawRelations, 30));
+      setTimeout(requestMarkers, 600);
       function applyUpdate(payload) {
         if (!payload || payload.targetId !== targetId) return;
         statusNode.textContent = payload.status || payload.sessionStatus || "unknown";
@@ -434,18 +573,22 @@ export function contentPreviewWorkbench() {
         });
         eventSource.onerror = () => { errorNode.textContent = "PREVIEW_RUNTIME_DISCONNECTED"; };
       }
-      document.querySelector("[data-save]")?.addEventListener("click", async () => {
+      async function saveAuthoring() {
         const web = document.querySelector("[data-editor-web]")?.value ?? "";
         const mobile = mobileEditor && mobileEnabled?.checked ? mobileEditor.value : undefined;
-        saveStatus.textContent = "正在保存本地预览…";
+        if (saveStatus) saveStatus.textContent = "正在保存本地预览…";
         try {
           const response = await fetch("/__xingbuild/content-authoring", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ targetId, text: web, mobileText: mobile, sourceHash: authored?.sourceHash, valueHash: authored?.valueHash }) });
           const payload = await response.json();
           if (!response.ok) throw new Error(payload.detail || payload.error || "保存失败");
           authored.sourceHash = payload.sourceHash; authored.valueHash = payload.valueHash;
-          saveStatus.textContent = "已保存本地内容源，等待受影响页面刷新…";
-        } catch (error) { saveStatus.textContent = "保存失败：" + error.message; }
-      });
+          if (saveStatus) saveStatus.textContent = payload.unchanged
+            ? "内容未变化，未写入源文件 · 未审核 · 未发布"
+            : "已更新本地预览，受影响页面已刷新 · 未审核 · 未发布";
+        } catch (error) { if (saveStatus) saveStatus.textContent = "保存失败：" + error.message; }
+      }
+      document.querySelector("[data-save]")?.addEventListener("click", saveAuthoring);
+      document.querySelectorAll("[data-editor-web], [data-editor-mobile]").forEach((input) => input.addEventListener("input", () => { clearTimeout(saveTimer); saveTimer = setTimeout(saveAuthoring, 650); }));
     </script>
   </body>
 </html>`;
@@ -454,6 +597,36 @@ export function contentPreviewWorkbench() {
         response.setHeader("Cache-Control", "no-store");
         response.end(request.method === "HEAD" ? undefined : html);
       });
+    },
+  };
+}
+
+export function contentPreviewFrameMarker() {
+  return {
+    name: "xingbuild-content-preview-frame-marker",
+    apply: "serve",
+    transformIndexHtml(html) {
+      if (process.env.XINGBUILD_PREVIEW_MODE !== "content-preview") return html;
+      const script = `<script>
+(() => {
+  const normalize = (value) => String(value || "").replace(/\\s+/g, "").replace(/[，。！？；：、“”‘’（）()]/g, "");
+  let marked = null;
+  const clear = () => { if (!marked) return; marked.style.outline = marked.dataset.xingbuildOriginalOutline || ""; marked.style.boxShadow = marked.dataset.xingbuildOriginalShadow || ""; marked = null; };
+  const mark = (payload) => {
+    clear();
+    const expected = normalize(new URL(location.href).searchParams.get("__xingbuild_content_preview") === "mobile-390" ? payload.mobileText : payload.text);
+    if (!expected) { parent.postMessage({ type: "xingbuild-content-target-marker", targetId: payload.targetId, route: location.pathname, viewport: payload.viewport, found: false }, "*"); return; }
+    const candidates = [...document.querySelectorAll("main h1, main h2, main h3, main p, main article, main section")].filter((element) => normalize(element.textContent).includes(expected.slice(0, Math.min(48, expected.length))));
+    marked = candidates.sort((left, right) => left.textContent.length - right.textContent.length)[0] || null;
+    if (!marked) { parent.postMessage({ type: "xingbuild-content-target-marker", targetId: payload.targetId, route: location.pathname, viewport: payload.viewport, found: false }, "*"); return; }
+    marked.dataset.xingbuildOriginalOutline = marked.style.outline; marked.dataset.xingbuildOriginalShadow = marked.style.boxShadow; marked.style.outline = "3px solid #0f766e"; marked.style.boxShadow = "0 0 0 5px rgba(15,118,110,.14)";
+    const rect = marked.getBoundingClientRect();
+    parent.postMessage({ type: "xingbuild-content-target-marker", targetId: payload.targetId, route: location.pathname, viewport: payload.viewport, found: true, rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height } }, "*");
+  };
+  window.addEventListener("message", (event) => { if (event.data?.type === "xingbuild-content-target-request") setTimeout(() => mark(event.data), 80); });
+})();
+</script>`;
+      return html.replace("</head>", script + "</head>");
     },
   };
 }
@@ -582,5 +755,5 @@ export default defineConfig({
       clientFiles: ["./src/main.jsx"],
     },
   },
-  plugins: [isolatedDraftPreview(), previewMetadata(), contentPreviewAuthoringApi(), contentPreviewWorkbench(), contentPreviewRuntimeV2(), robotaxiReleaseAdapter(), contentMediaPreview(), react()],
+  plugins: [isolatedDraftPreview(), previewMetadata(), contentPreviewAuthoringApi(), contentPreviewWorkbench(), contentPreviewFrameMarker(), contentPreviewRuntimeV2(), robotaxiReleaseAdapter(), contentMediaPreview(), react()],
 });

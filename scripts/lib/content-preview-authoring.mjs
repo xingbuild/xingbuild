@@ -100,7 +100,19 @@ export async function writeContentAuthoringTarget({ targetId, text, mobileText =
     valueType: target.valueType,
     projectionKeys: target.projectionKeys,
     maxLength: target.constraints?.maxLength || 400,
+    existingValue: before,
   });
+  const afterValueHash = hashValue(after);
+  if (afterValueHash === actualValueHash) {
+    return {
+      targetId,
+      sourceHash: actualSourceHash,
+      valueHash: actualValueHash,
+      beforeValueHash: actualValueHash,
+      after: before,
+      unchanged: true,
+    };
+  }
   const nextDocument = writeFieldValue(document, target.fieldPath, after);
   const serialized = `${JSON.stringify(nextDocument, null, 2)}\n`;
   const temporary = `${sourceFile}.preview-${randomUUID()}.tmp`;
@@ -114,7 +126,7 @@ export async function writeContentAuthoringTarget({ targetId, text, mobileText =
   return {
     targetId,
     sourceHash: hashBytes(serialized),
-    valueHash: hashValue(after),
+    valueHash: afterValueHash,
     beforeValueHash: actualValueHash,
     after,
   };

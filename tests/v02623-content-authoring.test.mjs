@@ -32,6 +32,36 @@ test("authoring compiler rejects semantic drift and empty lines", () => {
   assert.throws(() => compileAuthoringValue({ text: "   ", valueType: "string" }), /non-empty/);
 });
 
+test("authoring saves preserve stable parts and return the original slot for a no-op", () => {
+  const existing = {
+    schemaVersion: "responsive-text-slot-v1",
+    parts: [
+      { id: "positioning", text: "面向 Robotaxi 运营企业的 B 端运营平台，" },
+      { id: "coverage", text: "主要覆盖经营规划、需求预测。" },
+    ],
+    projections: {
+      "products.productHero.intro": {
+        web: { breakAfter: ["positioning"] },
+        mobile: { breakAfter: ["positioning"] },
+      },
+    },
+  };
+  const unchanged = compileResponsiveAuthoringValue({
+    text: "面向 Robotaxi 运营企业的 B 端运营平台，\n主要覆盖经营规划、需求预测。",
+    mobileText: "面向 Robotaxi 运营企业的 B 端运营平台，\n主要覆盖经营规划、需求预测。",
+    projectionKeys: ["products.productHero.intro"],
+    existingValue: existing,
+  });
+  assert.deepEqual(unchanged, existing);
+  const changed = compileResponsiveAuthoringValue({
+    text: "面向 Robotaxi 运营企业的 B 端运营平台，\n主要覆盖经营规划、需求预测、生产供应。",
+    mobileText: "面向 Robotaxi 运营企业的 B 端运营平台，\n主要覆盖经营规划、需求预测、生产供应。",
+    projectionKeys: ["products.productHero.intro"],
+    existingValue: existing,
+  });
+  assert.deepEqual(changed.parts.map((part) => part.id), ["positioning", "coverage"]);
+});
+
 test("all-page target inventory includes every page domain and resolves real consumer views", async () => {
   const ids = await listContentPreviewTargetIds();
   for (const targetId of [

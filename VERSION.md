@@ -1,3 +1,17 @@
+## v0.26.24 — 页面化内容编辑与对应预览工作台
+
+父版本：`v0.26.23` / `e9a746039d2b54655dd436f69a6852e5051966f0`
+
+- 工作台以页面分类为入口，左侧编辑当前页面字段，右侧显示真实 Web/Mobile 预览。
+- 选中字段时显示页面区域高亮与左右对应关系线；多消费者 target 显示全部受影响页面。
+- 保持 v0.26.23 的自然文本、响应式换行、CAS、TargetImpact 和零发布副作用；不改页面 IA、ContentSet 或内容发布链路。
+
+## 验证合同
+
+- 固定 4317 页面分类、字段导航、真实 frame、目标高亮/关系线、自然文本编辑与精准局部刷新。
+- `npm run check`、`npm run release:prepare`、页面化工作台定向测试、真实 Web/Mobile 使用闭环、`release:closeout-check`、exact `release:build`、`release:preflight`、`git diff --check`。
+- 未执行 product transport 或 content publish。
+
 ## v0.26.23 — 全页面自然文本内容编辑工作台
 
 父版本：`v0.26.22` / `6868f0d03a581f1d2a9d6b27e5783b085f958adf`
