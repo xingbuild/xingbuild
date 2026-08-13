@@ -27,7 +27,11 @@ export function currentIdentity(root = projectRoot(), { mode = process.env.XINGB
     sourcePath: process.env.XINGBUILD_CONTENT_PREVIEW_SOURCE_PATH || null,
     fieldPath: process.env.XINGBUILD_CONTENT_PREVIEW_FIELD_PATH || null,
     projectionRoutes: jsonEnv("XINGBUILD_CONTENT_PREVIEW_ROUTES"),
+    consumerRoutes: jsonEnv("XINGBUILD_CONTENT_PREVIEW_CONSUMER_ROUTES"),
+    consumerViews: jsonEnv("XINGBUILD_CONTENT_PREVIEW_CONSUMER_VIEWS"),
     projectionKeys: jsonEnv("XINGBUILD_CONTENT_PREVIEW_PROJECTION_KEYS"),
+    sourceHash: process.env.XINGBUILD_CONTENT_PREVIEW_SOURCE_HASH || null,
+    valueHash: process.env.XINGBUILD_CONTENT_PREVIEW_VALUE_HASH || null,
     activeBaseline: jsonEnv("XINGBUILD_CONTENT_PREVIEW_ACTIVE_BASELINE"),
   };
 }
@@ -37,7 +41,7 @@ export function isPreviewRecordFor(record, identity) {
   for (const key of ["cwd", "commit", "version", "mode", "taskId", "targetId", "sourcePath", "fieldPath"]) {
     if (identity[key] !== undefined && identity[key] !== null && record[key] !== identity[key]) return false;
   }
-  for (const key of ["projectionRoutes", "projectionKeys", "activeBaseline"]) {
+  for (const key of ["projectionRoutes", "consumerRoutes", "consumerViews", "projectionKeys", "activeBaseline"]) {
     if (identity[key] !== undefined && identity[key] !== null && JSON.stringify(record[key] || null) !== JSON.stringify(identity[key])) return false;
   }
   return true;
@@ -92,7 +96,7 @@ async function reserve(identity) {
     ...identity,
     pid: process.pid,
     port: previewPort,
-    taskId: process.env.XBUILD_TASK_ID || "local",
+    taskId: identity.taskId,
     startedAt: new Date().toISOString(),
   };
   await writeFile(previewRecordPath, `${JSON.stringify(record, null, 2)}\n`, { encoding: "utf8", flag: "wx" });
@@ -108,7 +112,7 @@ async function runPreview() {
     XINGBUILD_PREVIEW_CWD: identity.cwd,
     XINGBUILD_PREVIEW_COMMIT: identity.commit,
     XINGBUILD_PREVIEW_VERSION: identity.version,
-    XINGBUILD_PREVIEW_TASK_ID: process.env.XBUILD_TASK_ID || "local",
+    XINGBUILD_PREVIEW_TASK_ID: identity.taskId,
   };
   const openPath = process.env.XINGBUILD_PREVIEW_OPEN_PATH || "/";
   const openArgs = process.env.XINGBUILD_PREVIEW_NO_OPEN === "1" ? [] : ["--open", openPath];

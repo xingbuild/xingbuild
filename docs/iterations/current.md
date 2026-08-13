@@ -1,83 +1,91 @@
 # 当前迭代
 
-## 当前唯一版本：`v0.26.20`
+## 当前唯一版本：`v0.26.21`
 
-父版本：v0.26.19 / 36dcffa097455fc6747555751f1861ae26b7227f
+父版本：v0.26.20 / 3ee065faa1ef3c847e221743052e686cd2e5525b
 
 ## 正式方案
 
-[docs/design/v0.26.20 本地内容预览工作台与 Task 入场治理方案.md](../design/v0.26.20%20本地内容预览工作台与%20Task%20入场治理方案.md)
+[docs/design/v0.26.21 精准内容预览与局部刷新闭环方案.md](../design/v0.26.21%20精准内容预览与局部刷新闭环方案.md)
 
 ## 用户目标
 
-1. 新 task 只需读取项目入口文件，即可知道责任、必读事实、direct-local/worktree 边界和回传格式。
-2. Xing 与 elon ops 可以直接编辑 canonical ignored 内容文件，并在本地真实网站即时查看 Web/Mobile 效果。
-3. 本地预览、用户确认、审核、ContentSet Candidate 和正式发布保持独立，不因预览改变 active ContentSet 或线上状态。
+1. 修改一个内容 target 后，本地立即显示它在全部真实消费页面中的 Web/Mobile 结果。
+2. 不刷新无关页面，不构建、不生成 ContentSet/ProductArtifact、不触碰线上状态。
+3. 首页定位和 Robotaxi 说明等已有内容能力均可使用同一预览工具，不建立页面专用预览。
 
-## 正式对象与边界
+## 正式对象
 
-- ContentPreviewSession：复用 4317 preview lease，新增 content-preview mode、targetId、sourcePath、projectionRoutes 和 active ContentSet 只读基线。
-- 唯一编辑源：.content-workspace/content/**。
-- 唯一定位源：content/registry/content-targets.json。
-- 唯一页面投影：现有 page composition、ContentSet adapter、ResponsiveTextSlot、媒体与组件。
-- 唯一正式发布链路：elon ops review → ContentSet Candidate → Site Publication Coordinator。
-- 新 task 入场：AGENTS.md → docs/rules/task-onboarding.md → docs/rules/00-baseline-index.md → 责任域规则。
+- `ContentTarget`：现有 registry 中的可编辑字段事实。
+- `TargetImpact`：该 target 的完整 consumer routes 与 Web/Mobile views。
+- `ContentPreviewSession`：一次聚焦一个 target 的本地 4317 会话。
+- `TargetEditEvent`：`valid`、`invalid` 或 `outside-selected-target` 的 dev-only 精准刷新事件。
 
 ## 允许范围
 
-- scripts/preview-runtime.mjs、vite.config.mjs、package.json；
-- 单一 content:preview:site 命令及 dev-only workbench；
-- targetId/source file/route/active baseline 定位；
-- Web 1280 / Mobile 390 真实页面预览与 HMR；
-- preview identity、零写入、错误和页面保持性测试；
-- AGENTS.md、task-onboarding、baseline index、task registry；
-- VERSION/package/current/design/history。
+- 修正现有 target registry 的真实 `projectionRoutes`，并验证 route/page contentRef 一致性；
+- ContentPreviewSession 的完整 TargetImpact、字段 hash、revision 和错误状态；
+- Vite dev-only custom event 与受影响 iframe 精准刷新；
+- source edit→affected views reload→restore、invalid/recovery、零写入和清理测试；
+- v0.26.21 VERSION/package/current/design/history。
 
 ## 明确不做
 
-- 不修改 ContentSet/ResponsiveTextSlot/target registry schema；
-- 不修改页面 IA、生产视觉、正文、审核、媒体 approval、active.json；
-- 不新建 CMS、数据库、内容目录副本或第二套发布引擎；
-- 不自动复制 active/release/recovery 内容，不猜测缺失 source；
+- 不调用 elon ui 做全站视觉验收；
+- 不修改正式网站 UI/IA/视觉、组件、tokens 或文案；
+- 不新增 consumer registry、内容 schema、CMS、第二套 renderer/content source/publisher；
+- 不使用 `full-reload path=*`；
+- 不自动复制 active/release/recovery 内容；
+- 不修改 active/review/recovery/release/SitePublication；
 - 不运行 content publish、product transport 或 EdgeOne；
-- 不创建 branch/worktree/task/automation；
-- 不把本地预览称为 confirmed、approved、published 或 publicly verified。
+- 不创建 branch/worktree/task/automation。
 
-## 用户入口
+## 刷新合同
 
-```bash
-npm run content:preview:site -- --target-id products.robotaxi.intro
+```text
+selected target value changed + valid
+→ refresh only target consumer routes × Web/Mobile
+
+same source but selected target unchanged
+→ outside-selected-target + no refresh
+
+invalid JSON/slot
+→ show error + keep last valid rendered state
 ```
 
-必须返回绝对 source file、fieldPath、projectionRoutes、active ContentSet baseline，并以 XINGBUILD_CONTENT_BUILD=1 在固定 4317 启动 content-preview mode。工作台只在 dev mode 存在。
+`products.robotaxi.intro` 的真实 consumer 为 `/` 与 `/products`；Products-only Why 只影响 `/products`；Home positioning 只影响 `/`。
 
-## 验收标准
+## Home source readiness
 
-- registered target 精确定位；unknown/unsafe/missing/invalid JSON 在启动前硬失败；
-- preview mode 与普通 preview lease 不混用，端口冲突不换端口、不杀未知进程；
-- 编辑 .content-workspace/content 后 Web/Mobile 真实页面自动刷新；
-- active.json、active ContentSet、review/recovery/release/SitePublication/线上 manifest 全程不变；
-- /products 的 responsive intro、Why、四媒体、CTA、ClosingAction 保持；
-- 五路由轻量检查无 overflow，main=1、h1=1、console/pageErrors=0；
-- 工作台没有 approve/publish/deploy/active 切换能力；
-- elon1 为 direct-local 只读 task，未创建 worktree；
-- elon/elon ui/elon engin/elon ops 命名与真实 threadId 进入注册表。
+elon ops 将 active ContentSet 已核验的 `homeContent` 原样物化为 `.content-workspace/content/home.json`，并证明 adapter/hash 与 active home entry 一致。Engineering 不生成或猜测内容源。
+
+## 验收
+
+- `products.robotaxi.intro` 只生成 `/` 与 `/products` 的 Web1280/Mobile390 views；
+- 选中 target 改动只刷新上述 views，无关 route revision 不变；
+- 非选中字段改动不刷新并显示明确状态；
+- invalid→修复状态闭环，页面不接受无效值；
+- `site.home.homeTitle` 可预览且只刷新首页 views；
+- 测试恢复 canonical source exact bytes/hash；
+- active/ContentSet/reviews/recoveries/releases/SitePublications/ProductArtifact 前后不变；
+- check、release:prepare、targeted runtime、closeout、exact build、preflight 和 clean 通过；
+- elon 产品/架构验收通过；Xing 完成一次实际本地使用确认。
 
 ## 内容兼容声明
 
 ```yaml
-contentImpact: none
-contentImpactReason: local-content-preview-and-task-governance-only
-affectedTargets: [preview-runtime, content-target-resolution, vite-dev-middleware, task-governance]
+contentImpact: compatible-metadata-correction
+contentImpactReason: correct-target-consumer-routes-and-local-preview-only
+affectedTargets: [content-preview-session, target-impact, products.robotaxi.consumer-routes, site.home.source-readiness]
 affectedRoutes: [local-only]
 affectedFields: []
-compatibilityEvidence: active-contentset-read-only-and-no-publication-side-effects
+compatibilityEvidence: no-content-value-or-lifecycle-write-and-no-publication-action
 ```
 
 ## 执行顺序
 
-1. elon 完成正式方案与 current。
-2. elon engin 实现、测试、commit/tag/clean、ProductArtifact/preflight。
-3. elon 做产品与架构验收。
-4. elon ui 做本地 Web→Mobile 独立验收。
-5. 验收通过后交给 Xing 与 elon ops 使用；内容仍需单独确认和发布。
+1. elon 完成 v0.26.21 design/current。
+2. elon ops 完成 Home canonical source readiness。
+3. elon engin 实现、测试、commit/tag/clean、ProductArtifact/preflight。
+4. elon 做产品/架构验收。
+5. Xing 进行一次本地实际使用确认；内容仍需以后独立审核和发布。

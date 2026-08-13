@@ -27,7 +27,7 @@ test("registry integrity fixes Robotaxi targets to safe product fields and route
   for (const target of registry.targets.filter((entry) => entry.kind === "product-content")) {
     assert.equal(target.sourcePath, "content/products/robotaxi.json");
     assert.equal(target.scope, "field");
-    assert.deepEqual(target.projectionRoutes, ["/products"]);
+    assert.deepEqual(target.projectionRoutes, target.targetId === "products.robotaxi.intro" ? ["/", "/products"] : ["/products"]);
   }
   const productTarget = registry.targets.find((entry) => entry.kind === "product-content");
   assert.ok(productTarget);

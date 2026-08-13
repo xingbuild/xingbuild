@@ -6,12 +6,13 @@
 export const CONTENT_IMPACT_VALUES = Object.freeze([
   "none",
   "compatible",
+  "compatible-metadata-correction",
   "migration-required",
   "breaking",
   "unknown",
 ]);
 
-export const ALLOWED_CONTENT_IMPACTS = Object.freeze(["none", "compatible"]);
+export const ALLOWED_CONTENT_IMPACTS = Object.freeze(["none", "compatible", "compatible-metadata-correction"]);
 
 export function readContentImpact(currentText = "") {
   const value = currentText.match(/^contentImpact:\s*([^\n#]+)/m)?.[1]?.trim() || null;

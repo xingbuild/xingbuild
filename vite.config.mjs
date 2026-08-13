@@ -9,6 +9,11 @@ import {
   isFile,
   readJson,
 } from "./scripts/lib/observation-content.mjs";
+import {
+  createContentPreviewRevisionState,
+  readContentPreviewSourceState,
+  reduceContentPreviewTargetUpdate,
+} from "./scripts/lib/content-preview.mjs";
 
 const ROBOTAXI_RELEASE_ENDPOINT = "https://robotaxi.xingbuild.top/deployment-manifest.json";
 
@@ -139,7 +144,13 @@ function previewMetadata() {
           sourcePath: process.env.XINGBUILD_CONTENT_PREVIEW_SOURCE_PATH || null,
           fieldPath: process.env.XINGBUILD_CONTENT_PREVIEW_FIELD_PATH || null,
           projectionRoutes: parsePreviewJson("XINGBUILD_CONTENT_PREVIEW_ROUTES"),
+          consumerRoutes: parsePreviewJson("XINGBUILD_CONTENT_PREVIEW_CONSUMER_ROUTES"),
+          consumerViews: parsePreviewJson("XINGBUILD_CONTENT_PREVIEW_CONSUMER_VIEWS"),
           projectionKeys: parsePreviewJson("XINGBUILD_CONTENT_PREVIEW_PROJECTION_KEYS"),
+          sourceHash: process.env.XINGBUILD_CONTENT_PREVIEW_SOURCE_HASH || null,
+          valueHash: process.env.XINGBUILD_CONTENT_PREVIEW_VALUE_HASH || null,
+          valueType: process.env.XINGBUILD_CONTENT_PREVIEW_VALUE_TYPE || null,
+          revision: Number(process.env.XINGBUILD_CONTENT_PREVIEW_REVISION || 0),
           activeBaseline: parsePreviewJson("XINGBUILD_CONTENT_PREVIEW_ACTIVE_BASELINE"),
           port: 4317,
         }));
@@ -161,7 +172,7 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
-function contentPreviewWorkbench() {
+export function contentPreviewWorkbench() {
   return {
     name: "xingbuild-content-preview-workbench",
     apply: "serve",
@@ -179,12 +190,24 @@ function contentPreviewWorkbench() {
           response.end("Content preview target identity mismatch");
           return;
         }
-        const routes = parsePreviewJson("XINGBUILD_CONTENT_PREVIEW_ROUTES") || [];
-        const route = routes[0] || "/products";
-        const routeUrl = (viewport) => `${route}${route.includes("?") ? "&" : "?"}__xingbuild_content_preview=${viewport}`;
+        const routes = parsePreviewJson("XINGBUILD_CONTENT_PREVIEW_CONSUMER_ROUTES")
+          || parsePreviewJson("XINGBUILD_CONTENT_PREVIEW_ROUTES") || [];
+        const routeUrl = (route, viewport) => `${route}${route.includes("?") ? "&" : "?"}__xingbuild_content_preview=${viewport}`;
         const baseline = parsePreviewJson("XINGBUILD_CONTENT_PREVIEW_ACTIVE_BASELINE") || {};
         const sourcePath = process.env.XINGBUILD_CONTENT_PREVIEW_SOURCE_PATH || "";
         const fieldPath = process.env.XINGBUILD_CONTENT_PREVIEW_FIELD_PATH || "";
+        const sourceHash = process.env.XINGBUILD_CONTENT_PREVIEW_SOURCE_HASH || "";
+        const valueHash = process.env.XINGBUILD_CONTENT_PREVIEW_VALUE_HASH || "";
+        const consumerViews = parsePreviewJson("XINGBUILD_CONTENT_PREVIEW_CONSUMER_VIEWS") || [];
+        const frames = routes.flatMap((route) => [
+          { route, viewport: "web-1280", title: `${route} · Web 1280`, width: 1280, height: 900 },
+          { route, viewport: "mobile-390", title: `${route} · Mobile 390`, width: 390, height: 844 },
+        ]);
+        const frameHtml = frames.map((frame) => `
+      <section class="view" aria-label="${escapeHtml(frame.title)}">
+        <h2>${escapeHtml(frame.title)}</h2>
+        <iframe data-preview-frame data-route="${escapeHtml(frame.route)}" data-revision="0" data-base-src="${escapeHtml(routeUrl(frame.route, frame.viewport))}" title="${escapeHtml(frame.title)}" width="${frame.width}" height="${frame.height}" src="${escapeHtml(routeUrl(frame.route, frame.viewport))}"></iframe>
+      </section>`).join("");
         const html = `<!doctype html>
 <html lang="zh-CN">
   <head>
@@ -215,20 +238,39 @@ function contentPreviewWorkbench() {
         <p><strong>source：</strong><code>${escapeHtml(sourcePath)}</code></p>
         <p><strong>fieldPath：</strong><code>${escapeHtml(fieldPath)}</code></p>
         <p><strong>projectionRoutes：</strong><code>${escapeHtml(JSON.stringify(routes))}</code></p>
+        <p><strong>consumerViews：</strong><code>${escapeHtml(JSON.stringify(consumerViews))}</code></p>
+        <p><strong>状态：</strong><strong data-preview-status>ready</strong> · revision=<code data-preview-revision>0</code></p>
+        <p><strong>最近错误：</strong><code data-preview-error>无</code></p>
+        <p><strong>sourceHash：</strong><code>${escapeHtml(sourceHash)}</code></p>
+        <p><strong>valueHash：</strong><code>${escapeHtml(valueHash)}</code></p>
         <p><strong>active ContentSet（只读基线）：</strong><code>${escapeHtml(baseline.activeContentSetId || "missing")}</code></p>
         <p><strong>contentSetHash：</strong><code>${escapeHtml(baseline.contentSetHash || "missing")}</code></p>
       </div>
     </header>
     <main class="views">
-      <section class="view" aria-label="Web 1280 预览">
-        <h2>Web 1280</h2>
-        <iframe title="Web 1280 preview" width="1280" height="900" src="${escapeHtml(routeUrl("web-1280"))}"></iframe>
-      </section>
-      <section class="view" aria-label="Mobile 390 预览">
-        <h2>Mobile 390</h2>
-        <iframe title="Mobile 390 preview" width="390" height="844" src="${escapeHtml(routeUrl("mobile-390"))}"></iframe>
-      </section>
+      ${frameHtml}
     </main>
+    <script type="module">
+      const hot = import.meta.hot;
+      const statusNode = document.querySelector("[data-preview-status]");
+      const revisionNode = document.querySelector("[data-preview-revision]");
+      const errorNode = document.querySelector("[data-preview-error]");
+      const frames = Array.from(document.querySelectorAll("[data-preview-frame]"));
+      const routes = ${JSON.stringify(routes)};
+      function applyUpdate(payload) {
+        if (!payload || payload.targetId !== ${JSON.stringify(targetId)}) return;
+        statusNode.textContent = payload.sessionStatus || payload.status || "unknown";
+        revisionNode.textContent = String(payload.revision || 0);
+        errorNode.textContent = payload.error ? (payload.error.code + ": " + payload.error.message) : "无";
+        if (payload.refresh !== true || payload.status !== "valid") return;
+        frames.filter((frame) => (payload.consumerRoutes || routes).includes(frame.dataset.route)).forEach((frame) => {
+          const separator = frame.dataset.baseSrc.includes("?") ? "&" : "?";
+          frame.dataset.revision = String(payload.revision || 0);
+          frame.src = frame.dataset.baseSrc + separator + "__xingbuild_content_preview_revision=" + encodeURIComponent(String(payload.revision || 0));
+        });
+      }
+      hot?.on("xingbuild:content-target-update", applyUpdate);
+    </script>
   </body>
 </html>`;
         response.statusCode = 200;
@@ -240,15 +282,45 @@ function contentPreviewWorkbench() {
   };
 }
 
-function contentPreviewHmr() {
-  const contentRoot = path.resolve(".content-workspace/content");
+export function contentPreviewHmr() {
+  const contentRoot = path.resolve(process.cwd(), ".content-workspace/content");
+  const selectedSourcePath = () => path.resolve(process.env.XINGBUILD_CONTENT_PREVIEW_SOURCE_PATH || "");
+  let revisionState = null;
   return {
     name: "xingbuild-content-preview-hmr",
     apply: "serve",
-    handleHotUpdate({ file, server }) {
+    async handleHotUpdate({ file, server }) {
       if (process.env.XINGBUILD_PREVIEW_MODE !== "content-preview") return;
       if (!file.startsWith(`${contentRoot}${path.sep}`) || !file.endsWith(".json")) return;
-      server.ws.send({ type: "full-reload", path: "*" });
+      const targetId = process.env.XINGBUILD_CONTENT_PREVIEW_TARGET_ID || "";
+      const consumerRoutes = parsePreviewJson("XINGBUILD_CONTENT_PREVIEW_CONSUMER_ROUTES")
+        || parsePreviewJson("XINGBUILD_CONTENT_PREVIEW_ROUTES") || [];
+      if (!revisionState) {
+        revisionState = createContentPreviewRevisionState({
+          sourceHash: process.env.XINGBUILD_CONTENT_PREVIEW_SOURCE_HASH || null,
+          valueHash: process.env.XINGBUILD_CONTENT_PREVIEW_VALUE_HASH || null,
+        }, { revision: Number(process.env.XINGBUILD_CONTENT_PREVIEW_REVISION || 0) });
+      }
+      const selectedSource = selectedSourcePath();
+      let reduction;
+      if (path.resolve(file) !== selectedSource) {
+        reduction = reduceContentPreviewTargetUpdate({ state: revisionState, targetId, consumerRoutes, now: new Date().toISOString() });
+      } else {
+        try {
+          const sourceState = await readContentPreviewSourceState({
+            sourcePath: selectedSource,
+            fieldPath: process.env.XINGBUILD_CONTENT_PREVIEW_FIELD_PATH,
+            valueType: process.env.XINGBUILD_CONTENT_PREVIEW_VALUE_TYPE || "string",
+            projectionKeys: parsePreviewJson("XINGBUILD_CONTENT_PREVIEW_PROJECTION_KEYS") || [],
+            maxLength: Number(process.env.XINGBUILD_CONTENT_PREVIEW_MAX_LENGTH || 400),
+          });
+          reduction = reduceContentPreviewTargetUpdate({ state: revisionState, targetId, consumerRoutes, sourceState, now: new Date().toISOString() });
+        } catch (error) {
+          reduction = reduceContentPreviewTargetUpdate({ state: revisionState, targetId, consumerRoutes, error, now: new Date().toISOString() });
+        }
+      }
+      revisionState = reduction.state;
+      server.ws.send({ type: "custom", event: "xingbuild:content-target-update", data: reduction.event });
       return [];
     },
   };

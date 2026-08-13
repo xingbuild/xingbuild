@@ -28,7 +28,9 @@ test("content preview resolves a registered responsive target and only reads the
   assert.equal(context.mode, CONTENT_PREVIEW_MODE);
   assert.equal(context.readOnly, true);
   assert.equal(context.valueType, "responsive-text-slot-v1");
-  assert.deepEqual(context.projectionRoutes, ["/products"]);
+  assert.deepEqual(context.projectionRoutes, ["/", "/products"]);
+  assert.deepEqual(context.consumerRoutes, ["/", "/products"]);
+  assert.equal(context.consumerViews.length, 4);
   assert.deepEqual(context.projectionKeys, ["home.productHero.intro", "products.productHero.intro"]);
   assert.match(context.sourcePath, /\.content-workspace\/content\/products\/robotaxi\.json$/);
   assert.equal(path.isAbsolute(context.sourcePath), true);
@@ -38,15 +40,14 @@ test("content preview resolves a registered responsive target and only reads the
   assert.ok(activeSet.endsWith("sets"));
 });
 
-test("content preview fails before starting for unknown and missing sources", async () => {
+test("content preview fails before starting for unknown sources and resolves the materialized home source", async () => {
   await assert.rejects(
     () => resolveContentPreviewTarget("products.robotaxi.not-registered"),
     /content target is not registered|outside the approved field scope/,
   );
-  await assert.rejects(
-    () => resolveContentPreviewTarget("site.home.homeTitle"),
-    (error) => error.code === "CONTENT_PREVIEW_SOURCE_MISSING",
-  );
+  const homeContext = await resolveContentPreviewTarget("site.home.homeTitle");
+  assert.deepEqual(homeContext.consumerRoutes, ["/"]);
+  assert.equal(homeContext.consumerViews.length, 2);
 });
 
 test("content preview rejects invalid JSON before the server starts", async () => {
@@ -133,6 +134,8 @@ test("dev workbench is gated to content-preview and has no publication controls"
   assert.match(viteConfig, /__xingbuild\/content-preview/);
   assert.match(viteConfig, /Web 1280/);
   assert.match(viteConfig, /Mobile 390/);
+  assert.match(viteConfig, /xingbuild:content-target-update/);
+  assert.doesNotMatch(viteConfig, /type:\s*["']full-reload["']/);
   assert.match(viteConfig, /未审核 · 未发布/);
   const workbenchBlock = viteConfig.slice(viteConfig.indexOf("function contentPreviewWorkbench"), viteConfig.indexOf("function contentPreviewHmr"));
   assert.doesNotMatch(workbenchBlock, /approve|publish|deploy|active\s+switch/i);

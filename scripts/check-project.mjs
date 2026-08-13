@@ -2,6 +2,8 @@
 import assert from "node:assert/strict";
 import { readFile, stat } from "node:fs/promises";
 import { assertProductContentCompatibility } from "./lib/content-compatibility.mjs";
+import { readContentTargetRegistry } from "./lib/content-targets.mjs";
+import { resolveContentPreviewTargetImpact } from "./lib/content-preview.mjs";
 
 const requiredFiles = [
   "AGENTS.md",
@@ -114,6 +116,8 @@ const requiredFiles = [
   "tests/content-package-reconcile.test.mjs",
   "tests/content-slot-registry.test.mjs",
   "tests/content-lifecycle-adapter.test.mjs",
+  "tests/v02620-content-preview.test.mjs",
+  "tests/v02621-content-preview.test.mjs",
 ];
 
 for (const file of requiredFiles) {
@@ -136,6 +140,10 @@ const current = await readFile(
   "utf8",
 );
 assertProductContentCompatibility({ currentText: current });
+const contentTargetRegistry = await readContentTargetRegistry();
+for (const target of contentTargetRegistry.targets) {
+  resolveContentPreviewTargetImpact(target);
+}
 const siteContent = await readFile(
   new URL("../src/content/siteContent.js", import.meta.url),
   "utf8",
@@ -201,6 +209,9 @@ for (const composition of ["HomeComposition", "ShowcaseComposition", "Collection
 }
 assert(app.includes("findPageDefinitionByRoute"), "app routes must resolve through the page definition registry");
 assert(app.includes("PageCompositionRenderer"), "app routes must use the shared composition renderer");
+const viteConfig = await readFile(new URL("../vite.config.mjs", import.meta.url), "utf8");
+assert(viteConfig.includes("xingbuild:content-target-update"), "content preview must use the target update event");
+assert(!viteConfig.includes('type: "full-reload"'), "content preview must not trigger a global full reload");
 for (const route of ["/products", "/business-observations", "/observations", "/about"]) {
   assert(app.includes(route), `app must include the ${route} route`);
 }

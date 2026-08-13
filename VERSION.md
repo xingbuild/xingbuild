@@ -1,3 +1,17 @@
+## v0.26.21 — 精准内容预览与局部刷新闭环
+
+父版本：`v0.26.20` / `3ee065faa1ef3c847e221743052e686cd2e5525b`
+
+- 建立 TargetImpact：以现有 ContentTarget 注册的 projectionRoutes 为影响面事实，并与 PageDefinition/contentRefs 做一致性校验；`products.robotaxi.intro` 覆盖 `/` 与 `/products`，Why 仅 `/products`，首页定位仅 `/`。
+- 内容预览工作台按一个 target 展示所有真实消费者的 Web1280/Mobile390 frame；通过 dev-only `xingbuild:content-target-update` 事件局部刷新，禁止 ignored JSON 触发全站 full reload。
+- 提供 valid-updated、invalid、outside-selected-target 状态与 revision/hash 证据；无效源保留上个有效页面，预览只读、不生成构建物或发布状态。
+
+## 验证合同
+
+- 覆盖 target route/page contentRef、Home source readiness、局部事件 reducer、invalid→修复、同源非选中字段、四 frame 影响面与全站 reload 禁止门禁。
+- `npm run check`、`npm run release:prepare`、targeted content-preview tests、`npm run release:closeout-check`、exact `npm run release:build`、`npm run release:preflight`、`git diff --check`。
+- 不修改内容值、ContentSet、审核/恢复/发布状态、正式 UI/IA/视觉；未执行 content publish/product transport。
+
 ## v0.26.20 — 本地内容预览工作台与 Task 入场治理
 
 父版本：`v0.26.19` / `36dcffa097455fc6747555751f1861ae26b7227f`

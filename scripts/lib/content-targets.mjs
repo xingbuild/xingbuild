@@ -67,7 +67,8 @@ export function validateContentTargetRegistry(registry) {
     if (target.scope !== "field" || !safeRelativePath(target.sourcePath, { allowSrc: false })) throw new Error(`content target registry has unsafe target source: ${target.targetId}`);
     if (target.kind === "product-content" && target.targetId.startsWith("products.robotaxi.")) {
       const responsiveAllowed = /\.(?:intro|why\.eyebrow|why\.item\.[a-z0-9-]+\.text|module\.[a-z0-9-]+\.shortDescription)$/.test(target.targetId || "");
-      if (target.editable !== true || target.scope !== "field" || !["string", RESPONSIVE_TEXT_SLOT_SCHEMA].includes(target.valueType) || (target.valueType === RESPONSIVE_TEXT_SLOT_SCHEMA && !responsiveAllowed) || target.sourcePath !== "content/products/robotaxi.json" || JSON.stringify(target.projectionRoutes) !== JSON.stringify(["/products"]) || !targetIdPattern.test(target.targetId || "")) {
+      const expectedRoutes = target.targetId === "products.robotaxi.intro" ? ["/", "/products"] : ["/products"];
+      if (target.editable !== true || target.scope !== "field" || !["string", RESPONSIVE_TEXT_SLOT_SCHEMA].includes(target.valueType) || (target.valueType === RESPONSIVE_TEXT_SLOT_SCHEMA && !responsiveAllowed) || target.sourcePath !== "content/products/robotaxi.json" || JSON.stringify(target.projectionRoutes) !== JSON.stringify(expectedRoutes) || !targetIdPattern.test(target.targetId || "")) {
         throw new Error(`Robotaxi product target contract is invalid: ${target.targetId}`);
       }
     }
