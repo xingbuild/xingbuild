@@ -1,3 +1,16 @@
+## v0.26.31 — 简历制品引用与内容预览证据收口
+
+父版本：`v0.26.30` / `376d24fd94329ecf098f854787e4b34c68552e5e`
+
+- About 的简历入口改为可选 `ResumeArtifactRef` 与唯一受保护 career PDF 注册表；查看与下载使用同一 PDF 字节，下载名按实际时间生成。
+- 移除旧的 HTML/Kami 公共制品；发布资产与 career 源 PDF 的 SHA-256、MIME 和字节一致性在 Engineering 检查中硬校验，未验证制品不渲染。
+- 预览证据绑定 v0.26.31 exact HEAD/tag；target 级局部刷新、active/review/release/SitePublication 零写入边界保持不变。
+
+## 验证与发布边界
+
+- 通过简历制品 registry/source/public asset 定向测试、内容预览实际使用证据、release gates 与 exact ProductArtifact/preflight 后交产品/架构验收。
+- 本版本不执行 product transport、content publish 或 EdgeOne；不修改 career 源、active ContentSet、review/recovery/release、SitePublication 或历史版本。
+
 ## v0.26.30 — 内容工作台与页面内容表达收口
 
 父版本：`v0.26.29` / `691ffd68f6f18c037ab816b91de8867cae4c624e`

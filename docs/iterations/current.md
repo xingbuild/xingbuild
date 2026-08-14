@@ -5,6 +5,11 @@
 父版本：v0.26.30 / `376d24fd94329ecf098f854787e4b34c68552e5e`
 
 contentImpact: compatible
+contentImpactReason: resume-artifact-reference-and-preview-evidence-only
+affectedTargets: [profile.about]
+affectedRoutes: [/about]
+affectedFields: [resumeArtifactRef]
+compatibilityEvidence: v0.26.31-resume-artifact-registry-and-exact-head-preview-evidence
 
 ## 正式方案
 

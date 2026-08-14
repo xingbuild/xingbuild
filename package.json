@@ -1,6 +1,6 @@
 {
   "name": "xingbuild",
-  "version": "0.26.30",
+  "version": "0.26.31",
   "private": true,
   "type": "module",
   "scripts": {
@@ -27,6 +27,8 @@
     "content:check": "node scripts/content-check.mjs",
     "content:preview": "node scripts/content-preview.mjs",
     "content:preview:site": "node scripts/content-site-preview.mjs",
+    "qa:resume-artifact": "node scripts/lib/resume-artifact.mjs",
+    "qa:content-preview:evidence": "node scripts/qa-v02631-content-preview-evidence.mjs",
     "content:approve": "node scripts/content-approve.mjs",
     "content:review": "node scripts/content-review.mjs",
     "content:promote": "node scripts/content-promote.mjs",

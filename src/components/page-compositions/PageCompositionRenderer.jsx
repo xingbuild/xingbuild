@@ -97,7 +97,7 @@ function ProfileReading({ profile: about }) {
       <ReadingShell>
         <header className="reading-shell__header"><h1 data-xingbuild-content-target="profile.about.title">{about.title}</h1>{about.summary ? <p data-xingbuild-content-target="profile.about.summary">{about.summary}</p> : null}</header>
         <RichDocument blocks={blocks} targetPrefix="profile.about" />
-        {about.blocks?.some((block) => block.id === "resume") ? <ResumeActions /> : null}
+        {about.blocks?.some((block) => block.id === "resume") ? <ResumeActions artifactRef={about.resumeArtifactRef} /> : null}
       </ReadingShell>
     </LayoutShell>
   );

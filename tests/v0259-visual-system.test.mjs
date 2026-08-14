@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { projectRobotaxiRelease } from "../src/content/robotaxiRelease.js";
 import { robotaxiProductConfiguration } from "../src/content/productConfiguration.js";
-import { resumeArtifact } from "../src/content/resumeArtifact.js";
+import { RESUME_ARTIFACT_ID, RESUME_ARTIFACT_PDF_SHA256, resumeArtifact } from "../src/content/resumeArtifact.js";
 
 test("Robotaxi release reference only projects the verified product identity", () => {
   const verified = projectRobotaxiRelease({
@@ -34,8 +34,10 @@ test("product actions and resume artifact keep their owner and safety boundaries
     { label: "查看最新B端产品", href: "/products" },
     { label: "浏览经营观察", href: "/business-observations" },
   ]);
-  assert.equal(resumeArtifact.htmlSha256, "453258563a8d51fc150c1ce436549ac8fd94649765cf9e98230f096216734507");
-  assert.equal(resumeArtifact.pdfSha256, "71cf0ece679a415222de8e359f2e11699c832ed2bd3783a803fd3f979868c386");
+  assert.equal(resumeArtifact.artifactId, RESUME_ARTIFACT_ID);
+  assert.equal(resumeArtifact.pdfPath, "/resume/resume.pdf");
+  assert.equal(resumeArtifact.pdfSha256, RESUME_ARTIFACT_PDF_SHA256);
+  assert.equal(resumeArtifact.mimeType, "application/pdf");
   for (const file of ["src/components/showcase/MediaStage.jsx", "src/components/showcase/ShowcaseFlow.jsx", "src/components/showcase/ShowcaseModule.jsx", "src/components/profile/ResumeActions.jsx", "vite.config.mjs"]) {
     assert.ok((await readFile(new URL(`../${file}`, import.meta.url), "utf8")).length > 0, `${file} should be present`);
   }

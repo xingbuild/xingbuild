@@ -1,11 +1,12 @@
-import { productConfiguration } from "../../content/productConfiguration.js";
+import { resolveResumeArtifact } from "../../content/resumeArtifact.js";
 
 function downloadName(now = new Date()) {
   const pad = (value) => String(value).padStart(2, "0");
   return `金星简历${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}.pdf`;
 }
 
-export function ResumeActions({ artifact = productConfiguration.resumeArtifact, now = new Date() } = {}) {
+export function ResumeActions({ artifactRef = null, now = new Date() } = {}) {
+  const artifact = resolveResumeArtifact(artifactRef);
   if (!artifact?.pdfPath || !artifact?.pdfSha256 || artifact.publicStatus !== "verified") return null;
   return (
     <section className="resume-actions" aria-label="简历入口">

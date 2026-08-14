@@ -4,6 +4,7 @@ import { readFile, stat } from "node:fs/promises";
 import { assertProductContentCompatibility } from "./lib/content-compatibility.mjs";
 import { readContentTargetRegistry } from "./lib/content-targets.mjs";
 import { resolveContentPreviewTargetImpact } from "./lib/content-preview.mjs";
+import { verifyResumeArtifact } from "./lib/resume-artifact.mjs";
 
 const requiredFiles = [
   "AGENTS.md",
@@ -20,6 +21,7 @@ const requiredFiles = [
   "src/content/showcaseRepository.js",
   "src/content/profileRepository.js",
   "src/content/longFormDocument.js",
+  "src/content/resumeArtifact.js",
   "src/content/practiceRepository.js",
   "src/content/practiceAction.js",
   "src/content/observationRepository.js",
@@ -85,6 +87,7 @@ const requiredFiles = [
   "scripts/lib/content-preview.mjs",
   "scripts/lib/long-form-document.mjs",
   "scripts/lib/content-preview-runtime-v2.mjs",
+  "scripts/lib/resume-artifact.mjs",
   "scripts/lib/base-site-artifact.mjs",
   "scripts/lib/content-finalize.mjs",
   "scripts/lib/content-approval.mjs",
@@ -103,6 +106,7 @@ const requiredFiles = [
   "scripts/content-set-migrate.mjs",
   "scripts/content-site-preview.mjs",
   "start-content-preview.command",
+  "public/resume/resume.pdf",
   "scripts/lib/content-lifecycle-time.mjs",
   "tests/product-content-isolation.test.mjs",
   "scripts/verify-public-release.mjs",
@@ -126,6 +130,8 @@ const requiredFiles = [
   "tests/v02627-content-preview-navigation.test.mjs",
   "tests/v02628-content-preview.test.mjs",
   "tests/v02630-content-expression.test.mjs",
+  "tests/v02631-resume-artifact.test.mjs",
+  "scripts/qa-v02631-content-preview-evidence.mjs",
 ];
 
 for (const file of requiredFiles) {
@@ -142,6 +148,8 @@ assert.equal(packageJson.scripts["content:build"], "node scripts/content-release
 assert.equal(packageJson.scripts["release:build"], "node scripts/release-build.mjs", "final release build must use the exact HEAD/tag builder");
 assert.equal(packageJson.scripts["site-publication"], "node scripts/site-publication.mjs", "site publication must have one coordinator entry point");
 assert.equal(packageJson.scripts["content:preview:site"], "node scripts/content-site-preview.mjs", "content site preview must use the single dev-only entry point");
+assert.equal(packageJson.scripts["qa:resume-artifact"], "node scripts/lib/resume-artifact.mjs", "resume artifact verification must use the single registry check");
+assert.equal(packageJson.scripts["qa:content-preview:evidence"], "node scripts/qa-v02631-content-preview-evidence.mjs", "content preview evidence must use the exact-head evidence entry point");
 const version = await readFile(new URL("../VERSION.md", import.meta.url), "utf8");
 const current = await readFile(
   new URL("../docs/iterations/current.md", import.meta.url),
@@ -152,10 +160,17 @@ const contentTargetRegistry = await readContentTargetRegistry();
 for (const target of contentTargetRegistry.targets) {
   resolveContentPreviewTargetImpact(target);
 }
+const resumeEvidence = await verifyResumeArtifact();
+assert.equal(resumeEvidence.verified, true, "career resume artifact must be byte-verified before a product check can pass");
 const siteContent = await readFile(
   new URL("../src/content/siteContent.js", import.meta.url),
   "utf8",
 );
+const resumeModule = await readFile(new URL("../src/content/resumeArtifact.js", import.meta.url), "utf8");
+const resumeActions = await readFile(new URL("../src/components/profile/ResumeActions.jsx", import.meta.url), "utf8");
+assert(!resumeModule.includes("Kami") && !resumeModule.includes("htmlPath"), "public resume registry must not expose legacy HTML/template identity");
+assert(!resumeActions.includes("productConfiguration.resumeArtifact"), "ResumeActions must resolve the protected artifact through its registry");
+assert(resumeActions.includes("resolveResumeArtifact"), "ResumeActions must consume the shared resolver");
 const observationRepository = await readFile(
   new URL("../src/content/observationRepository.js", import.meta.url),
   "utf8",

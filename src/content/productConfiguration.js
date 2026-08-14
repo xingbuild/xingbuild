@@ -1,5 +1,3 @@
-import { resumeArtifact } from "./resumeArtifact.js";
-
 const robotaxiHref = "https://robotaxi.xingbuild.top/";
 
 export const robotaxiProductConfiguration = Object.freeze({
@@ -21,5 +19,4 @@ export const robotaxiProductConfiguration = Object.freeze({
 
 export const productConfiguration = Object.freeze({
   robotaxi: robotaxiProductConfiguration,
-  resumeArtifact,
 });
