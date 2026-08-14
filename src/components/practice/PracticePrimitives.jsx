@@ -15,15 +15,15 @@ export function ProductHero({ practice, headingLevel = 1, headingId, actions = [
     <header className={`product-hero${headingLevel > 1 ? " product-hero--compact" : ""}${alignmentClass}${whyVisible ? " product-hero--with-why" : ""}`}>
       <div className="product-hero__heading">
         {eyebrow ? <p className={`eyebrow product-hero__eyebrow${eyebrowClass}`}>{eyebrow}</p> : null}
-        <Heading id={headingId}>{practice.title}</Heading>
+        <Heading id={headingId} data-xingbuild-content-target="products.robotaxi.title">{practice.title}</Heading>
       </div>
-      {practice.intro ? <ResponsiveText value={practice.intro} projection={introProjection} profile="auto" as="p" className="product-hero__intro" /> : null}
+      {practice.intro ? <ResponsiveText value={practice.intro} projection={introProjection} profile="auto" as="p" className="product-hero__intro" targetId="products.robotaxi.intro" /> : null}
       {showBoundary && practice.boundary ? <p className="product-hero__boundary">{practice.boundary}</p> : null}
       {whyVisible ? (
         <section className="product-hero__why" aria-label={practice.why.eyebrow ? undefined : "为什么做"}>
-          {practice.why.eyebrow ? <ResponsiveText value={practice.why.eyebrow} projection={`${whyProjectionPrefix}.eyebrow`} profile="auto" as="p" className="eyebrow product-hero__why-eyebrow" /> : null}
+          {practice.why.eyebrow ? <ResponsiveText value={practice.why.eyebrow} projection={`${whyProjectionPrefix}.eyebrow`} profile="auto" as="p" className="eyebrow product-hero__why-eyebrow" targetId="products.robotaxi.why.eyebrow" /> : null}
           <div className="product-hero__why-items">
-            {practice.why.items.map((item) => <ResponsiveText key={item.id} value={item.text} projection={`${whyProjectionPrefix}.item.${item.id}.text`} profile="auto" as="p" className="product-hero__why-item" />)}
+            {practice.why.items.map((item) => <ResponsiveText key={item.id} value={item.text} projection={`${whyProjectionPrefix}.item.${item.id}.text`} profile="auto" as="p" className="product-hero__why-item" targetId={`products.robotaxi.why.item.${item.id}.text`} />)}
           </div>
         </section>
       ) : null}

@@ -50,11 +50,13 @@ export function projectObservationBrief(observation) {
   if (observation.status !== "published" || observation.presentation !== "brief" || !observation.brief) return null;
   return {
     id: `brief-${observation.slug}`,
+    slug: observation.slug,
     eventAt: observation.eventAt,
     publishedAt: observation.publishedAt,
     subject: observation.brief.subject,
     primaryDimension: observation.primaryDimension,
     body: readerBody(observation.brief),
+    bodyTargetField: hasText(observation.brief.body) ? "body" : "statement",
     statement: observation.brief.statement,
     isOpinion: observation.brief.isOpinion,
     sourceRefs: observation.brief.sourceRefs,

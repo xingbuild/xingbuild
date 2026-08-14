@@ -19,6 +19,7 @@ const requiredFiles = [
   "src/content/homeContentAdapter.js",
   "src/content/showcaseRepository.js",
   "src/content/profileRepository.js",
+  "src/content/longFormDocument.js",
   "src/content/practiceRepository.js",
   "src/content/practiceAction.js",
   "src/content/observationRepository.js",
@@ -82,6 +83,7 @@ const requiredFiles = [
   "scripts/lib/content-targets.mjs",
   "scripts/lib/content-root.mjs",
   "scripts/lib/content-preview.mjs",
+  "scripts/lib/long-form-document.mjs",
   "scripts/lib/content-preview-runtime-v2.mjs",
   "scripts/lib/base-site-artifact.mjs",
   "scripts/lib/content-finalize.mjs",
@@ -123,6 +125,7 @@ const requiredFiles = [
   "tests/v02622-content-preview-runtime.test.mjs",
   "tests/v02627-content-preview-navigation.test.mjs",
   "tests/v02628-content-preview.test.mjs",
+  "tests/v02630-content-expression.test.mjs",
 ];
 
 for (const file of requiredFiles) {

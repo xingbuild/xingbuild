@@ -4,20 +4,21 @@ import { countCompleteBriefs } from "../../content/briefRail";
 import { classifySourceUrl } from "../../content/sourceUrls";
 
 function BriefBody({ item, returnTo = "/observations" }) {
+  const target = (field) => item.slug ? `observations.${item.slug}.${field}` : undefined;
   const sources = item.sourceRefs
     .map((id) => item.sources.find((source) => source.id === id))
     .filter((source, index, all) => source && all.findIndex((candidate) => candidate?.publisher === source.publisher) === index);
   return (
     <>
       <p className="brief-item__identity">
-        <span>{item.subject}</span>
-        <time dateTime={item.eventAt}>{item.eventAt}</time>
+        <span data-xingbuild-content-target={target("brief.subject")}>{item.subject}</span>
+        <time dateTime={item.eventAt} data-xingbuild-content-target={target("eventAt")}>{item.eventAt}</time>
       </p>
       <p className="brief-item__dimension">
-        <span>#{item.primaryDimension}</span>
+        <span data-xingbuild-content-target={target("primaryDimension")}>#{item.primaryDimension}</span>
         {item.isOpinion ? <span>#观点</span> : null}
       </p>
-      <p className="brief-item__statement">{item.body || item.statement}</p>
+      <p className="brief-item__statement" data-xingbuild-content-target={target(`brief.${item.bodyTargetField || "body"}`)}>{item.body || item.statement}</p>
       {item.articlePreview ? <Link className="brief-item__article-preview" href={`${item.articlePreview.href}?returnTo=${encodeURIComponent(returnTo)}`}>{item.articlePreview.title}<span>{item.articlePreview.excerpt}</span></Link> : null}
       <p className="brief-item__sources">
         来源：{sources.map((source, index) => {
@@ -41,8 +42,8 @@ export function ObservationStream({ items, returnTo }) {
 export function ObservationEmptyState({ title, message, description }) {
   return (
     <section className="observation-empty-state" aria-labelledby="observations-empty-title">
-      <p>{message}</p>
-      {description ? <p>{description}</p> : null}
+      <p data-xingbuild-content-target="site.sharedCopy.emptyStates.observations.message">{message}</p>
+      {description ? <p data-xingbuild-content-target="site.sharedCopy.emptyStates.observations.description">{description}</p> : null}
     </section>
   );
 }

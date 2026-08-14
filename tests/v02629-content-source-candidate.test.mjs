@@ -58,6 +58,7 @@ test("missing or invalid canonical Home source fails before Candidate write", as
   const directory = await fixture();
   try {
     const home = path.join(directory, ".content-workspace/content/home.json");
+    const setsBefore = await readdir(path.join(directory, ".content-workspace/content-state/sets"));
     await rm(home);
     await assert.rejects(
       () => contentSetEntryFromCanonical({ sourceRoot: directory, kind: "home", target: "home" }),
@@ -74,7 +75,7 @@ test("missing or invalid canonical Home source fails before Candidate write", as
       (error) => error.code === "CONTENT_HOME_SOURCE_INVALID_VALUE",
     );
     const sets = await readdir(path.join(directory, ".content-workspace/content-state/sets"));
-    assert.equal(sets.length, 5);
+    assert.deepEqual(sets.sort(), setsBefore.sort());
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

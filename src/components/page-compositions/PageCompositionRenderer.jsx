@@ -32,7 +32,7 @@ function HomeComposition({ content }) {
   const briefs = content.briefs;
   return (
     <LayoutShell className="page-composition page-composition--home home-page">
-      <section className="home-page__positioning-shell"><h1 className="home-page__positioning"><ResponsiveText value={content.home.homeTitle} projection="home.positioning.title" profile="auto" /></h1></section>
+      <section className="home-page__positioning-shell"><h1 className="home-page__positioning"><ResponsiveText value={content.home.homeTitle} projection="home.positioning.title" profile="auto" targetId="site.home.homeTitle" /></h1></section>
       <div className="home-page__actions-align">
         <ActionGroup className="home-page__actions" actions={robotaxiProductConfiguration.homeActions} equalWidth />
       </div>
@@ -80,9 +80,11 @@ function CollectionComposition({ content, location }) {
 function ProfileReading({ profile: about }) {
   if (!about) return <EmptyContentState />;
   const hiddenHeadingIds = new Set(["resume", "direction"]);
+  const hiddenBlockIds = new Set(["contact"]);
   const blocks = [];
   let suppressed = false;
   for (const block of about.blocks || []) {
+    if (hiddenBlockIds.has(block.id)) continue;
     if (block.type === "heading" && hiddenHeadingIds.has(block.id)) {
       suppressed = true;
       continue;
@@ -93,9 +95,9 @@ function ProfileReading({ profile: about }) {
   return (
     <LayoutShell className="page-composition page-composition--reading about-page">
       <ReadingShell>
-        <header className="reading-shell__header"><h1>{about.title}</h1><p>{about.summary}</p></header>
-        <RichDocument blocks={blocks} />
-        <ResumeActions />
+        <header className="reading-shell__header"><h1 data-xingbuild-content-target="profile.about.title">{about.title}</h1>{about.summary ? <p data-xingbuild-content-target="profile.about.summary">{about.summary}</p> : null}</header>
+        <RichDocument blocks={blocks} targetPrefix="profile.about" />
+        {about.blocks?.some((block) => block.id === "resume") ? <ResumeActions /> : null}
       </ReadingShell>
     </LayoutShell>
   );
@@ -116,7 +118,7 @@ function ArticleReading({ article, briefs, home }) {
       <header className="business-observations-page__header"><h1>经营观察</h1></header>
       <TwoColumnLayout renderRail={renderRail}>
         <header className="business-observations-column-heading"><h2>最新经营观察</h2></header>
-        <EvergreenArticle article={article} headingLevel={3} showSummary={false} showFigures={false} showArchitectureViews={false} />
+        <EvergreenArticle article={article} headingLevel={3} showSummary={false} showFigures={false} showArchitectureViews={false} contentTargetPrefix="articles.enterprise-operating-system" />
       </TwoColumnLayout>
     </LayoutShell>
   );

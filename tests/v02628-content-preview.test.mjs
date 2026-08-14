@@ -90,7 +90,7 @@ test("authoring restore snapshot returns the exact original source bytes", async
       restoreSnapshot: { sourceHash: original.sourceHash, valueHash: original.valueHash, text: originalBytes },
       rootDirectory: directory,
     });
-    assert.equal(edited.changeSummary.afterPartCount, 2);
+    assert.equal(edited.changeSummary.afterPartCount, original.authoring.text.split("\n").length + 1);
     assert.equal(restored.sourceRestored, true);
     assert.equal(await readFile(sourcePath, "utf8"), originalBytes);
   } finally {

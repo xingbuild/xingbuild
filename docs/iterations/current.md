@@ -5,6 +5,8 @@
 父版本：v0.26.29 / `691ffd68f6f18c037ab816b91de8867cae4c624e`
 
 contentImpact: compatible
+contentImpactReason: content-workbench-and-page-expression-only
+compatibilityEvidence: v0.26.30-targeted-content-preview-and-page-projection-contract
 
 ## 正式方案
 

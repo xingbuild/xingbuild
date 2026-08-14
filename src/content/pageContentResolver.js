@@ -5,6 +5,7 @@ import { findPractice } from "./practiceRepository.js";
 import { profile } from "./profileRepository.js";
 import { site } from "./siteContent.js";
 import { home } from "./homeContentAdapter.js";
+import { normalizeLongFormDocument } from "./longFormDocument.js";
 
 const contentResolvers = Object.freeze({
   home: (reference) => reference.id === "home" ? home : null,
@@ -22,7 +23,10 @@ export function resolvePageContent(definition) {
   for (const [key, reference] of Object.entries(definition.contentRefs)) {
     const resolver = contentResolvers[reference.type];
     const value = resolver?.(reference);
-    content[key] = reference.type === "observationBriefs" && !Array.isArray(value) ? [] : value ?? null;
+    const resolved = reference.type === "observationBriefs" && !Array.isArray(value) ? [] : value ?? null;
+    content[key] = ["profile", "evergreenArticle"].includes(reference.type) && resolved
+      ? normalizeLongFormDocument(resolved, { documentId: resolved.slug || resolved.id })
+      : resolved;
   }
   return content;
 }

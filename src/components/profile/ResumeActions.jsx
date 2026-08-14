@@ -1,17 +1,20 @@
 import { productConfiguration } from "../../content/productConfiguration.js";
 
-export function ResumeActions() {
-  const artifact = productConfiguration.resumeArtifact;
+function downloadName(now = new Date()) {
+  const pad = (value) => String(value).padStart(2, "0");
+  return `金星简历${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}.pdf`;
+}
+
+export function ResumeActions({ artifact = productConfiguration.resumeArtifact, now = new Date() } = {}) {
+  if (!artifact?.pdfPath || !artifact?.pdfSha256 || artifact.publicStatus !== "verified") return null;
   return (
-    <section className="resume-actions" aria-labelledby="resume-actions-title">
-      <div>
-        <p className="eyebrow">已核验简历制品</p>
-        <h2 id="resume-actions-title">简历</h2>
-      </div>
+    <section className="resume-actions" aria-label="简历入口">
       <div className="resume-actions__links">
-        <a href={artifact.htmlPath} target="_blank" rel="noreferrer">查看简历 HTML</a>
-        <a href={artifact.pdfPath} download>下载简历 PDF</a>
+        <a href={artifact.pdfPath} target="_blank" rel="noreferrer">查看简历</a>
+        <a href={artifact.pdfPath} download={downloadName(now)}>下载简历</a>
       </div>
     </section>
   );
 }
+
+export { downloadName };

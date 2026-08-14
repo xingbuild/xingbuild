@@ -10,8 +10,8 @@ export function ShowcaseModule({ module, headingLevel = 2, textProjection }) {
     <article className="showcase-module">
       <div className="showcase-module__copy">
         {label ? <p className="showcase-module__label">{label}</p> : null}
-        <Heading>{module.label}</Heading>
-        {module.shortDescription ? <ResponsiveText value={module.shortDescription} projection={textProjection} profile="auto" as="p" /> : null}
+        <Heading data-xingbuild-content-target={`products.robotaxi.module.${module.id}.label`}>{module.label}</Heading>
+        {module.shortDescription ? <ResponsiveText value={module.shortDescription} projection={textProjection} profile="auto" as="p" targetId={`products.robotaxi.module.${module.id}.shortDescription`} /> : null}
       </div>
       <SystemStage media={module.media} action={module.action} />
     </article>

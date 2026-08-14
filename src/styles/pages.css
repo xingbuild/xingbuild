@@ -210,7 +210,9 @@
   .home-product-section, .products-showcase { display: grid; gap: 0; min-width: 0; }
   .home-product-section { gap: var(--space-1); }
   .home-product-section { row-gap: 0; }
-  .home-page__latest-briefs { display: grid; gap: var(--space-6); }
+  /* The Home composition owns the product-to-brief relationship.  The
+     projection itself owns only its internal hero/module/closing rhythm. */
+  .home-page__latest-briefs { display: grid; gap: var(--space-6); margin-top: var(--rhythm-section-entry); }
 
   .practice-page { gap: var(--space-8); }
   .practice-page > .two-column-layout, .practice-page > .products-showcase { width: 100%; }

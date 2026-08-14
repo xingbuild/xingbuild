@@ -1,7 +1,9 @@
 import { normalizeResponsiveTextSlot, responsiveTextValue, RESPONSIVE_TEXT_SLOT_SCHEMA } from "./responsive-text-slot.mjs";
+import { LONG_FORM_DOCUMENT_SCHEMA, normalizeLongFormDocument } from "./long-form-document.mjs";
 
 export const CONTENT_AUTHORING_SCHEMA = "content-authoring-value-v1";
 export const RICH_TEXT_LIST_SCHEMA = "content-rich-text-list-v1";
+export { LONG_FORM_DOCUMENT_SCHEMA };
 
 function normalizeLines(value, field) {
   if (typeof value !== "string") throw new Error(`${field} must be text`);
@@ -102,6 +104,17 @@ export function decompileAuthoringValue(value, { valueType, projectionKeys = [] 
     const text = lines.join("\n");
     return { schemaVersion: CONTENT_AUTHORING_SCHEMA, valueType: RICH_TEXT_LIST_SCHEMA, text, mobileText: text, projection: null };
   }
+  if (valueType === LONG_FORM_DOCUMENT_SCHEMA) {
+    const document = normalizeLongFormDocument(value);
+    return {
+      schemaVersion: CONTENT_AUTHORING_SCHEMA,
+      valueType: LONG_FORM_DOCUMENT_SCHEMA,
+      document,
+      text: document.blocks.map((block) => Array.isArray(block.text) ? block.text.join("\n") : block.text || "").filter(Boolean).join("\n"),
+      mobileText: null,
+      projection: null,
+    };
+  }
   if (typeof value !== "string") throw new Error("authoring value must be a string or responsive text slot");
   return { schemaVersion: CONTENT_AUTHORING_SCHEMA, valueType: "string", text: value, mobileText: null, projection: null };
 }
@@ -122,6 +135,17 @@ export function compileAuthoringValue({ text, mobileText = undefined, valueType,
       return existingValue.length > 1 ? normalized : [normalized];
     }
     return normalized.split("\n");
+  }
+  if (valueType === LONG_FORM_DOCUMENT_SCHEMA) {
+    if (!existingValue || typeof existingValue !== "object") throw new Error("long-form document authoring requires an existing document");
+    const document = normalizeLongFormDocument(existingValue);
+    const next = normalizeLines(text, "long-form text");
+    const firstTextBlock = document.blocks.find((block) => ["lead", "paragraph", "callout"].includes(block.type));
+    if (!firstTextBlock) throw new Error("long-form document has no editable text block");
+    return {
+      ...document,
+      blocks: document.blocks.map((block) => block.id === firstTextBlock.id ? { ...block, text: next } : block),
+    };
   }
   const result = normalizeLines(text, "text");
   if (result.length > maxLength) throw new Error(`text exceeds maxLength ${maxLength}`);

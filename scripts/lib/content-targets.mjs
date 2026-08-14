@@ -5,12 +5,32 @@ import { projectRoot } from "./observation-content.mjs";
 import { contentRootDirectory } from "./content-root.mjs";
 import { normalizeResponsiveTextSlot, RESPONSIVE_TEXT_SLOT_SCHEMA } from "./responsive-text-slot.mjs";
 import { RICH_TEXT_LIST_SCHEMA } from "./content-authoring.mjs";
+import { LONG_FORM_DOCUMENT_SCHEMA } from "./long-form-document.mjs";
 
 export const contentTargetsPath = "content/registry/content-targets.json";
 export const changesDirectory = ".content-workspace/changes";
 const targetIdPattern = /^products\.robotaxi\.(title|intro|boundary|why\.eyebrow|why\.item\.[a-z0-9-]+\.text|heroActions\.[a-z0-9-]+\.(label|href)|closing\.(title|summary|action\.(label|href))|module\.[a-z0-9-]+\.(label|shortDescription|loopRelation|action\.href|order))$/;
 const mediaTargetIdPattern = /^(?:media\.robotaxi\.(asset\.[a-z0-9-]+\.(type|src|ratio|alt|caption)|module\.[a-z0-9-]+\.mediaId)|products\.robotaxi\.module\.[a-z0-9-]+\.mediaId)$/;
 const siteTargetIdPattern = /^site\.(home|sharedCopy)\.[a-z0-9-]+$/;
+const requiredVisibleTargetPatterns = Object.freeze([
+  "site.home.homeTitle",
+  "site.home.description",
+  "products.robotaxi.title",
+  "products.robotaxi.intro",
+  "products.robotaxi.why.eyebrow",
+  "products.robotaxi.why.item.{itemId}.text",
+  "products.robotaxi.module.{moduleId}.label",
+  "products.robotaxi.module.{moduleId}.shortDescription",
+  "articles.enterprise-operating-system.title",
+  "articles.enterprise-operating-system.block.{blockId}.text",
+  "profile.about.title",
+  "profile.about.summary",
+  "profile.about.block.{blockId}.text",
+  "observations.{slug}.brief.subject",
+  "observations.{slug}.brief.body",
+  "observations.{slug}.eventAt",
+  "observations.{slug}.primaryDimension",
+]);
 
 function hasText(value) {
   return typeof value === "string" && value.trim().length > 0;
@@ -103,10 +123,13 @@ export function validateContentTargetRegistry(registry) {
     if (target.scope !== "field" || !safeRelativePath(target.sourcePath, { allowSrc: false })) throw new Error(`content target registry has unsafe target source: ${target.targetId}`);
     if (target.kind === "product-content" && target.targetId.startsWith("products.robotaxi.")) {
       const responsiveAllowed = /\.(?:intro|why\.eyebrow|why\.item\.[a-z0-9-]+\.text|module\.[a-z0-9-]+\.shortDescription)$/.test(target.targetId || "");
-      const expectedRoutes = target.targetId === "products.robotaxi.intro" ? ["/", "/products"] : ["/products"];
+      const expectedRoutes = ["products.robotaxi.intro", "products.robotaxi.title"].includes(target.targetId) ? ["/", "/products"] : ["/products"];
       if (target.editable !== true || target.scope !== "field" || !["string", RESPONSIVE_TEXT_SLOT_SCHEMA].includes(target.valueType) || (target.valueType === RESPONSIVE_TEXT_SLOT_SCHEMA && !responsiveAllowed) || target.sourcePath !== "content/products/robotaxi.json" || JSON.stringify(target.projectionRoutes) !== JSON.stringify(expectedRoutes) || !targetIdPattern.test(target.targetId || "")) {
         throw new Error(`Robotaxi product target contract is invalid: ${target.targetId}`);
       }
+    }
+    if (target.documentSchema !== undefined && target.documentSchema !== LONG_FORM_DOCUMENT_SCHEMA) {
+      throw new Error(`content target registry has invalid document schema: ${target.targetId}`);
     }
     parseFieldPath(target.fieldPath);
     if (!Array.isArray(target.projectionRoutes) || target.projectionRoutes.length === 0 || target.projectionRoutes.some((route) => !hasText(route) || !route.startsWith("/"))) {
@@ -116,6 +139,7 @@ export function validateContentTargetRegistry(registry) {
   for (const template of registry.templates) {
     if (!safeRelativePath(template?.sourcePathTemplate, { allowSrc: false })) throw new Error("content target registry has unsafe template source");
     if (!hasText(template.targetIdPattern) || !hasText(template.fieldPathTemplate || template.fieldPath) || template.scope !== "field" || template.editable !== true || !["string", RESPONSIVE_TEXT_SLOT_SCHEMA, RICH_TEXT_LIST_SCHEMA].includes(template.valueType)) throw new Error("content target registry template contract is invalid");
+    if (template.documentSchema !== undefined && template.documentSchema !== LONG_FORM_DOCUMENT_SCHEMA) throw new Error(`content target registry template has invalid document schema: ${template.targetIdPattern}`);
     if (template.kind === "product-content" && !template.targetIdPattern.startsWith("products.robotaxi.")) throw new Error("Robotaxi product template contract is invalid");
     if (template.kind === "site-content" && !siteTargetIdPattern.test(template.targetIdPattern.replace(/\{[^}]+\}/g, "sample-field"))) throw new Error("Site content template contract is invalid");
     if (template.kind === "media-content" && (!/^(?:media\.robotaxi\.|products\.robotaxi\.module\.)/.test(template.targetIdPattern) || !["content/media/robotaxi/manifest.json", "content/products/robotaxi.json"].includes(template.sourcePathTemplate))) throw new Error("Robotaxi media template contract is invalid");
@@ -123,6 +147,13 @@ export function validateContentTargetRegistry(registry) {
   }
   for (const excluded of registry.excluded) {
     if (excluded.sourcePath && !safeRelativePath(excluded.sourcePath)) throw new Error("content target registry has unsafe excluded source");
+  }
+  const registeredPatterns = new Set([
+    ...registry.targets.map((target) => target.targetId),
+    ...registry.templates.map((template) => template.targetIdPattern),
+  ]);
+  for (const required of requiredVisibleTargetPatterns) {
+    if (!registeredPatterns.has(required)) throw new Error(`visible content target is not registered: ${required}`);
   }
   return registry;
 }
@@ -215,7 +246,7 @@ export async function createContentTargetCard(targetId, { rootDirectory = projec
     if (target.kind === "media-content" && (target.fieldPath.startsWith("assets[id=") || target.fieldPath.includes("].mediaId"))) current = null;
     else throw error;
   }
-  if (current !== null && typeof current !== "string" && target.valueType !== RESPONSIVE_TEXT_SLOT_SCHEMA && target.valueType !== RICH_TEXT_LIST_SCHEMA) throw new Error(`registered target is not a supported field: ${targetId}`);
+  if (current !== null && typeof current !== "string" && target.valueType !== RESPONSIVE_TEXT_SLOT_SCHEMA && target.valueType !== RICH_TEXT_LIST_SCHEMA && target.valueType !== LONG_FORM_DOCUMENT_SCHEMA) throw new Error(`registered target is not a supported field: ${targetId}`);
   return {
     targetId: target.targetId,
     scope: target.scope,
@@ -310,6 +341,11 @@ function validateAfter(target, after) {
     if (maxLength && lines.join("\n").length > maxLength) throw new Error(`${target.targetId} after exceeds maxLength`);
     return;
   }
+  if (target.valueType === LONG_FORM_DOCUMENT_SCHEMA) {
+    try { normalizeLongFormDocument(after); }
+    catch (error) { throw new Error(`${target.targetId} after long-form document is invalid: ${error.message}`); }
+    return;
+  }
   if (typeof after !== "string") throw new Error("ChangeSet after must be a string field value");
   const constraints = target.constraints || {};
   if (constraints.nonEmpty && !hasText(after)) throw new Error(`${target.targetId} after must be non-empty`);
@@ -339,6 +375,7 @@ function normalizeTargetValue(target, value) {
     return normalizeResponsiveTextSlot(value, { projections: target.projectionKeys, maxLength: target.constraints?.maxLength || 400 });
   }
   if (target?.valueType === RICH_TEXT_LIST_SCHEMA && Array.isArray(value)) return value.map((line) => String(line));
+  if (target?.valueType === LONG_FORM_DOCUMENT_SCHEMA) return normalizeLongFormDocument(value);
   return value;
 }
 
@@ -633,7 +670,7 @@ export function validateContentChangeSet(changeSet, { target } = {}) {
   if (!/^[a-f0-9]{64}$/.test(changeSet.beforeHash || "")) throw new Error("ChangeSet beforeHash must be sha256");
   if (!Array.isArray(changeSet.sourceRefs) || changeSet.sourceRefs.length === 0 || changeSet.sourceRefs.some((source) => !hasText(source))) throw new Error("ChangeSet sourceRefs are required");
   if (!hasText(changeSet.boundary) || !hasText(changeSet.authority)) throw new Error("ChangeSet boundary and authority are required");
-  if (![RESPONSIVE_TEXT_SLOT_SCHEMA, RICH_TEXT_LIST_SCHEMA].includes(target.valueType) && (Array.isArray(changeSet.after) || (changeSet.after && typeof changeSet.after === "object"))) throw new Error("ChangeSet cannot replace an array or object");
+  if (![RESPONSIVE_TEXT_SLOT_SCHEMA, RICH_TEXT_LIST_SCHEMA, LONG_FORM_DOCUMENT_SCHEMA].includes(target.valueType) && (Array.isArray(changeSet.after) || (changeSet.after && typeof changeSet.after === "object"))) throw new Error("ChangeSet cannot replace an array or object");
   validateAfter(target, changeSet.after);
   if (changeSet.recovery) {
     if (changeSet.recovery.type !== "field-reverse" || !hasText(changeSet.recovery.rollbackChangeId) || !sameValue(changeSet.recovery.originalBefore, changeSet.before) || !sameValue(changeSet.recovery.originalAfter, changeSet.after)) {

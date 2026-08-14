@@ -1,3 +1,17 @@
+## v0.26.30 — 内容工作台与页面内容表达收口
+
+父版本：`v0.26.29` / `691ffd68f6f18c037ab816b91de8867cae4c624e`
+
+- 五路由可见内容 target 注册覆盖；未登记目标在读取与编译前硬失败。
+- About 与经营观察通过 `long-form-document-v1` 共享结构化正文适配器，保留旧字符串与既有内容源，不迁移未编辑内容。
+- 可选摘要、图形、架构与简历入口缺失时不渲染占位；简历只保留查看/下载两个受保护 PDF 入口，并生成 `金星简历YYYYMMDDHHmm.pdf` 文件名。
+- 首页产品与观察简讯继续由既有页面父级管理 Web/Mobile 节奏；预览仍按 target consumerViews 局部刷新。
+
+## 验证与发布边界
+
+- 通过内容检查、长文/target/preview 定向测试、content-enabled build、release gates 与 exact ProductArtifact/preflight 后交产品/架构验收。
+- 本版本不执行 product transport、content publish 或 EdgeOne；不修改 active ContentSet、review/recovery/release、SitePublication 或 ProductArtifact 运行事实。
+
 ## v0.26.29 — 内容工作台预览源统一与目标级内容发布
 
 父版本：`v0.26.28` / `7caf8eb66011302e04275cf928da4aa8644bdff4`

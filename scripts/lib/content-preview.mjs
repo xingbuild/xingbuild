@@ -12,6 +12,7 @@ import {
 import { validateContentSet } from "./content-set.mjs";
 import { normalizeResponsiveTextSlot, RESPONSIVE_TEXT_SLOT_SCHEMA } from "./responsive-text-slot.mjs";
 import { RICH_TEXT_LIST_SCHEMA } from "./content-authoring.mjs";
+import { LONG_FORM_DOCUMENT_SCHEMA, normalizeLongFormDocument } from "./long-form-document.mjs";
 import { pageDefinitions } from "../../src/content/pageDefinitions.js";
 
 export const CONTENT_PREVIEW_MODE = "content-preview";
@@ -329,6 +330,12 @@ export async function readContentPreviewSourceState({ sourcePath, fieldPath, val
     if (maxLength && lines.join("\n").length > maxLength) {
       const error = new Error(`content preview rich text list exceeds maxLength ${maxLength}`);
       error.code = "CONTENT_PREVIEW_VALUE_INVALID";
+      throw error;
+    }
+  } else if (valueType === LONG_FORM_DOCUMENT_SCHEMA) {
+    try { normalizeLongFormDocument(current); }
+    catch (error) {
+      error.code ||= "CONTENT_PREVIEW_VALUE_INVALID";
       throw error;
     }
   } else if (typeof current !== "string") {
