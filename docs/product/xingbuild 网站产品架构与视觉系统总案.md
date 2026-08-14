@@ -214,12 +214,12 @@ About 使用与文章相同的 `RichDocument` 受控 block，单列居中表达�
 
 About 提供两个受控动作：
 
-- “查看简历”：打开 xingbuild 托管的已核验 career HTML 简历快照；
-- “下载简历”：下载与同一上游身份、hash 和公开状态绑定的 PDF 简历。
+- “查看简历”：在浏览器中打开 xingbuild 托管的已核验 career PDF；
+- “下载简历”：下载同一 PDF 字节，文件名按实际下载时间生成 `金星简历YYYYMMDDHHmm.pdf`。
 
-简历展示入口不进入一级导航；career 始终是上游事实 owner，xingbuild 只保存公开快照与制品引用。
+简历展示入口不进入一级导航；页面只显示“查看简历”“下载简历”，不显示源文件名、HTML、模板名或内部版本号。career 始终是上游事实 owner，xingbuild 只保存已验证的不可变制品引用。
 
-v0.25.9 初始制品由 Xing 指定为 `金星-Kami简历候选-20260805.html/.pdf`；HTML/PDF 必须分别校验 SHA-256 `453258563a8d51fc150c1ce436549ac8fd94649765cf9e98230f096216734507` 与 `71cf0ece679a415222de8e359f2e11699c832ed2bd3783a803fd3f979868c386`。
+v0.26.31 起唯一公开简历制品为 career 受保护 PDF，SHA-256 为 `1a8a8bc55fc25cc7dd168f9e68814a7f91ea2969fe0dd54c16448e1800897e5f`。源文件只能由 Xing 修改、重命名或删除；xingbuild 只读取、校验并复制为不可变发布资产。
 
 ### 4.6 页面产品架构与组合合同
 
@@ -345,7 +345,7 @@ Robotaxi 内容对象由上游批准的 `media`、可选 `action` 和内部 `pro
 
 About 的公开内容使用受控 `RichDocument`，不在页面 JSX 中写业务正文、私有字号或任意 margin。
 
-简历使用 `ResumeArtifactRef` 关联 career 已确认的 HTML/PDF 制品、hash、来源版本和公开状态；查看与下载必须属于同一上游简历身份。候选或未确认制品不得公开。
+简历使用 `ResumeArtifactRef` 关联 career 已确认的 PDF 制品、hash、来源证明和公开状态；查看与下载必须属于同一上游简历身份。候选、未确认或 hash 不一致的制品不得公开。
 
 ### 5.5 VisualExpression（未来统一视觉表达对象）
 

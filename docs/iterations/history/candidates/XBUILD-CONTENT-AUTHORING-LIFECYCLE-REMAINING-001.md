@@ -1,6 +1,7 @@
 # XBUILD-CONTENT-AUTHORING-LIFECYCLE-REMAINING-001
 
-状态：`DRAFT`；下一正式方案候选；未进入 `current.md`。
+状态：`archived-transformed`
+归档原因：`R31-01`～`R31-07` 已进入 v0.26.31；`DL`/`CL` 保留为独立活动候选。
 
 ## 目的
 
