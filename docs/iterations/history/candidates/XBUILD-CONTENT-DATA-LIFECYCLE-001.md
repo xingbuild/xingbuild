@@ -2,8 +2,9 @@
 
 候选 ID：`XBUILD-CONTENT-DATA-LIFECYCLE-001`
 类型：产品/Engineering 架构候选
-状态：`pending`
+状态：`archived-transformed`
 executionAuthorization：`pending`
+归档原因：已合并至活动候选 `XBUILD-CONTENT-AUTHORING-LIFECYCLE-REMAINING-001`，原 `DL-01`～`DL-04` 编号和正文保留。
 责任：产品/视觉确认目标与边界；Engineering 在候选获批并进入正式方案后设计、实现和验证
 范围：重新定义产品功能代码、内容数据、内容历史、SitePublication 记录和派生站点快照的边界
 

@@ -2,8 +2,9 @@
 
 候选 ID：`XBUILD-HISTORICAL-DERIVED-ARTIFACT-CLEANUP-001`
 类型：治理/Engineering 候选
-状态：`pending`
+状态：`archived-transformed`
 executionAuthorization：`pending`
+归档原因：已合并至活动候选 `XBUILD-CONTENT-AUTHORING-LIFECYCLE-REMAINING-001`，原 `CL-01`～`CL-05` 编号和正文保留。
 责任：`elon` 确认保留级别与窗口；`elon engin` 只读盘点、生成 dry-run；获得明确授权后再执行可恢复归档或删除。
 
 ## 功能点清单
