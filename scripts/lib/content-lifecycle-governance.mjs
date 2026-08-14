@@ -3,6 +3,7 @@ import { mkdir, readFile, readdir, rename, stat, writeFile } from "node:fs/promi
 import path from "node:path";
 import { normalizeContentSetEntry, validateContentSet } from "./content-set.mjs";
 import { assertProductArtifactIdentityShape } from "./product-artifact.mjs";
+import { createSiteSnapshot, assertSiteSnapshotIdentity } from "./site-snapshot.mjs";
 
 /**
  * Content lifecycle governance is deliberately a read/model layer.  It does
@@ -139,7 +140,7 @@ function sameEntry(left, right) {
  * newly added targets receive a revision/ref; unchanged entries are returned
  * as the exact normalized reference from the previous set.
  */
-export function createContentChangeSet({ logicalContentId: explicitLogicalId = null, beforeEntries = [], afterEntries = [], productArtifactId = null, createdAt = new Date().toISOString() } = {}) {
+export function createContentChangeSet({ logicalContentId: explicitLogicalId = null, beforeEntries = [], afterEntries = [], productArtifactId = null, createdAt = new Date().toISOString(), sourceHashes = {} } = {}) {
   const before = new Map(beforeEntries.map((entry) => [normalizeContentSetEntry(entry).entryId, entry]));
   const after = new Map(afterEntries.map((entry) => [normalizeContentSetEntry(entry).entryId, entry]));
   const ids = [...new Set([...before.keys(), ...after.keys()])].sort();
@@ -160,7 +161,10 @@ export function createContentChangeSet({ logicalContentId: explicitLogicalId = n
         logicalContentId: inferred,
         source: normalizedNext.sourceProof,
         value: comparableEntry(normalizedNext),
-        sourceHash: hashValue(normalizedNext.sourceProof),
+        // sourceProof is provenance metadata, not the canonical source.  A
+        // caller that has read the source bytes supplies sourceHashes; the
+        // deterministic fallback hashes the normalized source value itself.
+        sourceHash: sourceHashes[targetId] || hashValue(comparableEntry(normalizedNext)),
         valueHash: normalizedNext.contentHash,
         predecessorRevisionId: normalizedPrevious?.revisionId || null,
         productArtifactId,
@@ -280,19 +284,14 @@ export function createDeterministicSiteSnapshot({ productArtifact, contentSet, m
   const product = assertProductArtifactIdentityShape(productArtifact);
   validateContentSet(contentSet);
   if (!manifest || typeof manifest !== "object") throw new Error("SiteSnapshot manifest is required");
-  const identity = {
-    schemaVersion: "site-snapshot-v2",
-    productArtifact: product,
-    contentSetId: contentSet.contentSetId,
-    contentSetHash: contentSet.contentSetHash,
-    manifest,
-  };
-  const snapshotHash = hashValue(identity);
-  return {
-    ...identity,
-    snapshotHash,
-    siteSnapshotId: `site-snapshot-${snapshotHash}`,
-  };
+  // Compatibility adapter only: the repository's sole snapshot identity
+  // source is site-snapshot-v1.  Do not derive a second hash from an ad-hoc
+  // manifest supplied by callers.
+  if (manifest.contentSetId && manifest.contentSetId !== contentSet.contentSetId) throw new Error("SiteSnapshot manifest ContentSet identity mismatch");
+  if (manifest.contentSetHash && manifest.contentSetHash !== contentSet.contentSetHash) throw new Error("SiteSnapshot manifest ContentSet hash mismatch");
+  const snapshot = createSiteSnapshot({ productArtifact: product, contentSet, createdAt: "1970-01-01T00:00:00.000Z" });
+  assertSiteSnapshotIdentity(snapshot);
+  return snapshot;
 }
 
 export function compactSitePublicationRecord(publication = {}) {
@@ -321,7 +320,7 @@ export function compactSitePublicationRecord(publication = {}) {
     contentSet: { contentSetId: contentSet.contentSetId, contentSetHash: contentSet.contentSetHash },
     manifest: { hash: manifestHash, reference: publication.manifestReference || publication.contentManifestPath || "content-manifest.json" },
     deployment: publication.deployment || (publication.deploymentId ? { deploymentId: publication.deploymentId } : null),
-    publicVerify: publication.publicVerify || null,
+    publicVerify: publication.publicVerify ? verificationReference(publication.publicVerify) : null,
     recovery: publication.recovery || publication.failure || null,
     publicationRunId: publication.publicationRunId || null,
     state: publication.state || "assembled",
@@ -345,7 +344,20 @@ export function sanitizeDurableSitePublicationRecord(publication = {}) {
   for (const forbidden of ["client", "sourceDirectory", "assembledClient", "uploadRoot", "siteSnapshot", "publicationRun"]) {
     delete durable[forbidden];
   }
+  for (const field of ["publicVerify", "productVerify", "contentVerify"]) {
+    if (durable[field] && typeof durable[field] === "object") durable[field] = verificationReference(durable[field]);
+  }
   return durable;
+}
+
+function verificationReference(value = {}) {
+  const reference = {};
+  for (const key of ["sitePublicationId", "siteSnapshotId", "snapshotHash", "contentSetId", "contentSetHash", "productArtifactId", "productArtifactHash", "verifiedAt", "schemaVersion", "evidenceId", "evidencePath", "runtimeEvidencePath", "result", "verified", "ok"]) {
+    if (value[key] != null && (typeof value[key] !== "object" || value[key] === null)) reference[key] = value[key];
+  }
+  const evidence = value.evidenceRef || value.verificationEvidenceRef || value.runtimeEvidenceRef;
+  if (typeof evidence === "string") reference.evidenceRef = evidence;
+  return reference;
 }
 
 export function assertCompactSitePublicationRecord(record = {}) {
@@ -358,6 +370,32 @@ export function assertCompactSitePublicationRecord(record = {}) {
   requiredString(record.manifest?.hash, "manifest.hash", "SitePublication");
   for (const forbidden of ["client", "sourceDirectory", "assembledClient", "uploadRoot"]) {
     if (Object.hasOwn(record, forbidden)) throw new Error(`SitePublication durable record cannot persist ${forbidden}`);
+  }
+  for (const field of ["publicVerify", "productVerify", "contentVerify"]) {
+    const value = record[field];
+    if (!value || typeof value !== "object") continue;
+    for (const forbidden of ["verificationEvidence", "browserRuntime", "runtimeEvidence", "assetManifest", "assets", "media", "routes"]) {
+      if (Object.hasOwn(value, forbidden)) throw new Error(`SitePublication durable record cannot persist ${field}.${forbidden}`);
+    }
+  }
+  return record;
+}
+
+/**
+ * Hard readback guard for the durable SitePublication boundary.  The
+ * verification/runtime payloads live in their own evidence sidecars; the
+ * durable record may contain only identity/result references and manifests.
+ */
+export function assertDurableSitePublicationRecord(record = {}) {
+  for (const forbidden of ["client", "sourceDirectory", "assembledClient", "uploadRoot", "siteSnapshot", "publicationRun"]) {
+    if (Object.hasOwn(record, forbidden)) throw new Error(`SitePublication durable record cannot persist ${forbidden}`);
+  }
+  for (const field of ["publicVerify", "productVerify", "contentVerify"]) {
+    const value = record[field];
+    if (!value || typeof value !== "object") continue;
+    for (const forbidden of ["verificationEvidence", "browserRuntime", "runtimeEvidence", "assets", "media", "routes"]) {
+      if (Object.hasOwn(value, forbidden)) throw new Error(`SitePublication durable record cannot persist ${field}.${forbidden}`);
+    }
   }
   return record;
 }

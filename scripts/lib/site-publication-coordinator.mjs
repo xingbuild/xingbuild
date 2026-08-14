@@ -18,7 +18,7 @@ import {
   createPublicationPhaseEvidence,
 } from "./publication-evidence.mjs";
 import { assertProductArtifactIdentityShape } from "./product-artifact.mjs";
-import { sanitizeDurableSitePublicationRecord } from "./content-lifecycle-governance.mjs";
+import { assertDurableSitePublicationRecord, sanitizeDurableSitePublicationRecord } from "./content-lifecycle-governance.mjs";
 import {
   assertBindingCandidate,
   assertPublicationLineageBindingAgainstRegistry,
@@ -349,8 +349,10 @@ export async function rollbackSitePublication({ publicationDirectory, reason = "
 }
 
 async function writePublicationRecord(publicationDirectory, value) {
-  const durable = sanitizeDurableSitePublicationRecord(value);
+  const durable = assertDurableSitePublicationRecord(sanitizeDurableSitePublicationRecord(value));
   await writeJsonAtomically(path.join(publicationDirectory, "site-publication.json"), durable);
+  const readback = await readJson(path.join(publicationDirectory, "site-publication.json"));
+  assertDurableSitePublicationRecord(readback);
   return value;
 }
 

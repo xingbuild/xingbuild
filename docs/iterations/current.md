@@ -1,20 +1,20 @@
 # 当前迭代
 
-## 当前唯一版本：`v0.27.1`
+## 当前唯一版本：`v0.27.2`
 
-父版本：v0.27.0 / `2e4c72a1c5bfc04501b758b4c70b30d42d5ecdfe`
+父版本：v0.27.1 / `cbf832d48ea2483c911f3cd494486a627caf7068`
 
 contentImpact: compatible
-contentImpactReason: content-lifecycle-real-chain-closure
+contentImpactReason: lifecycle-single-model-and-atomic-change-closure
 affectedTargets: []
 affectedRoutes: []
 affectedFields: []
-compatibilityEvidence: v0.27.1-content-lifecycle-backward-compatible
+compatibilityEvidence: v0.27.2-content-lifecycle-backward-compatible
 
 ## 正式方案
 
-[v0.27.1 内容生命周期真实链路收口方案](../design/v0.27.1%20内容生命周期真实链路收口方案.md)
+[v0.27.2 生命周期单一模型与原子变更方案](../design/v0.27.2%20生命周期单一模型与原子变更方案.md)
 
 ## 执行范围
 
-收口 `V271-01`～`V271-04`：把 v0.27.0 生命周期模型接入真实 ContentSet/SitePublication 链，修正保守引用分类与版本记录事实。仅做兼容性工程与证据；不改页面、内容事实、active ContentSet、线上状态，不运行 content publish。
+收口 `V272-01`～`V272-05`：统一 snapshot 真源、原子 Candidate/ChangeSet、真实 sourceHash、无变化复用和 durable record 硬边界。仅做兼容性工程与证据；不改页面、内容事实、active ContentSet、线上状态，不运行 content publish。

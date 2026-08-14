@@ -1,6 +1,7 @@
-import { readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, readFile, rename, rmdir, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { createContentSet, normalizeContentSetEntry, readActiveContentSet, writeContentSet } from "./content-set.mjs";
+import { createContentSet, normalizeContentSetEntry, readActiveContentSet, contentSetPaths, validateContentSet } from "./content-set.mjs";
 import { contentFilePath, contentMediaManifestPath } from "./content-root.mjs";
 import { hashValue } from "./content-targets.mjs";
 import { homeContentHash, homeContentSetEntry, readCanonicalHomeContent } from "./home-content-adapter.mjs";
@@ -101,7 +102,86 @@ export function createContentSetCandidate({ activeContentSet, entries = [], prev
   });
 }
 
-export async function prepareContentSetCandidate({ sourceRoot = process.cwd(), entries = [], homeContent = null, previousContentSetId, createdAt, productArtifactId = null } = {}) {
+async function sourceHashForEntry({ sourceRoot, entry }) {
+  const normalized = normalizeContentSetEntry(entry);
+  const candidates = [
+    path.join(sourceRoot, ".content-workspace", normalized.sourcePath),
+    path.join(sourceRoot, normalized.sourcePath),
+  ];
+  for (const file of candidates) {
+    try {
+      return createHash("sha256").update(await readFile(file)).digest("hex");
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+  }
+  // Temporary/unit fixtures may not materialize a source file.  Hash the
+  // normalized source value, never provenance/reference text.
+  return hashValue({
+    entryId: normalized.entryId,
+    kind: normalized.kind,
+    target: normalized.target,
+    sourcePath: normalized.sourcePath,
+    route: normalized.route,
+    contentHash: normalized.contentHash,
+    mediaProof: normalized.mediaProof,
+  });
+}
+
+async function readExistingJson(file) {
+  try { return JSON.parse(await readFile(file, "utf8")); }
+  catch (error) { if (error.code === "ENOENT") return null; throw error; }
+}
+
+async function writeCandidateAndChangeSetAtomically({ sourceRoot, contentSet, changeSet, failAfter = null } = {}) {
+  const { setsDirectory } = contentSetPaths(sourceRoot);
+  const candidateFile = path.join(setsDirectory, contentSet.contentSetId, "content-set.json");
+  const changesDirectory = path.join(sourceRoot, ".content-workspace", "changes");
+  const changeSetFile = path.join(changesDirectory, `${changeSet.changeSetId}.json`);
+  const existingCandidate = await readExistingJson(candidateFile);
+  const existingChangeSet = await readExistingJson(changeSetFile);
+  if (existingCandidate) validateContentSet(existingCandidate);
+  if (existingChangeSet) assertContentChangeSet(existingChangeSet);
+  if (existingCandidate && existingCandidate.contentSetHash !== contentSet.contentSetHash) {
+    throw new Error(`ContentSet immutable identity collision: ${contentSet.contentSetId}`);
+  }
+  if (existingChangeSet && existingChangeSet.changeSetHash !== changeSet.changeSetHash) {
+    throw new Error(`ContentChangeSet immutable identity collision: ${changeSet.changeSetId}`);
+  }
+  if (existingCandidate && existingChangeSet) {
+    return { candidateFile, changeSetFile, contentSet: existingCandidate, changeSet: existingChangeSet, contentSetReused: true, changeSetReused: true };
+  }
+  if (existingCandidate || existingChangeSet) {
+    const error = new Error("ContentSet Candidate/ChangeSet partial state requires explicit recovery");
+    error.code = "CONTENT_CANDIDATE_PARTIAL_STATE";
+    throw error;
+  }
+  await mkdir(path.dirname(candidateFile), { recursive: true });
+  await mkdir(changesDirectory, { recursive: true });
+  const nonce = `${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}`;
+  const candidateTemporary = `${candidateFile}.${nonce}.tmp`;
+  const changeTemporary = `${changeSetFile}.${nonce}.tmp`;
+  const committed = [];
+  try {
+    await writeFile(candidateTemporary, `${JSON.stringify(contentSet, null, 2)}\n`);
+    await writeFile(changeTemporary, `${JSON.stringify(changeSet, null, 2)}\n`);
+    if (failAfter === "before-commit") throw new Error("injected candidate/change-set write failure");
+    await rename(candidateTemporary, candidateFile);
+    committed.push(candidateFile);
+    if (failAfter === "candidate") throw new Error("injected candidate/change-set commit failure");
+    await rename(changeTemporary, changeSetFile);
+    committed.push(changeSetFile);
+  } catch (error) {
+    await unlink(candidateTemporary).catch(() => {});
+    await unlink(changeTemporary).catch(() => {});
+    for (const file of committed) await unlink(file).catch(() => {});
+    await rmdir(path.dirname(candidateFile)).catch(() => {});
+    throw error;
+  }
+  return { candidateFile, changeSetFile, contentSet, changeSet, contentSetReused: false, changeSetReused: false };
+}
+
+export async function prepareContentSetCandidate({ sourceRoot = process.cwd(), entries = [], homeContent = null, previousContentSetId, createdAt, productArtifactId = null, failAfter = null } = {}) {
   let activeContentSet = null;
   try { activeContentSet = (await readActiveContentSet({ sourceRoot })).contentSet; } catch (error) {
     if (error.code !== "ENOENT") throw error;
@@ -127,9 +207,20 @@ export async function prepareContentSetCandidate({ sourceRoot = process.cwd(), e
     afterEntries: candidate.entries,
     productArtifactId,
     createdAt,
+    sourceHashes: Object.fromEntries(await Promise.all(candidate.entries.map(async (entry) => [entry.entryId, await sourceHashForEntry({ sourceRoot, entry })]))),
   });
   assertContentChangeSet(changeSet);
-  const written = await writeContentSet({ sourceRoot, contentSet: candidate });
-  const changeSetWritten = await writeContentChangeSet({ sourceRoot, changeSet });
-  return { ...written, changeSet: changeSetWritten.changeSet, changeSetFile: changeSetWritten.file, changeSetReused: changeSetWritten.reused };
+  if (changeSet.changes.length === 0 && activeContentSet) {
+    return {
+      file: null,
+      contentSet: activeContentSet,
+      contentSetReused: true,
+      noChanges: true,
+      changeSet: null,
+      changeSetFile: null,
+      changeSetReused: true,
+    };
+  }
+  const written = await writeCandidateAndChangeSetAtomically({ sourceRoot, contentSet: candidate, changeSet, failAfter });
+  return { file: written.candidateFile, contentSet: written.contentSet, contentSetReused: written.contentSetReused, changeSet: written.changeSet, changeSetFile: written.changeSetFile, changeSetReused: written.changeSetReused, noChanges: false };
 }

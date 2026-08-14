@@ -1,3 +1,17 @@
+## v0.27.2 — 生命周期单一模型与原子变更
+
+父版本：`v0.27.1` / `cbf832d48ea2483c911f3cd494486a627caf7068`
+
+- 统一使用既有 `site-snapshot-v1` 身份源；v2 helper 仅保留为兼容适配，不再计算第二套 snapshot hash。
+- ContentSet Candidate 与 immutable ChangeSet 以同一临时提交边界原子落盘，失败清理临时文件并保持 active 不变。
+- ContentRevision 的 sourceHash 来自 canonical source bytes 或规范化 source value，valueHash 仍来自规范化内容值；无 target 变化复用 active identity。
+- SitePublication durable record 只保存允许的身份、manifest、deployment、recovery 与 verification 引用，readback 拒绝重复嵌入 runtime/verification payload。
+
+## 验证与发布边界
+
+- 通过 `npm run check`、`npm run release:prepare`、v0.27.2 生命周期定向测试、`npm run release:closeout-check`、exact `release:build`、`release:preflight` 与 `git diff --check` 后交产品/架构验收。
+- 本版本不执行 content publish、product transport 或 EdgeOne；不修改页面、内容事实、active ContentSet 或线上状态。
+
 ## v0.27.1 — 内容生命周期真实链路收口
 
 父版本：`v0.27.0` / `2e4c72a1c5bfc04501b758b4c70b30d42d5ecdfe`

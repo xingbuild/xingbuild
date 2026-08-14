@@ -27,7 +27,7 @@ import { createPublicationRun, publicationRunIdForSnapshot, readPublicationRun, 
 import { readProductArtifact } from "./product-artifact.mjs";
 import { writePublicationAssetManifest } from "./publication-assets.mjs";
 import { assertPublicationPhaseAggregate, PUBLICATION_RUNTIME_EVIDENCE_V4 } from "./publication-evidence.mjs";
-import { sanitizeDurableSitePublicationRecord } from "./content-lifecycle-governance.mjs";
+import { assertDurableSitePublicationRecord, sanitizeDurableSitePublicationRecord } from "./content-lifecycle-governance.mjs";
 
 export function sitePublicationId({ productVersion, productCommit, contentReleaseIds = [], contentSetId = null } = {}) {
   return [productVersion, productCommit, ...(contentSetId ? [contentSetId] : contentReleaseIds)].join("+");
@@ -476,7 +476,7 @@ async function createContentSetSitePublication({ productClient, outputRoot, publ
     stateRevision: existingPublication?.stateRevision || 0,
     assembledAt: existingPublication?.assembledAt || new Date().toISOString(),
   };
-  const durable = sanitizeDurableSitePublicationRecord(persisted);
+  const durable = assertDurableSitePublicationRecord(sanitizeDurableSitePublicationRecord(persisted));
   await writeJsonAtomically(path.join(resolvedOutputRoot, "site-publication.json"), durable);
   if (durable.deployment?.deploymentId) await writeJsonAtomically(path.join(resolvedOutputRoot, "deployment.json"), durable.deployment);
   return { ...persisted, client: resolvedOutputRoot, contentSet, activeContentReleases: contentSet.entries };
@@ -719,7 +719,7 @@ export async function createSitePublication({ productClient, releasesRoot, outpu
     stateRevision: existingPublication?.stateRevision || 0,
     assembledAt: new Date().toISOString(),
   };
-  const durable = sanitizeDurableSitePublicationRecord(persisted);
+  const durable = assertDurableSitePublicationRecord(sanitizeDurableSitePublicationRecord(persisted));
   await writeJsonAtomically(path.join(resolvedOutputRoot, "site-publication.json"), durable);
   if (durable.deployment?.deploymentId) {
     await writeJsonAtomically(path.join(resolvedOutputRoot, "deployment.json"), durable.deployment);
