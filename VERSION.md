@@ -1,3 +1,16 @@
+## v0.26.32 — 任务注册表治理记录版本
+
+父版本：`v0.26.31` / `3c609a78793c11b71023feee7b8bced0633d0b2a`
+
+- 以 record-only 方式纳入既有 `docs/rules/task-registry.md` host 身份治理提交 `6cd931e2325d2ca295835efac16589acaafb965d`；不重复修改注册表事实。
+- 更新 v0.26.32 版本身份、正式方案、current 与 history 记录，恢复版本文件与最终 ProductArtifact 的一致性。
+- 本版本不改 UI、内容、schema、组件、视觉、ContentSet、SitePublication 或发布器，不执行 content publish、product transport 或 EdgeOne。
+
+## 验证与发布边界
+
+- 通过 `npm run check`、`npm run release:prepare`、`npm run release:closeout-check`、exact `release:build`、`release:preflight` 与 `git diff --check` 后交产品/架构验收。
+- 仅消费提交后 exact HEAD/tag 生成 ProductArtifact；本版本不产生内容或线上发布事实。
+
 ## v0.26.31 — 简历制品引用与内容预览证据收口
 
 父版本：`v0.26.30` / `376d24fd94329ecf098f854787e4b34c68552e5e`
