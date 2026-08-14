@@ -71,6 +71,8 @@
 - task 创建、交接、执行、版本推进和 publish 授权是不同动作；本项目产品闭环已获得持续 publish 授权，除非 Xing 明确暂停、停止、撤销或要求人工接管，不因每个版本重复询问并自动完成闭环。找不到已存在的目标 task、身份无法确认、责任不清或回传工具不可调用时，立即报告阻断，不得猜测、替代、创建、轮询或后台等待。
 - 跨 task 交接前必须读取并核验 `docs/rules/task-registry.md`；task 归档、重建、宿主或回传地址变化后先更新注册表。注册表未核验不得发送。
 - 跨 task 交接必须显式写 `sourceThreadId`、`targetThreadId`、`returnThreadId`；source 只作溯源，目标 task 到里程碑后向精确 return 地址一次回传。
+- 每个 xingbuild task（包括 `elon`、`elon ui`、`elon engin`、`elon ops` 及真实存在的子 task）必须按 [`docs/rules/task-onboarding.md`](docs/rules/task-onboarding.md) 第十一节维护标题注意状态：开始/恢复立即移除状态前缀，完成或需要 Xing 决策时在回传前更新；标题过期是协作缺陷，不得留给 Xing 猜测。
+- 标题前缀只表示 Xing 是否需要介入：无前缀=正在执行或仍可继续，`✅`=当前无需 Xing 处理，`⚠️`=缺少 Xing 决策/授权/必要信息而无法继续。技术、网络、其他 task 等外部阻断若不需要 Xing 决策，不伪装成 `⚠️`；在检查点中明确 `阻断类型` 和恢复条件。
 - 预览固定使用 `4317`，必须绑定当前 worktree、HEAD、PID 和 task；不得静默换端口或终止未知进程。
 
 ## 五、验证与沟通
