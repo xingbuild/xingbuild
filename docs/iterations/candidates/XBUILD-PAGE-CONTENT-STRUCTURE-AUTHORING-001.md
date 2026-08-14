@@ -174,6 +174,42 @@ flowchart LR
 - 页面真实导航是唯一页面选择；工作台不再增加重复的顶部页面选择器；页面内 target 选择只负责定位内容。
 - 无效输入、半写入、重复 ID 或未登记 target 必须硬失败并保留上一个有效页面。
 
+## 7.1 预览源与内容发布源必须统一（Incident `CONTENT-HOME-SOURCE-MAPPING-001`）
+
+### 已确认的问题
+
+Xing 已在即时预览工作台修改首页内容，但本次修改不能安全进入内容发布包：
+
+- 预览在 `XINGBUILD_CONTENT_BUILD=1` 下读取被忽略的 canonical source `.content-workspace/content/home.json`；
+- 内容发布生成器仍从 `src/content/siteContent.js` 导入 legacy fallback；
+- 因此预览显示的首页 after value/hash 与 Candidate 生成器使用的 value/hash 可能不同，发布可能“成功”但丢失首页修改；
+- 当前已停止本批全部 Candidate、prepare、build、transport、publish 和 finalize，未发布其他已修改 target。
+
+代码事实锚点（只用于说明能力缺口，不代表当前允许直接修改）：
+
+- `src/content/homeContentAdapter.js`：内容构建模式读取 `.content-workspace/content/home.json`；
+- `scripts/content-release.mjs:50,95,753-754`：发布入口仍导入/使用 `src/content/siteContent.js`；
+- `scripts/lib/content-set-candidate.mjs:6,30-35`：Home Candidate 仍以 legacy fallback 作为输入。
+
+### 下一版本必须形成的工程合同
+
+1. Home 的 canonical authoring source 统一为 `.content-workspace/content/home.json`；产品-only、无 active ContentSet 的安全 fallback 可以继续使用 `src/content/siteContent.js`，但 fallback 不得成为内容发布 Candidate 的输入。
+2. Home runtime、`home:home` entry、ContentSet `homeContent` payload 使用同一个 normalized value 和同一个 `contentHash`；不得存在“预览 hash”和“发布 hash”两套事实。
+3. 内容 CLI 支持显式 `home` target，并能把 Home 与其他已确认 target 合并为一个 ContentSet Candidate；不因一个批次产生多个无必要 deployment。
+4. Candidate 必须记录 `targetId=site.home.*`、`sourcePath=content/home.json`、`route=/`、after hash 与受影响 `consumerViews`；未变化 target 复用 active identity，不覆盖整站内容。
+5. Home source 缺失、JSON 非法、字段未登记、normalized value/hash 不一致或 legacy source 被误用时，必须在 Candidate 写入前硬失败，禁止部分发布。
+6. 预览确认的 before/after hash 必须能在 `content:prepare` 中重现；无法重现时只能进入 `blocked`，不能依赖人工复制到 `src/` 的补丁。
+
+### 必须通过的最小验收
+
+- 只修改 `home.json` 的已登记字段，预览可见变化；执行 Home prepare 后，Candidate entry 与 runtime 使用同一 normalized value/hash，`sourcePath` 为 `content/home.json`，`route=/`。
+- `home.json` 与 `src/content/siteContent.js` 故意不同的回归场景仍生成正确 Home Candidate；无 `home.json` 或非法值在写入前失败。
+- Home 与 practice/article/profile 同批变化时形成一个 Candidate；未变化 target 的 entryId/contentHash 不变，不能生成多次 deployment。
+- 预览与 Candidate 生成前后，active ContentSet、review/recovery/release、SitePublication、ProductArtifact 和线上状态保持不变。
+- 产品-only build 仍可使用 legacy fallback，但内容发布 CLI 不能再读取它作为 Candidate 来源。
+
+该问题属于内容工作台与独立内容发布能力的产品工程缺口，不是一次内容事实修正；在正式 design/current 形成并由 `elon engin` 实现、测试和产品/架构验收前，不恢复本批发布。
+
 ## 8. 验收条件（形成正式方案前）
 
 1. 逐页面列出可见内容 block、targetId、source、fieldPath、consumerViews 和当前支持状态；不可见 source 必须明确标记，不能让 Xing 误以为修改生效。
@@ -185,6 +221,7 @@ flowchart LR
 7. 首页产品区与最新观察简讯的 section rhythm 在 Web/Mobile 通过独立视觉验收。
 8. 关于我简历入口只显示“查看简历”“下载简历”，制品身份和安全链接仍由系统锁定。
 9. active ContentSet、review、release、SitePublication、ProductArtifact、线上状态和内容审核事实在本地预览前后均不变。
+10. Preview→Candidate→publish 的 sourcePath、normalized value、contentHash 和 consumerViews 全链路一致；不能出现预览已变、发布仍用 legacy fallback 的情况。
 
 ## 9. 明确不做
 
@@ -193,3 +230,4 @@ flowchart LR
 - 不通过全站刷新、全站构建或复制整站快照实现局部预览。
 - 不把内容编辑自动变成审核、active、ContentSet 或 publish。
 - 不把候选中的建议值直接视为 Xing 已确认的最终视觉合同；先由 `elon`/`elon ui` 收口，再决定是否写入下一正式版本。
+- 不通过手工复制首页内容到 `src/content/siteContent.js` 绕过 source mapping；产品-only fallback 与内容发布 source 必须保持职责分离。
