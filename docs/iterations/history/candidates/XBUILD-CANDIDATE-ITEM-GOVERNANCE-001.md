@@ -1,7 +1,7 @@
-# XBUILD-CANDIDATE-ITEM-GOVERNANCE-001
+# 已归档｜XBUILD-CANDIDATE-ITEM-GOVERNANCE-001
 
 候选 ID：`XBUILD-CANDIDATE-ITEM-GOVERNANCE-001`
-状态：`DRAFT`；未进入 `current.md`，不授权 Engineering。
+状态：已归档；交接规则已收敛到 `v0.26.30` 正式方案，禁止按本文件单独实现。
 owner：`elon`；适用：所有产品、治理和内容候选。
 
 ## 必须具备的逐项合同

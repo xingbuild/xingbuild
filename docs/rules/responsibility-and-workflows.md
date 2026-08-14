@@ -60,7 +60,7 @@ stateDiagram-v2
 - 产品/视觉确认并纳入正式设计方案时，必须在同一动作中写入方案/current、记录来源并将候选移入 [`../iterations/history/candidates/`](../iterations/history/candidates/)；不得留下长期 `confirmed`。
 - 产品/视觉验收已提交版本发现的问题走“下一版本方案”路径，不走普通候选；内容文案、来源、媒体和不改变页面能力的 B 端内容只走独立内容运营。
 - 候选被否决、重复或失效时归档并保留理由；不得删除制造“从未发生”。
-- 候选不得只记录批次状态：每个功能点必须有稳定 `itemId`、owner、影响面、`decision`、`engineering`、`acceptance`、`delivery` 状态和证据；Engineering、产品验收和内容发布必须逐项回传，所有 item 达到各自门槛后才可汇总推进。
+- 候选和正式方案用功能编号与完成标准逐项列出；交接只传处理项、目标、完成标准和禁止事项。负责人由 task registry 确定，不在文件或消息中重复；完成以代码、测试和证据为准。
 
 ## 四、资源和权限边界
 
