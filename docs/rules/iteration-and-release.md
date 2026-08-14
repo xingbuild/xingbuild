@@ -49,7 +49,7 @@ Engineering 按以下顺序形成一个本地提交版本。最终 ProductArtifa
 3. 创建本地 commit 和同名 annotated tag，确认 `HEAD == tag.peeledCommit` 且 tracked clean；
 4. 在该精确 HEAD/tag 上执行最终 `npm run release:build`，生成 ignored `dist/client` ProductArtifact；
 5. 执行 `npm run release:preflight`，同时校验 Git/版本和 ProductArtifact 三份 manifest 的身份、hash 与确定性；
-6. 只有 preflight 通过的同一 ProductArtifact 才能进入产品/视觉验收和 transport。
+6. 只有 preflight 通过的同一 ProductArtifact 才能进入与变更影响面匹配的验收分流和 transport。
 
 closeout 必须按路径、owner 和版本范围核对 tracked dirty：实现变更进入实现范围；已确认保留的 candidate 以 `record-only` 纳入暂存范围并在 history 留下路径、状态和“不进入本版本实现”的说明；未分类或外部 owner dirty 继续硬阻断。`git clean` 表示所有要保留的 tracked 变更都已被明确归类，不表示候选文件不能出现在版本提交中。当前检查器尚未提供 path-level scope lock 时，不得绕过门禁，需先登记治理缺口并由 owner 收口。
 
@@ -61,7 +61,7 @@ Engineering 同一轮一次性更新 `VERSION.md`、`current.md` 和 `docs/itera
 
 - 标准启动入口：`./start-xingbuild.command`；固定预览 `http://127.0.0.1:4317/`。
 - 预览资源必须绑定当前 worktree、HEAD、版本、PID 和 task；端口冲突或归属不明时停止，不换端口、不终止未知进程。
-- 涉及页面、视觉或响应式变化时必须做桌面和手机真实页面验证；构建通过不等于产品/视觉验收通过。
+- 涉及页面 IA、组件、视觉 token、响应式、交互或可访问性变化时，必须做桌面和手机真实页面验证；纯内容变更只做受影响页面的内容/溢出 smoke，构建通过不等于对应验收通过。
 - `npm run release:check` 仅作兼容性/诊断命令，不替代四阶段门禁，不由 transport publish 调用。
 
 ## 6. 产品线上发布
@@ -72,7 +72,7 @@ Engineering 同一轮一次性更新 `VERSION.md`、`current.md` 和 `docs/itera
 ./publish-xingbuild.command
 ```
 
-产品 publish 是线上 transport 意图入口，不是版本创建器或业务执行器。它只消费已完成产品/视觉验收的现有 clean `main` HEAD、annotated tag 和预生成 `dist/client`，不得自动递增版本、写 package/VERSION/current/history、commit、tag、修复脏改或运行网站业务逻辑；整站物理发布统一由 `SitePublication Coordinator` 负责。
+产品 publish 是线上 transport 意图入口，不是版本创建器或业务执行器。它只消费已完成对应验收分流的现有 clean `main` HEAD、annotated tag 和预生成 `dist/client`，不得自动递增版本、写 package/VERSION/current/history、commit、tag、修复脏改或运行网站业务逻辑；整站物理发布统一由 `SitePublication Coordinator` 负责。
 
 transport 顺序固定：
 

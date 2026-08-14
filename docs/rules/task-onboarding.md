@@ -96,6 +96,15 @@ docs/rules/xing-workstyle-and-context.md
 | Ops 采集 | responsibility-and-workflows.md、docs/operations/经营观察信息源与覆盖合同.md | 来源注册表、EvidenceCandidate |
 | 视觉验收 | responsibility-and-workflows.md、产品总案、当前正式方案 | 截图、DOM、axe、公网 manifest |
 
+验收 task 不按“发生了 transport”自动触发，而按实际变更面分流：
+
+| 变更面 | 必要 owner/验收 | 默认不触发 |
+| --- | --- | --- |
+| 产品能力、source mapping、CLI、发布执行器且不改页面表现 | `elon`/`elon engin` 的功能与运行时验收 | `elon ui` |
+| 页面 IA、组件、视觉 token、响应式、交互或可访问性 | `elon` + `elon ui` 独立视觉/可访问性验收 | — |
+| 纯内容、正文、媒体或 ContentSet | `elon ops` 的内容正确性与受影响页面 smoke | `elon ui`，除非 smoke 发现真实视觉/可访问性回归 |
+| 混合变更 | 取上述分流的并集 | — |
+
 涉及跨 task 发送或接收时，必须额外读取并核验 docs/rules/task-registry.md。不能从 delegation 的 source_thread_id 推断 targetThreadId 或 returnThreadId。
 
 ## 六、并行模型：多个想法可以并行，写入必须串行

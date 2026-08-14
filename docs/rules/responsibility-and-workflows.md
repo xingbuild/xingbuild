@@ -27,7 +27,7 @@ flowchart LR
     A["产品/视觉：正式方案\n写入 current"] --> B["Engineering：实现 + 自 QA"]
     B --> C["本地 commit + annotated tag + clean"]
     C --> D["history：不可变版本事实"]
-    D --> E["产品/视觉：提交后验收"]
+    D --> E["对应验收分流：产品 / elon ui（按影响面）"]
     E -->|有产品/视觉问题| F["下一版本方案\n直接写入 current"]
     F --> B
     E -->|通过| G["既有持续发布授权"]
@@ -38,7 +38,7 @@ flowchart LR
 - Engineering 在本地形成 commit/tag/clean 后一次性写入对应 history；已打 tag 的 current/history 不因验收或线上事件回写。
 - 提交前发现普通工程缺陷，Engineering 在当前版本内修复并重新自 QA；发现产品目标、对象边界或验收合同不成立，停止越界并回到产品/视觉确认。
 - 提交后产品/视觉验收发现问题，直接定义下一个 patch/小迭代/大迭代并写入 current，不重新创建普通候选，也不改旧版本。
-- Xing 已授予产品闭环持续发布授权；产品/视觉验收通过后 Engineering 提交产品 transport 意图，由 Coordinator 串行完成站点发布，不再逐次询问。Xing 明确暂停或撤销时，立即停止后续 publish；线上版本必须与同一 ProductRelease 对齐。
+- Xing 已授予产品闭环持续发布授权；对应验收分流通过后 Engineering 提交产品 transport 意图，由 Coordinator 串行完成站点发布，不再逐次询问。页面表现变更才需要 `elon ui` 独立验收；纯内容变更由 `elon ops` 做内容正确性与受影响页面 smoke。Xing 明确暂停或撤销时，立即停止后续 publish；线上版本必须与同一 ProductRelease 对齐。
 - 默认自动闭环：在方案、验收和既有授权均满足时，各责任 task 继续完成本责任域的 prepare、build、transport、verify、finalize；只有 Xing 明确暂停、停止、撤销或要求人工接管时才停。硬失败、身份不一致和安全边界仍立即停止并上报。
 
 ## 三、候选分流与归档
