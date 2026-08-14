@@ -108,6 +108,8 @@ const requiredFiles = [
   "start-content-preview.command",
   "public/resume/resume.pdf",
   "scripts/lib/content-lifecycle-time.mjs",
+  "scripts/lib/content-lifecycle-governance.mjs",
+  "scripts/content-lifecycle-governance.mjs",
   "tests/product-content-isolation.test.mjs",
   "scripts/verify-public-release.mjs",
   "edgeone.json",
@@ -132,6 +134,7 @@ const requiredFiles = [
   "tests/v02630-content-expression.test.mjs",
   "tests/v02631-resume-artifact.test.mjs",
   "scripts/qa-v02631-content-preview-evidence.mjs",
+  "tests/v0270-content-lifecycle-governance.test.mjs",
 ];
 
 for (const file of requiredFiles) {
@@ -150,6 +153,7 @@ assert.equal(packageJson.scripts["site-publication"], "node scripts/site-publica
 assert.equal(packageJson.scripts["content:preview:site"], "node scripts/content-site-preview.mjs", "content site preview must use the single dev-only entry point");
 assert.equal(packageJson.scripts["qa:resume-artifact"], "node scripts/lib/resume-artifact.mjs", "resume artifact verification must use the single registry check");
 assert.equal(packageJson.scripts["qa:content-preview:evidence"], "node scripts/qa-v02631-content-preview-evidence.mjs", "content preview evidence must use the exact-head evidence entry point");
+assert.equal(packageJson.scripts["content:lifecycle"], "node scripts/content-lifecycle-governance.mjs --inventory --dry-run", "content lifecycle governance must stay read-only and explicit");
 const version = await readFile(new URL("../VERSION.md", import.meta.url), "utf8");
 const current = await readFile(
   new URL("../docs/iterations/current.md", import.meta.url),

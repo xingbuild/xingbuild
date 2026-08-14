@@ -1,3 +1,17 @@
+## v0.27.0 — 内容生命周期、变更复用与派生物治理
+
+父版本：`v0.26.32` / `50643e6ea1edac080759e292d30b447aff64b293`
+
+- 建立 `ContentRevision` 与 `ChangeSet` 的确定性模型：每个 `logicalContentId` 保留一个 current、最多两个历史 revision；只为变化 target 生成 revision/ref，未变化 entry 复用原 identity/hash。
+- 将 SitePublication 的长期事实收敛为 ProductArtifact、ContentSet、manifest、deployment、publicVerify 与 recovery 引用；完整 client 仅作为临时组装/上传输入，不进入 durable record。
+- 增加只读、可重跑的 lifecycle inventory、引用图与 `keep`/`review`/`archive-dry-run`/`delete-never` dry-run 分类；本版本不执行迁移、删除或物理清理，CL-05 保留独立授权门禁。
+- record-only 纳入活动 task hostId 核验与已归档候选记录；不改变页面、内容事实、active ContentSet、SitePublication 或线上状态。
+
+## 验证与发布边界
+
+- 通过 `npm run check`、`npm run release:prepare`、生命周期定向测试、`npm run release:closeout-check`、exact `release:build`、`release:preflight` 与 `git diff --check` 后交产品/架构验收。
+- 本版本不执行 content publish、product transport 或 EdgeOne；只生成本地 ProductArtifact，等待验收。
+
 ## v0.26.32 — 任务注册表治理记录版本
 
 父版本：`v0.26.31` / `3c609a78793c11b71023feee7b8bced0633d0b2a`

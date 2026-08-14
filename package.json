@@ -1,6 +1,6 @@
 {
   "name": "xingbuild",
-  "version": "0.26.32",
+  "version": "0.27.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -27,6 +27,7 @@
     "content:check": "node scripts/content-check.mjs",
     "content:preview": "node scripts/content-preview.mjs",
     "content:preview:site": "node scripts/content-site-preview.mjs",
+    "content:lifecycle": "node scripts/content-lifecycle-governance.mjs --inventory --dry-run",
     "qa:resume-artifact": "node scripts/lib/resume-artifact.mjs",
     "qa:content-preview:evidence": "node scripts/qa-v02631-content-preview-evidence.mjs",
     "content:approve": "node scripts/content-approve.mjs",
