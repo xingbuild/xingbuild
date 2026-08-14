@@ -76,6 +76,60 @@
 3. 不留下 margin、padding、空 heading 或占位节点；
 4. 受影响页面的 geometry 和其他 consumerViews 进入验收证据。
 
+### 4.4 一套长文结构、两种投影模式
+
+本候选明确不为“关于我”和“经营观察”建立两套长文 schema。两者统一使用一个 `long-form-document-v1` 内容模型；差异只存在于页面投影配置，决定哪些受控区域显示或隐藏。
+
+统一模型的最小形态为：
+
+```json
+{
+  "schemaVersion": "long-form-document-v1",
+  "projectionProfile": "profile | article",
+  "title": "页面或文章标题",
+  "summary": "可选摘要",
+  "sections": [
+    {
+      "id": "stable-section-id",
+      "heading": "结构化小标题",
+      "body": {
+        "schemaVersion": "content-rich-text-list-v1",
+        "blocks": [
+          { "type": "paragraph", "text": "正文段落。" },
+          { "type": "orderedList", "items": ["第一项", "第二项"] }
+        ]
+      }
+    }
+  ],
+  "controlledBlocks": [],
+  "sources": []
+}
+```
+
+统一规则：
+
+- `sections[]` 是两类长文共同使用的区块容器；每个 section 的标题是结构化字段，正文是连续的 `content-rich-text-list-v1`。
+- 正文支持回车形成段落、编号列表、项目列表及经过批准的有限强调/链接语法；不开放任意 HTML、CSS、字号或颜色。
+- section 可以为空或不出现在数组中；清空后标题、正文和该 section 的间距一起消失，不留空节点。
+- `id` 仍是稳定逻辑身份，用于 target、目录、证据和差异更新；编辑正文不会改变 section 身份。
+- `controlledBlocks`、`sources` 和 `evidence` 由页面合同决定，不变成自由富文本，也不允许内容编辑器伪造来源或审核状态。
+
+两种投影只选择能力，不改变 schema：
+
+| projectionProfile | 适用页面 | 显示/启用 | 不适用或关闭 |
+| --- | --- | --- | --- |
+| `profile` | `/about` | 页面标题、sections、连续正文、受控简历入口 | 文章摘要、文章目录、文章图形、文章来源栏（除非产品合同另行启用） |
+| `article` | `/business-observations` | 页面 H1、文章 title、可选 summary、sections、由标题生成的 TOC、受控图形/callout/sources | About 专属简历入口 |
+
+因此：
+
+- About 的“职业概况、企业经营领域积累、擅长解决的问题、我的方向”只是同一 `sections[]` 中的可选 section，不是四套组件或四种正文 schema。
+- 经营观察的文章章节也使用同一 `sections[]` 和同一正文编辑器；只有文章投影额外启用摘要、目录、图形和来源等受控区域。
+- 未来新增长文页面只需复用 `long-form-document-v1` 并声明 projection profile，不再设计第三套长文结构。
+- 工作台使用同一套长文编辑体验；页面只决定可见的受控区域和 target 映射，不复制编辑逻辑。
+
+兼容边界：现有 About/article block 数组由 adapter 读取，未确认前不做破坏性全量迁移；迁移后必须保持原稳定 ID、正文事实、来源、审核和媒体身份不变。
+
 ## 5. 视觉问题登记：首页 B 端作品与最新观察简讯
 
 只读核查已发现首页产品投影的 ClosingAction 与“最新观察简讯”之间实际无 section gap（测得相邻边界 gap=0px），与既有 section 节奏不符。
@@ -126,9 +180,11 @@ flowchart LR
 2. 每类可编辑内容使用正确 typed authoring；字号、间距、组件结构和媒体安全属性不可在工作台调整。
 3. 修改一个正文/说明/模块后，只更新登记消费者；无关 route/frame 的 URL、revision、DOM 和滚动上下文不变。
 4. 普通正文 Enter 在 Web/Mobile 形成真实段落；清空 optional summary/description/Why 后无空白占位，父级自动收紧。
-5. 首页产品区与最新观察简讯的 section rhythm 在 Web/Mobile 通过独立视觉验收。
-6. 关于我简历入口只显示“查看简历”“下载简历”，制品身份和安全链接仍由系统锁定。
-7. active ContentSet、review、release、SitePublication、ProductArtifact、线上状态和内容审核事实在本地预览前后均不变。
+5. About 与经营观察都读取同一个 `long-form-document-v1` schema；差异只来自 projection profile，不存在两套长文编辑器或两套正文模型。
+6. 页面/文章标题、section heading、正文、summary、TOC、controlledBlocks、sources 的 target 和可见性均可追溯；不可见 target 明确标记。
+7. 首页产品区与最新观察简讯的 section rhythm 在 Web/Mobile 通过独立视觉验收。
+8. 关于我简历入口只显示“查看简历”“下载简历”，制品身份和安全链接仍由系统锁定。
+9. active ContentSet、review、release、SitePublication、ProductArtifact、线上状态和内容审核事实在本地预览前后均不变。
 
 ## 9. 明确不做
 
