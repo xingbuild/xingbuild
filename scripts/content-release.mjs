@@ -47,7 +47,7 @@ import {
 } from "./lib/content-targets.mjs";
 import { contentSetEntryFromCanonical, prepareContentSetCandidate as writeContentSetCandidate } from "./lib/content-set-candidate.mjs";
 import { readActiveContentSet } from "./lib/content-set.mjs";
-import { homeContent } from "../src/content/siteContent.js";
+import { readCanonicalHomeContent } from "./lib/home-content-adapter.mjs";
 
 export const root = projectRoot;
 const edgeone = path.join(root, "node_modules", ".bin", "edgeone");
@@ -92,7 +92,10 @@ function publicPath(kind, target) {
 async function readTarget({ kind, target, sourceRoot }) {
   if (!kinds.has(kind) || !slugPattern.test(target)) throw new Error("content release requires one explicit valid target");
   const relative = targetPath(kind, target);
-  if (kind === "home" && target === "home") return { relative, file: null, value: homeContent };
+  if (kind === "home" && target === "home") {
+    const canonical = await readCanonicalHomeContent({ sourceRoot });
+    return { relative, file: canonical.filePath, value: canonical.value, sourceHash: canonical.sourceHash };
+  }
   const file = path.join(contentRootDirectory({ sourceRoot }), relative.slice("content/".length));
   if (!(await isFile(file))) throw new Error(`content target is missing: ${relative}`);
   const value = JSON.parse(await readFile(file, "utf8"));
@@ -732,13 +735,16 @@ async function prepareContentSetEntry({ kind, target, changeSetPath = null, sour
     contentValue = staged[content.relative] || staged["content/products/robotaxi.json"] || content.value;
     mediaManifest = staged["content/media/robotaxi/manifest.json"] || mediaManifest;
   }
-  return contentSetEntryFromCanonical({
+  const entry = await contentSetEntryFromCanonical({
     sourceRoot,
     kind,
     target,
     contentValue,
     mediaManifest,
-    sourceProof: sourceIds(content.value),
+    sourceProof: kind === "home"
+      ? ["canonical:content/home.json"]
+      : sourceIds(content.value),
+    allowStagedValue: Boolean(changeSetPath),
     reviewProof: {
       reviewId: reviewEvidence.review?.reviewId || null,
       reviewedAt: reviewEvidence.reviewedAt || null,
@@ -746,12 +752,41 @@ async function prepareContentSetEntry({ kind, target, changeSetPath = null, sour
     },
     legacyAuditId: null,
   });
+  return { entry, contentValue };
 }
 
 export async function prepareContentSetCandidate({ kind, target, changeSetPath = null, sourceRoot = root } = {}) {
-  const entry = await prepareContentSetEntry({ kind, target, changeSetPath, sourceRoot });
-  const homePayload = kind === "home" ? homeContent : null;
-  return writeContentSetCandidate({ sourceRoot, entries: [entry], homeContent: homePayload });
+  const prepared = await prepareContentSetEntry({ kind, target, changeSetPath, sourceRoot });
+  const homePayload = kind === "home" ? prepared.contentValue : null;
+  return writeContentSetCandidate({ sourceRoot, entries: [prepared.entry], homeContent: homePayload });
+}
+
+/**
+ * Prepare one immutable ContentSet Candidate for a confirmed batch. The
+ * physical content publisher may later consume this single identity; preview
+ * and preparation never activate it or create a deployment.
+ */
+export async function prepareContentSetCandidateBatch({ targets = [], sourceRoot = root } = {}) {
+  if (!Array.isArray(targets) || targets.length === 0) throw new Error("content batch requires at least one target");
+  const prepared = [];
+  const seen = new Set();
+  for (const spec of targets) {
+    const key = `${spec?.kind || ""}:${spec?.target || ""}`;
+    if (seen.has(key)) throw new Error(`content batch duplicate target: ${key}`);
+    seen.add(key);
+    prepared.push(await prepareContentSetEntry({
+      kind: spec?.kind,
+      target: spec?.target,
+      changeSetPath: spec?.changeSetPath || null,
+      sourceRoot,
+    }));
+  }
+  const home = prepared.find((item) => item.entry.entryId === "home:home");
+  return writeContentSetCandidate({
+    sourceRoot,
+    entries: prepared.map((item) => item.entry),
+    homeContent: home?.contentValue || null,
+  });
 }
 
 export async function publishContentSet({ kind, target, changeSetPath = null, argv = process.argv.slice(2), env = process.env, sourceRoot = root } = {}) {
@@ -785,6 +820,16 @@ async function main(argv = process.argv.slice(2)) {
   const artifactPath = valueFor("--base-site-artifact");
   const packageDirectory = valueFor("--package");
   const contentReleaseId = valueFor("--release");
+  const batchPath = valueFor("--batch");
+  if (batchPath) {
+    if (!argv.includes("--prepare") && !argv.includes("--build")) {
+      throw new Error("content batch only supports explicit --prepare or --build; publish remains a separate authorized action");
+    }
+    const batch = JSON.parse(await readFile(path.resolve(root, batchPath), "utf8"));
+    const result = await prepareContentSetCandidateBatch({ targets: batch, sourceRoot: root });
+    console.log(`ContentSet batch candidate ${argv.includes("--build") ? "built" : "prepared"}: ${result.contentSet.contentSetId}`);
+    return;
+  }
   if (argv.includes("--reconcile")) {
     if (!contentReleaseId || !artifactPath) throw new Error("Usage: node scripts/content-release.mjs --reconcile --release <contentReleaseId> --base-site-artifact <immutableBaseSiteArtifactId>");
     const reconciled = await reconcileContentPackage({ sourceRoot: root, contentReleaseId, baseSiteArtifactId: artifactPath });

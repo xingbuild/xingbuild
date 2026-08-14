@@ -3,8 +3,7 @@ import path from "node:path";
 import { createContentSet, normalizeContentSetEntry, readActiveContentSet, writeContentSet } from "./content-set.mjs";
 import { contentFilePath, contentMediaManifestPath } from "./content-root.mjs";
 import { hashValue } from "./content-targets.mjs";
-import { homeContent as legacyHomeContent } from "../../src/content/siteContent.js";
-import { homeContentSetEntry } from "./home-content-adapter.mjs";
+import { homeContentHash, homeContentSetEntry, readCanonicalHomeContent } from "./home-content-adapter.mjs";
 import { validateRegisteredResponsiveTextValues } from "./content-targets.mjs";
 
 function sourcePathFor(kind, target) {
@@ -25,16 +24,33 @@ function routeFor(kind, target) {
   return "/products";
 }
 
-export async function contentSetEntryFromCanonical({ sourceRoot = process.cwd(), kind, target, reviewProof = {}, sourceProof = [], mediaProof = [], legacyAuditId = null, contentValue = undefined, mediaManifest = undefined } = {}) {
+export async function contentSetEntryFromCanonical({ sourceRoot = process.cwd(), kind, target, reviewProof = {}, sourceProof = [], mediaProof = [], legacyAuditId = null, contentValue = undefined, mediaManifest = undefined, allowStagedValue = false } = {}) {
   const normalizedKind = kind === "content" ? "observation" : kind;
   if (normalizedKind === "home") {
-    await validateRegisteredResponsiveTextValues({ kind: "home", target, value: contentValue === undefined ? legacyHomeContent : contentValue, rootDirectory: sourceRoot });
-    return homeContentSetEntry({
-      value: contentValue === undefined ? legacyHomeContent : contentValue,
-      sourceProof,
+    // Always touch the canonical ignored source first. A supplied
+    // `contentValue` may be a deterministic ChangeSet staging value, but it
+    // can never turn the legacy product fallback into Candidate input.
+    const canonical = await readCanonicalHomeContent({ sourceRoot });
+    const value = contentValue === undefined ? canonical.value : contentValue;
+    if (contentValue !== undefined && !allowStagedValue && homeContentHash(value) !== canonical.valueHash) {
+      const error = new Error("Home Candidate value does not match canonical content/home.json");
+      error.code = "CONTENT_HOME_SOURCE_MAPPING_MISMATCH";
+      throw error;
+    }
+    await validateRegisteredResponsiveTextValues({ kind: "home", target, value, rootDirectory: sourceRoot });
+    const normalized = canonical.value && contentValue === undefined ? canonical.value : value;
+    const entry = homeContentSetEntry({
+      value: normalized,
+      sourceProof: ["canonical:content/home.json"],
       reviewProof,
       legacyAuditId,
     });
+    if (entry.contentHash !== homeContentHash(normalized)) {
+      const error = new Error("Home ContentSet entry normalized hash is not reproducible");
+      error.code = "CONTENT_HOME_HASH_NOT_REPRODUCIBLE";
+      throw error;
+    }
+    return entry;
   }
   const file = contentFilePath(normalizedKind === "observation" ? "content" : normalizedKind, target, { sourceRoot });
   const value = contentValue === undefined ? JSON.parse(await readFile(file, "utf8")) : contentValue;
@@ -64,7 +80,17 @@ export async function contentSetEntryFromCanonical({ sourceRoot = process.cwd(),
 export function createContentSetCandidate({ activeContentSet, entries = [], previousContentSetId = activeContentSet?.contentSetId || null, homeContent = activeContentSet?.homeContent || null, createdAt } = {}) {
   const activeEntries = activeContentSet?.entries || [];
   const merged = new Map(activeEntries.map((entry) => [entry.entryId, entry]));
-  for (const entry of entries) merged.set(entry.entryId, normalizeContentSetEntry(entry));
+  const incomingIds = new Set();
+  for (const entry of entries) {
+    const normalized = normalizeContentSetEntry(entry);
+    if (incomingIds.has(normalized.entryId)) {
+      const error = new Error(`ContentSet Candidate duplicate entryId: ${normalized.entryId}`);
+      error.code = "CONTENT_CANDIDATE_DUPLICATE_ENTRY";
+      throw error;
+    }
+    incomingIds.add(normalized.entryId);
+    merged.set(normalized.entryId, normalized);
+  }
   return createContentSet({
     entries: [...merged.values()],
     previousContentSetId,
@@ -79,7 +105,21 @@ export async function prepareContentSetCandidate({ sourceRoot = process.cwd(), e
   try { activeContentSet = (await readActiveContentSet({ sourceRoot })).contentSet; } catch (error) {
     if (error.code !== "ENOENT") throw error;
   }
-  if (homeContent) await validateRegisteredResponsiveTextValues({ kind: "home", target: "home", value: homeContent, rootDirectory: sourceRoot });
-  const candidate = createContentSetCandidate({ activeContentSet, entries, homeContent: homeContent || activeContentSet?.homeContent || null, previousContentSetId, createdAt });
+  const homeEntry = entries.find((entry) => entry?.entryId === "home:home" || (entry?.kind === "home" && entry?.target === "home"));
+  let resolvedHomeContent = homeContent;
+  if (homeEntry && resolvedHomeContent == null) {
+    resolvedHomeContent = (await readCanonicalHomeContent({ sourceRoot })).value;
+  }
+  if (homeEntry && resolvedHomeContent != null) {
+    await validateRegisteredResponsiveTextValues({ kind: "home", target: "home", value: resolvedHomeContent, rootDirectory: sourceRoot });
+    const normalizedEntry = normalizeContentSetEntry(homeEntry);
+    if (homeContentHash(resolvedHomeContent) !== normalizedEntry.contentHash) {
+      const error = new Error("Home ContentSet entry does not match normalized Candidate homeContent");
+      error.code = "CONTENT_HOME_ENTRY_VALUE_MISMATCH";
+      throw error;
+    }
+  }
+  if (resolvedHomeContent == null && activeContentSet?.homeContent) resolvedHomeContent = activeContentSet.homeContent;
+  const candidate = createContentSetCandidate({ activeContentSet, entries, homeContent: resolvedHomeContent || null, previousContentSetId, createdAt });
   return writeContentSet({ sourceRoot, contentSet: candidate });
 }

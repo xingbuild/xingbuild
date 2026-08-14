@@ -47,7 +47,12 @@ async function main(argv = process.argv.slice(2)) {
   const artifactPath = valueFor(argv, "--product-artifact");
   const productArtifact = artifactPath ? await readJson(artifactPath, "ProductArtifact") : null;
   const homeEvidencePath = valueFor(argv, "--public-home-entry");
-  const homeEntry = homeContentSetEntry({ value: homeContent });
+  // This is the one-time legacy migration path; preserve its historical
+  // provenance explicitly instead of inheriting the Candidate default.
+  const homeEntry = homeContentSetEntry({
+    value: homeContent,
+    sourceProof: ["legacy:src/content/siteContent.js"],
+  });
   const publicHomeEntry = homeEvidencePath ? await readJson(homeEvidencePath, "public home entry") : null;
   const result = await runMigration({ sourceRoot: root, localManifest, publicManifest, productArtifact, homeEntry, publicHomeEntry });
   console.log(JSON.stringify({

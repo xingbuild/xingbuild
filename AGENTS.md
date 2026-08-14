@@ -71,8 +71,8 @@
 - task 创建、交接、执行、版本推进和 publish 授权是不同动作；本项目产品闭环已获得持续 publish 授权，除非 Xing 明确暂停、停止、撤销或要求人工接管，不因每个版本重复询问并自动完成闭环。找不到已存在的目标 task、身份无法确认、责任不清或回传工具不可调用时，立即报告阻断，不得猜测、替代、创建、轮询或后台等待。
 - 跨 task 交接前必须读取并核验 `docs/rules/task-registry.md`；task 归档、重建、宿主或回传地址变化后先更新注册表。注册表未核验不得发送。
 - 跨 task 交接必须显式写 `sourceThreadId`、`targetThreadId`、`returnThreadId`；source 只作溯源，目标 task 到里程碑后向精确 return 地址一次回传。
-- 每个 xingbuild task（包括 `elon`、`elon ui`、`elon engin`、`elon ops`、真实存在的子 task 和项目 automation task）必须始终有可识别的状态：进行中由 Codex 界面动态圆圈表示，不在标题增加前缀；完成/无需 Xing 处理使用 `✅`；缺少 Xing 决策/授权/必要信息使用 `⚠️`。状态规则以 [`docs/rules/task-onboarding.md`](docs/rules/task-onboarding.md) 第十一节为唯一正文。
-- 标题前缀只表达 Xing 的注意状态，不重复表达 Codex 已提供的进行中圆圈。技术、网络、其他 task 等外部阻断若不需要 Xing 决策，不伪装成 `⚠️`；在检查点中明确 `阻断类型` 和恢复条件。测试、验收、commit、部署或公网发布事实必须写在各自证据中。
+- 每个 xingbuild task（包括 `elon`、`elon ui`、`elon engin`、`elon ops`、真实存在的子 task 和项目 automation task）必须始终有可识别的状态：进行中由 Codex 界面动态圆圈表示，不在标题增加前缀；责任范围彻底完成才使用 `✅`；未完成且停止/阻断需要 Xing 关注时使用 `⚠️`。状态规则以 [`docs/rules/task-onboarding.md`](docs/rules/task-onboarding.md) 第十一节为唯一正文。
+- 标题前缀只表达 Xing 的注意状态，不重复表达 Codex 已提供的进行中圆圈。技术、网络、其他 task 等阻断也必须在未完成时使用 `⚠️`，并在检查点明确 `阻断类型`、是否需要 Xing 决策、恢复 owner 和条件。测试、验收、commit、部署或公网发布事实必须写在各自证据中。
 - 预览固定使用 `4317`，必须绑定当前 worktree、HEAD、PID 和 task；不得静默换端口或终止未知进程。
 
 ## 五、验证与沟通

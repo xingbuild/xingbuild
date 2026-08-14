@@ -1,3 +1,16 @@
+## v0.26.29 — 内容工作台预览源统一与目标级内容发布
+
+父版本：`v0.26.28` / `7caf8eb66011302e04275cf928da4aa8644bdff4`
+
+- Home Candidate 统一从 `.content-workspace/content/home.json` 读取；legacy `src/content/siteContent.js` 仅保留 product-only fallback。
+- Home、Practice、Article、Profile 的同批变化生成一个 Candidate，校验 normalized value/hash/sourcePath/consumerViews，并复用未变化身份。
+- 保留 Preview Runtime v2 的 target 级局部刷新、invalid last-valid 与零发布写入边界；本版本未执行 product transport 或 content publish。
+
+## 验证合同
+
+- 覆盖 canonical Home source mapping、缺失/非法/不一致零落盘、重复 target/entry 硬失败及四 target 批处理。
+- `npm run check`、内容检查、定向测试、release closeout、exact `release:build` 与 `release:preflight` 必须绑定提交后的 v0.26.29 HEAD/tag。
+
 ## v0.26.28 — 本地内容工作台结构化正文、差异更新与产品化入口
 
 父版本：`v0.26.27` / `e15fa851d2a34f891d254403b0f3559902ad4c93`

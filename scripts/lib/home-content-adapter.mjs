@@ -1,6 +1,16 @@
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { contentRootDirectory } from "./content-root.mjs";
 import { hashValue } from "./content-targets.mjs";
 import { normalizeContentSetEntry } from "./content-set.mjs";
 import { normalizeResponsiveTextSlot, RESPONSIVE_TEXT_SLOT_SCHEMA } from "./responsive-text-slot.mjs";
+
+export const HOME_CONTENT_SOURCE_PATH = "content/home.json";
+
+function hashBytes(value) {
+  return createHash("sha256").update(value).digest("hex");
+}
 
 export const HOME_CONTENT_FIELDS = Object.freeze([
   "description",
@@ -40,13 +50,54 @@ export function homeContentHash(value) {
   return hashValue(normalizeHomeContent(value));
 }
 
-export function homeContentSetEntry({ value, sourceProof = ["legacy:src/content/siteContent.js"], reviewProof = { status: "approved" }, legacyAuditId = null } = {}) {
+/**
+ * Read the only source allowed to enter a Home ContentSet Candidate. The
+ * product-only `src/content/siteContent.js` fallback deliberately does not
+ * participate in this path.
+ */
+export async function readCanonicalHomeContent({ sourceRoot = process.cwd() } = {}) {
+  const file = path.join(contentRootDirectory({ sourceRoot }), "home.json");
+  let source;
+  try {
+    source = await readFile(file, "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") error.code = "CONTENT_HOME_SOURCE_MISSING";
+    throw error;
+  }
+  let value;
+  try {
+    value = JSON.parse(source);
+  } catch (cause) {
+    const error = new Error(`canonical Home content JSON is invalid: ${file}`);
+    error.code = "CONTENT_HOME_SOURCE_INVALID_JSON";
+    error.cause = cause;
+    throw error;
+  }
+  let normalizedValue;
+  try {
+    normalizedValue = normalizeHomeContent(value);
+  } catch (cause) {
+    const error = new Error(`canonical Home content value is invalid: ${file}`);
+    error.code = "CONTENT_HOME_SOURCE_INVALID_VALUE";
+    error.cause = cause;
+    throw error;
+  }
+  return Object.freeze({
+    sourcePath: HOME_CONTENT_SOURCE_PATH,
+    filePath: path.resolve(file),
+    sourceHash: hashBytes(source),
+    value: normalizedValue,
+    valueHash: homeContentHash(normalizedValue),
+  });
+}
+
+export function homeContentSetEntry({ value, sourceProof = ["canonical:content/home.json"], reviewProof = { status: "approved" }, legacyAuditId = null } = {}) {
   const content = normalizeHomeContent(value);
   return normalizeContentSetEntry({
     entryId: "home:home",
     kind: "home",
     target: "home",
-    sourcePath: "content/home.json",
+    sourcePath: HOME_CONTENT_SOURCE_PATH,
     route: "/",
     contentHash: homeContentHash(content),
     sourceProof,

@@ -32,7 +32,7 @@ flowchart LR
 
 唯一当前指针是 `docs/iterations/current.md`。它只记录当前可执行产品方案，不保存 `pending`/`complete`、验收、授权或线上状态字段。
 
-版本开始至少写明：问题、范围、明确不做、页面/对象/工程文件、验收标准和当前正式方案。Engineering 只实现已写入 current 的范围；活动候选不是实现清单。
+版本开始至少写明：问题、范围、明确不做、页面/对象/工程文件、验收标准和当前正式方案。Engineering 只实现已写入 current 的范围；活动候选不是实现清单。候选文件与版本实现范围分开判定：版本期间新增或修改、且 owner 确认必须保留的 tracked candidate，可以作为 `record-only` 纳入同一版本 commit/history；它仍保持 `DRAFT`，不进入 `current.md`、Engineering、ProductArtifact 或发布范围。未获 owner 收口的外部 dirty candidate 仍阻断 closeout。
 
 候选属于产品设计前阶段：
 
@@ -50,6 +50,8 @@ Engineering 按以下顺序形成一个本地提交版本。最终 ProductArtifa
 4. 在该精确 HEAD/tag 上执行最终 `npm run release:build`，生成 ignored `dist/client` ProductArtifact；
 5. 执行 `npm run release:preflight`，同时校验 Git/版本和 ProductArtifact 三份 manifest 的身份、hash 与确定性；
 6. 只有 preflight 通过的同一 ProductArtifact 才能进入产品/视觉验收和 transport。
+
+closeout 必须按路径、owner 和版本范围核对 tracked dirty：实现变更进入实现范围；已确认保留的 candidate 以 `record-only` 纳入暂存范围并在 history 留下路径、状态和“不进入本版本实现”的说明；未分类或外部 owner dirty 继续硬阻断。`git clean` 表示所有要保留的 tracked 变更都已被明确归类，不表示候选文件不能出现在版本提交中。当前检查器尚未提供 path-level scope lock 时，不得绕过门禁，需先登记治理缺口并由 owner 收口。
 
 Engineering 同一轮一次性更新 `VERSION.md`、`current.md` 和 `docs/iterations/history/v{版本号}.md`；history 记录版本号、commit、annotated tag、clean、父版本、范围和验收合同，提交后不可回写。
 

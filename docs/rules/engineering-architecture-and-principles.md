@@ -33,7 +33,7 @@ flowchart LR
 - 生成器 `architecture:views`、`framework:data`、`framework:layout`、`article:figures` 只在源/方案变化后显式运行；构建和发布不无条件调用会回写 tracked 输出的生成器。
 - `npm run release:prepare` / `release:build` 负责产品业务准备、构建和验证；最终 build 必须发生在 commit/tag 后；`publish-xingbuild.command` / `unified-publish --kind product` 只校验已存在的 clean HEAD/tag 与 ProductArtifact，随后由 Coordinator 按授权执行 push、唯一 deploy、传播和公网验证，不包含网站业务逻辑。
 - 产品 publish 与内容 publish 是两个独立责任边界：产品 publish 提交 ProductRelease intent；内容 publish 生成 ContentSet Candidate（包括 `home` 首页内容入口）；两者都不能直接调用 EdgeOne，统一由 Coordinator 取得站点 lease、组装一个 SiteSnapshot、部署、等待传播和精确验证。旧 receipts、ContentSlotRegistry、PublicationLineageBinding、projection 和 package 只读保留为迁移/审计证据，不再进入正常运行路径。
-- 任一构建后 tracked dirty、版本身份不一致、产物缺失或发布目标不明确，必须停止并形成 Publish Incident；不得自动 patch、commit、tag、重试或继续后续阶段。
+- 任一构建后未分类 tracked dirty、版本身份不一致、产物缺失或发布目标不明确，必须停止并形成 Publish Incident；已由 owner 明确标记为 `record-only` 且纳入版本暂存/history 的候选不属于未分类 dirty。不得自动 patch、commit、tag、重试或继续后续阶段。
 
 ## 三、代码与事实边界
 

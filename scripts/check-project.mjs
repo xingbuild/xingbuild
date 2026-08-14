@@ -202,9 +202,15 @@ assert(!siteBuild.includes("independentMediaRoot"), "product Sites preparation m
 const unifiedPublish = await readFile(new URL("../scripts/unified-publish.mjs", import.meta.url), "utf8");
 const contentRelease = await readFile(new URL("../scripts/content-release.mjs", import.meta.url), "utf8");
 const siteCoordinator = await readFile(new URL("../scripts/lib/site-publication-coordinator.mjs", import.meta.url), "utf8");
+const contentSetCandidate = await readFile(new URL("../scripts/lib/content-set-candidate.mjs", import.meta.url), "utf8");
+const homeContentAdapter = await readFile(new URL("../scripts/lib/home-content-adapter.mjs", import.meta.url), "utf8");
 assert(!/makers[\"']?,?\s*[\"']deploy/.test(unifiedPublish), "product wrapper must not call EdgeOne deploy directly");
 assert(!/makers[\"']?,?\s*[\"']deploy/.test(contentRelease), "content wrapper must not call EdgeOne deploy directly");
 assert(siteCoordinator.includes("[\"makers\", \"deploy\""), "site coordinator must own EdgeOne deploy");
+assert(contentSetCandidate.includes("readCanonicalHomeContent"), "Home Candidate must read canonical home content");
+assert(!contentSetCandidate.includes("src/content/siteContent.js"), "Home Candidate must not read legacy site content");
+assert(contentRelease.includes("readCanonicalHomeContent"), "content prepare must use canonical Home source");
+assert(homeContentAdapter.includes("CONTENT_HOME_SOURCE_MISSING"), "Home adapter must hard-fail missing canonical source");
 const pageDefinitions = await readFile(new URL("../src/content/pageDefinitions.js", import.meta.url), "utf8");
 const compositionRenderer = await readFile(new URL("../src/components/page-compositions/PageCompositionRenderer.jsx", import.meta.url), "utf8");
 assert(pageDefinitions.includes("pageDefinitionRegistry"), "page definitions must expose a controlled registry");
