@@ -9,6 +9,7 @@
 ```mermaid
 flowchart TD
     A["AGENTS.md\n入口与强制边界"] --> B["00 基线索引\n优先级与读取矩阵"]
+    B --> C0["Xing 工作习惯与上下文\n稳定协作偏好"]
     B --> C["2.1 职责边界与内部流程"]
     B --> D["2.2 跨 task 协作工作流"]
     B --> E["2.3 迭代与发布规则"]
@@ -18,10 +19,11 @@ flowchart TD
     E --> I["current → Engineering → history\n→ QA → publish"]
 ```
 
-五层各自只回答一个问题：
+五层各自只回答一个问题；Xing 工作习惯文件是所有责任域共用的上下文入口，不定义产品或发布事实：
 
 | 层 | 唯一问题 | 事实源 |
 | --- | --- | --- |
+| 0 | Xing 如何工作、如何确认、如何保留上下文？ | [`xing-workstyle-and-context.md`](xing-workstyle-and-context.md) |
 | 2.1 | 谁负责什么，内部如何分流和收口？ | [`responsibility-and-workflows.md`](responsibility-and-workflows.md)；动态 task 身份见 [`task-registry.md`](task-registry.md) |
 | 2.2 | 已存在的 task 如何一次性交接和回传？ | [`collaboration-workflow.md`](collaboration-workflow.md) |
 | 2.3 | 产品版本如何从方案走到线上证据？ | [`iteration-and-release.md`](iteration-and-release.md) |
@@ -29,6 +31,7 @@ flowchart TD
 | 2.5 | 当前工程如何组织、构建和发布，不能越过哪些边界？ | [`engineering-architecture-and-principles.md`](engineering-architecture-and-principles.md)；站点物理发布由 `scripts/lib/site-publication-coordinator.mjs` 实现 |
 
 新 task 入场与并行资源门禁：[`task-onboarding.md`](task-onboarding.md)。
+所有 task 还必须读取 [`xing-workstyle-and-context.md`](xing-workstyle-and-context.md)，以恢复 Xing 的稳定工作方式；它不替代任何责任域规则。
 
 运营事实不并入产品工程五层：内容运营以 [`../operations/内容运营与发布规则.md`](../operations/内容运营与发布规则.md) 为准，经营观察采集以 [`../operations/经营观察信息源与覆盖合同.md`](../operations/经营观察信息源与覆盖合同.md) 为准。
 

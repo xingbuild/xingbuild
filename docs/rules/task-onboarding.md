@@ -15,6 +15,12 @@
 3. /Users/kingjin/Documents/Builder/xingbuild/docs/rules/00-baseline-index.md
 
 然后根据你的责任域读取本文件第五节列出的专门规则。
+在上述入口之后，所有 task 还必须读取：
+
+`/Users/kingjin/Documents/Builder/xingbuild/docs/rules/xing-workstyle-and-context.md`
+
+该文件记录 Xing 的稳定工作习惯、上下文恢复方式和复杂度控制边界；它不是产品版本方案，也不替代责任域规则。
+
 先报告：你的 task 名称、threadId、责任域、允许范围、禁止范围、待读取事实源。
 在责任和写入权限明确前，只做只读检查，不修改文件、不创建 branch/worktree/task、不发布、不轮询等待。
 ```
@@ -76,6 +82,7 @@ git log -1 --oneline --decorate
 AGENTS.md
 docs/rules/task-onboarding.md
 docs/rules/00-baseline-index.md
+docs/rules/xing-workstyle-and-context.md
 ```
 
 之后按责任域读取：
