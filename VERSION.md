@@ -1,3 +1,16 @@
+## v0.27.1 — 内容生命周期真实链路收口
+
+父版本：`v0.27.0` / `2e4c72a1c5bfc04501b758b4c70b30d42d5ecdfe`
+
+- 将 `ContentRevision`/`ChangeSet` 接入真实 ContentSet Candidate prepare：变化 target 生成 revision/ref，未变化 entry 复用原 identity/hash，并以不可变 sidecar 保存 ChangeSet。
+- SitePublication durable record 只保存 ProductArtifact、ContentSet、manifest、snapshot/run 引用、deployment、publicVerify 与 recovery；完整 snapshot/run/client/uploadRoot 不写入长期记录。
+- inventory 对 SitePublication 与未知/未证明对象保守保留；dry-run 仍零写入。纳入 v0.27.0 记录更正 receipt，不回写旧 tag。
+
+## 验证与发布边界
+
+- 通过 `npm run check`、`npm run release:prepare`、生命周期与 SitePublication 定向测试、`npm run release:closeout-check`、exact `release:build`、`release:preflight` 与 `git diff --check` 后交产品/架构验收。
+- 本版本不执行 content publish、product transport 或 EdgeOne；不修改页面、内容事实、active ContentSet 或线上状态。
+
 ## v0.27.0 — 内容生命周期、变更复用与派生物治理
 
 父版本：`v0.26.32` / `50643e6ea1edac080759e292d30b447aff64b293`

@@ -1,20 +1,20 @@
 # 当前迭代
 
-## 当前唯一版本：`v0.27.0`
+## 当前唯一版本：`v0.27.1`
 
-父版本：v0.26.32 / `50643e6ea1edac080759e292d30b447aff64b293`
+父版本：v0.27.0 / `2e4c72a1c5bfc04501b758b4c70b30d42d5ecdfe`
 
 contentImpact: compatible
-contentImpactReason: content-lifecycle-and-derived-artifact-governance
+contentImpactReason: content-lifecycle-real-chain-closure
 affectedTargets: []
 affectedRoutes: []
 affectedFields: []
-compatibilityEvidence: v0.27.0-content-lifecycle-backward-compatible
+compatibilityEvidence: v0.27.1-content-lifecycle-backward-compatible
 
 ## 正式方案
 
-[v0.27.0 内容生命周期、变更复用与派生物治理方案](../design/v0.27.0%20内容生命周期、变更复用与派生物治理方案.md)
+[v0.27.1 内容生命周期真实链路收口方案](../design/v0.27.1%20内容生命周期真实链路收口方案.md)
 
 ## 执行范围
 
-完成 `DL-01`～`DL-04`、`CL-01`～`CL-04`，并 record-only 收口活动 task hostId 核验。`CL-05`（保留窗口与物理清理）不进入本版本，需 Xing 单独授权。仅做生命周期/ref 复用、引用 inventory、保留分类和可恢复 dry-run；不改页面、内容事实、active ContentSet、线上状态，不运行 content publish。
+收口 `V271-01`～`V271-04`：把 v0.27.0 生命周期模型接入真实 ContentSet/SitePublication 链，修正保守引用分类与版本记录事实。仅做兼容性工程与证据；不改页面、内容事实、active ContentSet、线上状态，不运行 content publish。

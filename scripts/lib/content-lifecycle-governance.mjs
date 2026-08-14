@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFile, readdir, stat } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { normalizeContentSetEntry, validateContentSet } from "./content-set.mjs";
 import { assertProductArtifactIdentityShape } from "./product-artifact.mjs";
@@ -251,6 +251,31 @@ export function assertContentChangeSet(changeSet = {}) {
   return changeSet;
 }
 
+export async function writeContentChangeSet({ sourceRoot = process.cwd(), changeSet } = {}) {
+  assertContentChangeSet(changeSet);
+  const directory = path.join(sourceRoot, ".content-workspace", "changes");
+  const file = path.join(directory, `${changeSet.changeSetId}.json`);
+  try {
+    const existing = assertContentChangeSet(JSON.parse(await readFile(file, "utf8")));
+    if (existing.changeSetHash !== changeSet.changeSetHash) throw new Error(`ContentChangeSet immutable identity collision: ${changeSet.changeSetId}`);
+    return { file, changeSet: existing, reused: true };
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  await mkdir(directory, { recursive: true });
+  const temporary = `${file}.${process.pid}.${Date.now()}.tmp`;
+  await writeFile(temporary, `${JSON.stringify(changeSet, null, 2)}\n`);
+  await rename(temporary, file);
+  return { file, changeSet, reused: false };
+}
+
+export async function readContentChangeSet({ sourceRoot = process.cwd(), changeSetId } = {}) {
+  requiredString(changeSetId, "changeSetId", "ContentChangeSet");
+  const file = path.join(sourceRoot, ".content-workspace", "changes", `${changeSetId}.json`);
+  const changeSet = JSON.parse(await readFile(file, "utf8"));
+  return assertContentChangeSet(changeSet);
+}
+
 export function createDeterministicSiteSnapshot({ productArtifact, contentSet, manifest } = {}) {
   const product = assertProductArtifactIdentityShape(productArtifact);
   validateContentSet(contentSet);
@@ -304,6 +329,23 @@ export function compactSitePublicationRecord(publication = {}) {
     createdAt: publication.createdAt || publication.assembledAt || new Date().toISOString(),
     updatedAt: publication.updatedAt || publication.assembledAt || new Date().toISOString(),
   };
+}
+
+/**
+ * Remove assembly/runtime-only values before a SitePublication record is
+ * persisted.  The assembled client remains at the temporary publication
+ * directory and the full SiteSnapshot/PublicationRun remain addressable by
+ * their immutable ids/sidecars; the durable record carries only references.
+ */
+export function sanitizeDurableSitePublicationRecord(publication = {}) {
+  const durable = { ...publication };
+  if (!durable.siteSnapshotId && durable.siteSnapshot?.siteSnapshotId) durable.siteSnapshotId = durable.siteSnapshot.siteSnapshotId;
+  if (!durable.snapshotHash && durable.siteSnapshot?.snapshotHash) durable.snapshotHash = durable.siteSnapshot.snapshotHash;
+  if (!durable.publicationRunId && durable.publicationRun?.publicationRunId) durable.publicationRunId = durable.publicationRun.publicationRunId;
+  for (const forbidden of ["client", "sourceDirectory", "assembledClient", "uploadRoot", "siteSnapshot", "publicationRun"]) {
+    delete durable[forbidden];
+  }
+  return durable;
 }
 
 export function assertCompactSitePublicationRecord(record = {}) {
@@ -411,12 +453,12 @@ function classifyRecord({ relativePath, owner, objectKind, value, references, le
   if (objectKind === "canonical-content-source" || objectKind === "active-content-set" || objectKind === "content-slot-registry" || objectKind === "publication-lineage-binding") {
     return { decision: "delete-never", reason: "canonical or active lifecycle fact" };
   }
-  if (objectKind === "incident" || objectKind === "recovery" || objectKind === "content-release-receipt" || objectKind === "content-release-completion" || objectKind === "content-package-lineage") {
+  if (objectKind === "incident" || objectKind === "recovery" || objectKind === "content-release-receipt" || objectKind === "content-release-completion" || objectKind === "content-package-lineage" || objectKind === "site-publication") {
     return { decision: "delete-never", reason: "audit, released, failed, or recoverable lifecycle evidence" };
   }
   if (lease) return { decision: "keep", reason: "lease is present; do not infer it is stale" };
   if (references.length) return { decision: "keep", reason: "referenced by active or recoverable lifecycle object" };
-  if (owner === "unknown" || objectKind === "derived-artifact") return { decision: "review", reason: "owner or object identity is not proven" };
+  if (owner === "unknown" || objectKind === "unknown" || objectKind === "derived-artifact") return { decision: "keep", reason: "owner or object identity is not proven" };
   if (reconstructible) return { decision: "archive-dry-run", reason: "unleased, unreferenced, and reconstructible derived object" };
   return { decision: "review", reason: "reconstructibility is not proven" };
 }
@@ -435,18 +477,22 @@ export async function inventoryContentWorkspace({ sourceRoot = process.cwd(), wo
   for (const item of files) {
     const bytes = item.symlink ? Buffer.from(`symlink:${relative(sourceRoot, item.file)}`) : await readFile(item.file);
     let value = null;
+    let tokens = [];
     if (!item.symlink && path.extname(item.file).toLowerCase() === ".json") {
-      try { value = JSON.parse(bytes.toString("utf8")); identityTokens(value, tokenSet); } catch { /* binary/partial JSON remains reviewable */ }
+      try {
+        value = JSON.parse(bytes.toString("utf8"));
+        tokens = [...identityTokens(value, new Set())];
+        for (const token of tokens) tokenSet.add(token);
+      } catch { /* binary/partial JSON remains reviewable */ }
     }
-    parsed.push({ ...item, bytes, value });
+    parsed.push({ ...item, bytes, value, tokens });
   }
-  const records = parsed.map(({ file, symlink, bytes, value }) => {
+  const drafts = parsed.map(({ file, symlink, bytes, value, tokens }) => {
     const relativePath = relative(sourceRoot, file);
     const owner = ownerFor(relativePath);
     const objectKind = objectKindFor(relativePath, value);
     const references = [...tokenSet].filter((token) => token && token !== valueIdentity(value, objectKind) && bytes.includes(Buffer.from(token))).sort();
     const lease = leaseInfo(value, relativePath);
-    const decision = classifyRecord({ relativePath, owner, objectKind, value, references, lease, reconstructible: reconstructibleFor(relativePath, objectKind) });
     const identity = valueIdentity(value, objectKind);
     const logicalId = value?.logicalContentId || value?.content?.logicalContentId || null;
     const artifactId = value?.productArtifactId || value?.baseSiteArtifactId || value?.artifactId || null;
@@ -460,12 +506,34 @@ export async function inventoryContentWorkspace({ sourceRoot = process.cwd(), wo
       hash: extractedHash(value, bytes),
       bytes: bytes.byteLength,
       references,
+      incomingReferences: [],
       lease,
-      retainUntil: decision.decision === "delete-never" ? "indefinite" : (value?.retainUntil || null),
-      decision: decision.decision,
-      reason: decision.reason,
+      _owner: owner,
+      _objectKind: objectKind,
+      _value: value,
+      _reconstructible: reconstructibleFor(relativePath, objectKind),
       reconstructible: reconstructibleFor(relativePath, objectKind),
       symlink,
+    };
+  });
+  const identityPaths = new Map(drafts.filter((record) => record.identity).map((record) => [record.identity, record.path]));
+  for (const source of parsed) {
+    for (const identity of source.tokens) {
+      const targetPath = identityPaths.get(identity);
+      if (!targetPath) continue;
+      const target = drafts.find((record) => record.path === targetPath);
+      if (target && target.path !== relative(sourceRoot, source.file)) target.incomingReferences.push(relative(sourceRoot, source.file));
+    }
+  }
+  const records = drafts.map((record) => {
+    const decision = classifyRecord({ relativePath: record.path, owner: record._owner, objectKind: record._objectKind, value: record._value, references: [...record.references, ...record.incomingReferences], lease: record.lease, reconstructible: record._reconstructible });
+    const clean = { ...record };
+    delete clean._owner; delete clean._objectKind; delete clean._value; delete clean._reconstructible;
+    return {
+      ...clean,
+      retainUntil: decision.decision === "delete-never" ? "indefinite" : (record._value?.retainUntil || null),
+      decision: decision.decision,
+      reason: decision.reason,
     };
   }).sort((a, b) => a.path.localeCompare(b.path));
   const nodes = records.map((record) => ({ id: record.path, identity: record.identity, objectKind: record.objectKind }));

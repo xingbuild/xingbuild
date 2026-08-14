@@ -5,6 +5,7 @@ import { contentFilePath, contentMediaManifestPath } from "./content-root.mjs";
 import { hashValue } from "./content-targets.mjs";
 import { homeContentHash, homeContentSetEntry, readCanonicalHomeContent } from "./home-content-adapter.mjs";
 import { validateRegisteredResponsiveTextValues } from "./content-targets.mjs";
+import { assertContentChangeSet, createContentChangeSet, writeContentChangeSet } from "./content-lifecycle-governance.mjs";
 
 function sourcePathFor(kind, target) {
   if (kind === "home") return "content/home.json";
@@ -100,7 +101,7 @@ export function createContentSetCandidate({ activeContentSet, entries = [], prev
   });
 }
 
-export async function prepareContentSetCandidate({ sourceRoot = process.cwd(), entries = [], homeContent = null, previousContentSetId, createdAt } = {}) {
+export async function prepareContentSetCandidate({ sourceRoot = process.cwd(), entries = [], homeContent = null, previousContentSetId, createdAt, productArtifactId = null } = {}) {
   let activeContentSet = null;
   try { activeContentSet = (await readActiveContentSet({ sourceRoot })).contentSet; } catch (error) {
     if (error.code !== "ENOENT") throw error;
@@ -121,5 +122,14 @@ export async function prepareContentSetCandidate({ sourceRoot = process.cwd(), e
   }
   if (resolvedHomeContent == null && activeContentSet?.homeContent) resolvedHomeContent = activeContentSet.homeContent;
   const candidate = createContentSetCandidate({ activeContentSet, entries, homeContent: resolvedHomeContent || null, previousContentSetId, createdAt });
-  return writeContentSet({ sourceRoot, contentSet: candidate });
+  const changeSet = createContentChangeSet({
+    beforeEntries: activeContentSet?.entries || [],
+    afterEntries: candidate.entries,
+    productArtifactId,
+    createdAt,
+  });
+  assertContentChangeSet(changeSet);
+  const written = await writeContentSet({ sourceRoot, contentSet: candidate });
+  const changeSetWritten = await writeContentChangeSet({ sourceRoot, changeSet });
+  return { ...written, changeSet: changeSetWritten.changeSet, changeSetFile: changeSetWritten.file, changeSetReused: changeSetWritten.reused };
 }
