@@ -1,7 +1,7 @@
-# DRAFT｜企业经营体系架构视图与文章图形表达方案
+# 已归档｜企业经营体系架构视图与文章图形表达方案
 
 候选 ID：XBUILD-ARCH-VIEWS-001
-状态：DRAFT（草案，待用户与 Robotaxi 产品管理 task 共同确认）
+状态：已归档；已由正式方案 `docs/design/v0.22.0 企业经营体系多视图架构阅读能力方案.md` 收口并在 `v0.22.0` 实现。
 executionAuthorization：pending
 目标后续版本：`v0.22.0+` 候选，不是当前版本授权
 责任：xingbuild 产品与视觉

@@ -4,8 +4,6 @@
 
 父版本：v0.26.28 / `7caf8eb66011302e04275cf928da4aa8644bdff4`
 
-状态：正式方案，等待 `elon engin` 实现；未 transport、未 content publish。
-
 contentImpact: compatible
 
 contentImpactReason: 本版本修复本地内容工作台与内容 Candidate 的 source-of-truth 映射，并保持 target 级局部预览/差异更新；不改变公开页面 IA、ContentSet schema、审核事实、active ContentSet 或线上内容身份。

@@ -6,6 +6,16 @@
 executionAuthorization：`pending`
 责任：`elon` 确认保留级别与窗口；`elon engin` 只读盘点、生成 dry-run；获得明确授权后再执行可恢复归档或删除。
 
+## 功能点清单
+
+| itemId | 功能点 | 状态 |
+| --- | --- | --- |
+| `CL-01` | 生成 path/owner/object/hash/reference/retainUntil inventory | 未实现 |
+| `CL-02` | 交叉 active、receipt、lineage、SitePublication、recovery 引用 | 未实现 |
+| `CL-03` | 只读 keep/review/archive-dry-run/delete-never 清单 | 未实现 |
+| `CL-04` | 无 lease、无引用、可重建的对象才允许可恢复归档 | 未实现 |
+| `CL-05` | Xing 明确保留窗口和授权后才执行物理清理 | 未实现 |
+
 ## 1. 目的
 
 降低项目中历史过程截图、浏览器运行目录、重复 assembled snapshot 和重复构建产物造成的认知与磁盘负担，同时绝不误删当前线上、恢复链、审核链或可审计证据。

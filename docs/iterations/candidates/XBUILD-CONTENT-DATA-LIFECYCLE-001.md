@@ -7,6 +7,15 @@ executionAuthorization：`pending`
 责任：产品/视觉确认目标与边界；Engineering 在候选获批并进入正式方案后设计、实现和验证
 范围：重新定义产品功能代码、内容数据、内容历史、SitePublication 记录和派生站点快照的边界
 
+## 功能点清单
+
+| itemId | 功能点 | 状态 |
+| --- | --- | --- |
+| `DL-01` | logicalContentId 的 current + 前两个历史状态 | 未实现 |
+| `DL-02` | 未变化内容、媒体和静态资源按 hash 复用 | 未实现 |
+| `DL-03` | SitePublication 只保留 ProductArtifact/ContentSet/manifest/deployment/publicVerify 引用 | 未实现 |
+| `DL-04` | 迁移、重建、回滚和保留窗口的可验证路径 | 未实现 |
+
 ## 1. 候选性质
 
 这是一个数据生命周期与存储边界候选，不是当前版本实现授权，也不是历史文件清理授权。

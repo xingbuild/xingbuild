@@ -1,8 +1,8 @@
-# XBUILD-PRODUCT-CONTENT-ISOLATION-001
+# 已归档｜XBUILD-PRODUCT-CONTENT-ISOLATION-001
 
 候选 ID：XBUILD-PRODUCT-CONTENT-ISOLATION-001
 类型：产品/Engineering 能力候选
-状态：pending
+状态：已归档；核心合同已由 `v0.24.25` 正式方案实现。
 责任：产品/视觉确认方案；Engineering 实现与验证
 
 ## 问题事实
