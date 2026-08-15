@@ -329,6 +329,19 @@ figure | callout | sources | link
 
 内容运营的对象、审核、发布身份和公网内容证据由 `docs/operations/内容运营与发布规则.md` 负责。内容增加或修正文案、事实、来源、媒体、章节和模块说明时，不改变产品版本；只有新增页面组合、路由、schema、组件、交互或共享展示能力时，才进入产品工程版本。
 
+### 5.2.2 内容数据层与产品能力层
+
+网站内容是独立的数据平面，不是产品版本的附属文件：
+
+- 内容源当前由 canonical `.content-workspace/content` 与 `content-state/active` 承载；每个 `logicalContentId` 保留当前 revision 与前两次 revision。
+- 内容修改或增加生成新的 revision、`ContentSet` 和 `ContentDataArtifact`，不生成 `ProductArtifact`，不重新构建产品 JS/CSS。
+- `ContentDataArtifact` 是规范化内容 manifest 与内容对象的可寻址数据产物；页面运行时读取 active data manifest，产品 client 只提供读取和投影能力。
+- ProductArtifact 只包含页面组合、组件、schema、renderer、样式和读取能力；组件或 schema 改变才进入产品版本。
+- schema 改变必须通过 adapter/可验证迁移生成新 revision，保留 predecessor、sourceHash、valueHash 和 schemaVersion；迁移失败不得改变 active 内容。
+- SitePublication 只引用 `ProductArtifact + ContentDataArtifact` 并保存最小发布结果，不持久化完整旧站 client；内容-only 发布只更新内容数据和必要 receipt。
+
+该数据平面是当前项目内的文件/CAS 实现，不引入第二套 CMS 或外部数据仓。内容数据、产品能力和发布物的身份、生命周期和验收必须分别记录。
+
 ### 5.3 Practice / Robotaxi 作品
 
 Robotaxi 内容对象由上游批准的 `media`、可选 `action` 和内部 `provenance` 组成：
@@ -598,6 +611,7 @@ sourcePath / renderer / layoutPreset / alt / caption
 | 图形构建 | `src/architecture/`、`scripts/generate-evergreen-figures.mjs`、`src/content/diagramFigureAssets.js` | 构建期 adapter |
 | 文章图形投影 | `src/components/reading/RichDocument.jsx` | 统一 figure，不写业务 JSX |
 | 返回导航 | `src/components/navigation/ReturnNavigation.jsx` | 全站共享 |
+| 内容数据运行时 | canonical `.content-workspace/content`、`content-state/active`、ContentSet/ContentDataArtifact | 内容更新只更新数据 manifest/对象，不重建 ProductArtifact |
 | 内容发布 | `scripts/content-*`、`scripts/article-*`、发布命令 | 采集/审核数据不进产品版本；正式内容 publish 使用独立内容身份和内容证据 |
 
 `src/components/framework/` 中的旧架构运行时和投影代码属于迁移/历史实现，不是当前公开产品合同。未经新的产品版本方案确认，不得在新页面重新引用它们，也不得以删除遗留代码替代产品设计验收。
@@ -746,3 +760,4 @@ sourcePath / renderer / layoutPreset / alt / caption
 | 2026-08-01 | 补充 `PageDefinition → PageComposition` 页面产品架构、共享区域和能力展示互动合同；候选 DRAFT 改为只保留未确认能力细节 | 产品与视觉 task |
 | 2026-08-02 | 统一候选入口、current/history 和规则索引；roadmap 不再作为活动事实源 | 产品与视觉 task |
 | 2026-08-05 | 将全站视觉底层升级为冷白、sans-led、轻浮起和蓝色动作系统；定稿首页、B端产品、经营观察、About 页面组合、独立媒体槽位、正常 fallback、Robotaxi release reference 与 career 简历制品能力 | 产品与视觉 task |
+| 2026-08-15 | 明确内容数据平面、ContentDataArtifact、运行时内容读取与产品能力/内容发布分离 | 产品 task |

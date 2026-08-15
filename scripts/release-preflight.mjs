@@ -7,10 +7,10 @@ import process from "node:process";
 import { assertProductContentCompatibility } from "./lib/content-compatibility.mjs";
 import { assertNoVersionStateFields, evaluateProductReleaseReadiness, parseCurrentIterationVersion } from "./lib/release-readiness.mjs";
 import { readProductArtifact } from "./lib/product-artifact.mjs";
-import { readFile as readFileAsync } from "node:fs/promises";
 import { validateLifecycleEvidence } from "./lib/content-lifecycle-evidence.mjs";
 import { classifyReleaseScope } from "./lib/release-scope-classifier.mjs";
 import { readLifecycleEvidence } from "./lib/lifecycle-evidence-path.mjs";
+import { readQaBrowserInstallPolicyEvidence } from "./lib/qa-browser-install-policy.mjs";
 
 function git(...args) {
   try {
@@ -26,10 +26,7 @@ const currentIteration = await readFile(
   new URL("../docs/iterations/current.md", import.meta.url),
   "utf8",
 );
-const installPolicyEvidence = JSON.parse(await readFileAsync(new URL("../.content-workspace/qa/v02614/qa-browser-install-policy.json", import.meta.url)));
-if (installPolicyEvidence.status !== "passed" || installPolicyEvidence.policyVersion !== "qa-browser-install-policy-v1") {
-  throw new Error("QA_BROWSER_INSTALL_POLICY_PREFLIGHT: install policy evidence missing or failed");
-}
+const installPolicyEvidence = await readQaBrowserInstallPolicyEvidence({ root: process.cwd(), version: `v${packageJson.version}` });
 assertProductContentCompatibility({ currentText: currentIteration });
 assertNoVersionStateFields(currentIteration);
 try {

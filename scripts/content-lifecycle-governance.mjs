@@ -1,10 +1,3 @@
 #!/usr/bin/env node
-import { inventoryContentWorkspace, createLifecycleDryRun } from "./lib/content-lifecycle-governance.mjs";
-
-const argv = process.argv.slice(2);
-const sourceRoot = process.cwd();
-const inventory = await inventoryContentWorkspace({ sourceRoot });
-const output = argv.includes("--dry-run")
-  ? { inventory, dryRun: createLifecycleDryRun({ inventory, sourceRoot }) }
-  : { inventory };
-process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
+const { runGovernanceCli } = await import("./lib/governance-cli-runtime.mjs");
+process.exitCode = await runGovernanceCli({ argv: process.argv.slice(2), sourceRoot: process.cwd(), commandHint: "lifecycle" });

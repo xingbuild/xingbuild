@@ -1,3 +1,16 @@
+## v0.27.9 — 治理 CLI 资源边界与进程生命周期根治
+
+父版本：`v0.27.8` / `707c22c500b50edf30770c41678126a272e4e421`
+
+- 治理 CLI 先解析参数，显式 inventory 才能访问工作区，并要求有限文件、字节、时间、RSS 与输出预算。
+- metadata-only 与显式 full-scan 采用分阶段/流式处理；超限、取消、父进程退出和 lease 过期产生结构化 bounded evidence。
+- 运行使用临时 lease/profile，正常、失败和取消路径均清理 owned 临时资源；不执行内容清理、迁移、发布或 EdgeOne。
+- 本版本不改页面、内容事实、ContentSet、SitePublication 或 Content/Ops 发布边界。
+
+## 验证与发布边界
+
+- 先完成 GOV-01～GOV-10 未提交 Engineering 自 QA，交 `elon` 逐项复核；收到 `READY_FOR_COMMIT` 前不 commit/tag/build/preflight/transport/content publish。
+
 ## v0.27.8 — 版本无关生命周期 evidence 门禁
 
 父版本：`v0.27.7` / `8605e54dbc251e3012aa80763def1ef16c1c6d11`

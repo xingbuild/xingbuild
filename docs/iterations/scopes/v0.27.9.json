@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "release-scope-v1",
+  "phase": "pre-commit",
+  "version": "v0.27.9",
+  "baseHead": "707c22c500b50edf30770c41678126a272e4e421",
+  "scopeManifestPath": "docs/iterations/scopes/v0.27.9.json",
+  "scopeDigest": "5db51e9c0ffbbd0e8da7b27baa0f19ea28f851710734808729fa4f5b563ffa33",
+  "paths": [
+    {"path":"VERSION.md","classification":"implementation","owner":"elon engin","reason":"v0.27.9 version identity","pathHash":"f70e3dd39cf8e5b303d5a2e1fe81e135477902a1d0b2aa2828e4badd3c9169fb","state":"modified"},
+    {"path":"docs/design/v0.27.9 治理 CLI 资源边界与进程生命周期根治方案.md","classification":"record-only","owner":"elon","reason":"formal design input","pathHash":"7dd71c11fcbfb7d1cf80cab2f4eb4dbcfa80ed5941517495dca2b6bdc806ff40","state":"added"},
+    {"path":"docs/iterations/current.md","classification":"record-only","owner":"elon","reason":"formal current input","pathHash":"564149072e3dd8cbe9af261fcd39bd236909768f787c32e7b8b5d254539393a5","state":"modified"},
+    {"path":"docs/iterations/candidates/XBUILD-CONTENT-STORAGE-ARCHITECTURE-004.md","classification":"record-only","owner":"elon/Xing-confirmed","reason":"pending/DRAFT record-only; excluded from current, Engineering implementation, ProductArtifact and publish","pathHash":"a4ec4426cef4022b2c823197f2a41a5b1cd2e949615a75ab7434ff2490d71748","state":"added"},
+    {"path":"docs/iterations/history/candidates/XBUILD-GOVERNANCE-CLI-PROCESS-LIFECYCLE-005.md","classification":"record-only","owner":"elon","reason":"archived formal source candidate","pathHash":"b0a2709045348a5ac22387df84064805baa2b02e010ccdc8f82112f1af4d259d","state":"added"},
+    {"path":"docs/iterations/history/v0.27.9.md","classification":"record-only","owner":"elon engin","reason":"version history record","pathHash":"515164f82cfc718fb2e7ca49f652aa54a776d379a80dc40426b71fda3d3088c4","state":"added"},
+    {"path":"docs/iterations/scopes/v0.27.9.json","classification":"record-only","owner":"elon engin","reason":"scope manifest record; self excluded from digest","pathHash":"self-excluded","state":"added"},
+    {"path":"docs/product/xingbuild 网站产品架构与视觉系统总案.md","classification":"record-only","owner":"elon/Xing-confirmed","reason":"Xing-confirmed record-only existing modification; excluded from ProductArtifact runtime input","pathHash":"0e068626ae48a7f8eb6bc00a12835c053029456be29dd55a1f205767e1c76b4d","state":"modified"},
+    {"path":"package-lock.json","classification":"implementation","owner":"elon engin","reason":"v0.27.9 package lock","pathHash":"7b14e0ff0f08c4f6c1a9a3b67e1f7d0074bac7bbd3bf40fff3ae3e71dd32c0bd","state":"modified"},
+    {"path":"package.json","classification":"implementation","owner":"elon engin","reason":"bounded governance CLI scripts","pathHash":"83ffbff8625bb4118370f813933a15df3b80cc4d9b134505805f73a7eea2f145","state":"modified"},
+    {"path":"scripts/check-project.mjs","classification":"implementation","owner":"elon engin","reason":"project gate registration","pathHash":"4cae52571c11124a3a23abddac3a5638b2ae8842e951d1332ad960a330e912be","state":"modified"},
+    {"path":"scripts/content-lifecycle-governance.mjs","classification":"implementation","owner":"elon engin","reason":"lifecycle CLI adapter","pathHash":"2de65ae012ac6a84cdc31d9c076e120e9d58043eedadaec2f187267a6d99f1f3","state":"modified"},
+    {"path":"scripts/content-storage-governance.mjs","classification":"implementation","owner":"elon engin","reason":"storage CLI adapter","pathHash":"2880f96603e8476e9e136925a75c5f125f2920ab82d922799c5a894cae7cde5f","state":"modified"},
+    {"path":"scripts/governance-cli.mjs","classification":"implementation","owner":"elon engin","reason":"single generic governance entry","pathHash":"0149538684c2b4638c4e1af042c3eea76c353269eceb1fbf38769857a75468c6","state":"added"},
+    {"path":"scripts/lib/governance-cli-runtime.mjs","classification":"implementation","owner":"elon engin","reason":"bounded runtime/inventory/evidence","pathHash":"5e6e72ae4eb195da3c7ccc088f07200d831789935a5f0d6bc48556b7d9f53dd4","state":"added"},
+    {"path":"scripts/qa-browser-install-check.mjs","classification":"implementation","owner":"elon engin","reason":"current-version install policy evidence producer","pathHash":"a427f6db11e7a71e6f87888133ab2e49f7e6846108f4b27d39a79d92ab976bce","state":"modified"},
+    {"path":"scripts/qa-v0279-governance.mjs","classification":"implementation","owner":"elon engin","reason":"GOV-01..GOV-10 evidence runner","pathHash":"cf0e5112287dcc837946b33092d89b074aabb9b0096d52db4e2bfc3e4ef35faf","state":"added"},
+    {"path":"scripts/release-closeout-check.mjs","classification":"implementation","owner":"elon engin","reason":"current-version install policy closeout gate","pathHash":"4557eb6a08341c4b0ebdfe6140459b512278119c757e1265cdda1f2550fe8cb8","state":"modified"},
+    {"path":"scripts/release-preflight.mjs","classification":"implementation","owner":"elon engin","reason":"current-version install policy preflight gate","pathHash":"2dd0768024eed45d79d366addbbec23b870eb9ce280a058f2bae4d07f3865c43","state":"modified"},
+    {"path":"scripts/lib/qa-browser-install-policy.mjs","classification":"implementation","owner":"elon engin","reason":"shared current-version install policy evidence resolver","pathHash":"dcff993475035db40a39e438b27f16e02306b990edb4a7ff983a7ac54e008858","state":"added"},
+    {"path":"tests/v0279-release-gate-install-policy.test.mjs","classification":"implementation","owner":"elon engin","reason":"release gate current-version evidence regression and negative tests","pathHash":"163fd7540973225545398e5bd5c13a08dc41020337ee747a32d02a71f36f3772","state":"added"},
+    {"path":"tests/v0279-governance-cli.test.mjs","classification":"implementation","owner":"elon engin","reason":"governance runtime tests","pathHash":"ec4e83da19ec5ddf72c5984594da49073096c11d0da45a4d63d76002affb33b6","state":"added"}
+  ]
+}

@@ -1,6 +1,6 @@
 {
   "name": "xingbuild",
-  "version": "0.27.8",
+  "version": "0.27.9",
   "private": true,
   "type": "module",
   "scripts": {
@@ -27,8 +27,9 @@
     "content:check": "node scripts/content-check.mjs",
     "content:preview": "node scripts/content-preview.mjs",
     "content:preview:site": "node scripts/content-site-preview.mjs",
-    "content:lifecycle": "node scripts/content-lifecycle-governance.mjs --inventory --dry-run",
-    "content:storage:check": "node scripts/content-storage-governance.mjs",
+    "content:lifecycle": "node scripts/content-lifecycle-governance.mjs inventory --dry-run --max-files 20000 --max-total-bytes 134217728 --max-file-bytes 8388608 --max-wall-ms 15000 --max-rss-mb 512 --max-output-bytes 8388608 --output .content-workspace/qa/v0279-lifecycle-evidence.json",
+    "content:storage:check": "node scripts/content-storage-governance.mjs inventory --dry-run --max-files 20000 --max-total-bytes 134217728 --max-file-bytes 8388608 --max-wall-ms 15000 --max-rss-mb 512 --max-output-bytes 8388608 --output .content-workspace/qa/v0279-storage-evidence.json",
+    "qa:governance:v0279": "node scripts/qa-v0279-governance.mjs",
     "content:storage:check:v0274": "node scripts/content-storage-governance-v0274.mjs",
     "content:lifecycle:evidence:v0275": "node scripts/content-lifecycle-evidence-v0275.mjs",
     "content:lifecycle:evidence": "node scripts/content-lifecycle-evidence.mjs",

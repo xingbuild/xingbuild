@@ -3,11 +3,17 @@
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { access, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-export const QA_BROWSER_INSTALL_POLICY_VERSION = "qa-browser-install-policy-v1";
+import {
+  QA_BROWSER_INSTALL_POLICY_VERSION,
+  qaBrowserInstallPolicyEvidencePath,
+} from "./lib/qa-browser-install-policy.mjs";
+
+export { QA_BROWSER_INSTALL_POLICY_VERSION } from "./lib/qa-browser-install-policy.mjs";
 export const QA_BROWSER_INSTALL_POLICY_ERRORS = Object.freeze({
   missingConfig: "QA_BROWSER_INSTALL_POLICY_MISSING_CONFIG",
   invalidConfig: "QA_BROWSER_INSTALL_POLICY_INVALID_CONFIG",
@@ -25,7 +31,8 @@ export const QA_BROWSER_INSTALL_CACHE_DIRECTORY = path.join(
   "qa-browser-runtime",
   "puppeteer-cache",
 );
-const evidencePath = path.join(root, ".content-workspace", "qa", "v02614", "qa-browser-install-policy.json");
+const packageVersion = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")).version;
+const evidencePath = qaBrowserInstallPolicyEvidencePath(root, `v${packageVersion}`);
 const forbiddenEnvironmentNames = Object.freeze([
   "PUPPETEER_CACHE_DIR",
   "PUPPETEER_EXECUTABLE_PATH",
@@ -157,6 +164,7 @@ export async function runInstallPolicyCheck({ env = process.env, writeEvidence =
   }
   const evidence = {
     policyVersion: QA_BROWSER_INSTALL_POLICY_VERSION,
+    version: `v${packageVersion}`,
     status: "passed",
     startedAt,
     completedAt: now(),

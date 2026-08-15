@@ -109,6 +109,10 @@ const requiredFiles = [
   "public/resume/resume.pdf",
   "scripts/lib/content-lifecycle-time.mjs",
   "scripts/lib/content-lifecycle-governance.mjs",
+  "scripts/lib/governance-cli-runtime.mjs",
+  "scripts/lib/qa-browser-install-policy.mjs",
+  "scripts/governance-cli.mjs",
+  "scripts/qa-v0279-governance.mjs",
   "scripts/content-lifecycle-governance.mjs",
   "tests/product-content-isolation.test.mjs",
   "scripts/verify-public-release.mjs",
@@ -145,6 +149,7 @@ const requiredFiles = [
   "scripts/content-lifecycle-evidence.mjs",
   "tests/v0275-content-lifecycle-evidence.test.mjs",
   "tests/v0278-lifecycle-evidence.test.mjs",
+  "tests/v0279-governance-cli.test.mjs",
 ];
 
 for (const file of requiredFiles) {
@@ -163,7 +168,8 @@ assert.equal(packageJson.scripts["site-publication"], "node scripts/site-publica
 assert.equal(packageJson.scripts["content:preview:site"], "node scripts/content-site-preview.mjs", "content site preview must use the single dev-only entry point");
 assert.equal(packageJson.scripts["qa:resume-artifact"], "node scripts/lib/resume-artifact.mjs", "resume artifact verification must use the single registry check");
 assert.equal(packageJson.scripts["qa:content-preview:evidence"], "node scripts/qa-v02631-content-preview-evidence.mjs", "content preview evidence must use the exact-head evidence entry point");
-assert.equal(packageJson.scripts["content:lifecycle"], "node scripts/content-lifecycle-governance.mjs --inventory --dry-run", "content lifecycle governance must stay read-only and explicit");
+assert.match(packageJson.scripts["content:lifecycle"], /^node scripts\/content-lifecycle-governance\.mjs inventory --dry-run .*--output \.content-workspace\/qa\/v0279-lifecycle-evidence\.json$/, "content lifecycle governance must stay bounded and explicit");
+assert.match(packageJson.scripts["content:storage:check"], /^node scripts\/content-storage-governance\.mjs inventory --dry-run .*--output \.content-workspace\/qa\/v0279-storage-evidence\.json$/, "content storage governance must stay bounded and explicit");
 assert.equal(packageJson.scripts["content:storage:check:v0274"], "node scripts/content-storage-governance-v0274.mjs", "v0.27.4 storage evidence must use the sole reducer entry point");
 assert.equal(packageJson.scripts["content:lifecycle:evidence:v0275"], "node scripts/content-lifecycle-evidence-v0275.mjs", "v0.27.5 lifecycle evidence must use the sole stage-aware entry point");
 assert.equal(packageJson.scripts["content:lifecycle:evidence"], "node scripts/content-lifecycle-evidence.mjs", "current lifecycle evidence must use the version-aware entry point");
