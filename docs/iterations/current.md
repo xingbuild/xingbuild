@@ -1,20 +1,20 @@
 # 当前迭代
 
-## 当前唯一版本：`v0.27.9`
+## 当前唯一版本：`v0.28.0`
 
-父版本：v0.27.8 / `707c22c500b50edf30770c41678126a272e4e421`
+父版本：v0.27.9 / `7374b75a7a611217cfa0199e2d81ec7964dc3386`
 
-contentImpact: compatible
-contentImpactReason: governance-cli-process-lifecycle
-affectedTargets: []
-affectedRoutes: []
-affectedFields: []
-compatibilityEvidence: v0.27.8-product-content-runtime-unchanged
+contentImpact: breaking
+contentImpactReason: content-data-plane-runtime-and-content-only-publication
+affectedTargets: [home, products, business-observations, observations, about]
+affectedRoutes: [/, /products, /business-observations, /observations, /about]
+affectedFields: [contentDataArtifact, activeTuple, runtimeContentManifest, contentOnlyPublication]
+compatibilityEvidence: requires-v0.28.0-content-migration-and-runtime-evidence
 
 ## 正式方案
 
-[v0.27.9 治理 CLI 资源边界与进程生命周期根治方案](../design/v0.27.9%20%E6%B2%BB%E7%90%86%20CLI%20%E8%B5%84%E6%BA%90%E8%BE%B9%E7%95%8C%E4%B8%8E%E8%BF%9B%E7%A8%8B%E7%94%9F%E5%91%BD%E5%91%A8%E6%A0%B9%E6%B2%BB%E6%96%B9%E6%A1%88.md)
+[v0.28.0 内容数据平面与内容增量发布架构方案](../design/v0.28.0%20%E5%86%85%E5%AE%B9%E6%95%B0%E6%8D%AE%E5%B9%B3%E9%9D%A2%E4%B8%8E%E5%86%85%E5%AE%B9%E5%A2%9E%E9%87%8F%E5%8F%91%E5%B8%83%E6%9E%B6%E6%9E%84%E6%96%B9%E6%A1%88.md)
 
 ## 执行范围
 
-治理 CLI 先分流参数，再按显式模式执行有预算 inventory；建立流式/分阶段算法、取消与孤儿进程收口、最小 failure receipt 和可复现 evidence。保持 ProductArtifact、ContentSet、SitePublication、内容数据平面和 Content/Ops 边界不变；不执行清理或发布。
+实现 ContentDataArtifact、运行时内容读取、CAS/changed-only 复用、原子 active tuple、内容-only 增量发布、临时 materialization、最小 receipt、失败回退和 SA-00..SA-11 验收。保持 ContentSet/Ops 身份边界；不在本版本执行物理清理、迁移、transport 或 content publish。

@@ -23,7 +23,7 @@ flowchart LR
 | `scripts/` | 检查、内容准备、业务准备、构建和发布工具 | 工具不能越过产品/内容责任边界；兼容入口只提交 intent，只有 SitePublication Coordinator 调用 EdgeOne |
 | `worker/` | EdgeOne Worker 与访问资格运行边界 | 不在页面组件中复制服务端逻辑 |
 | `src/generated/`、`public/` | 由显式生成命令产出的受控文件 | 源/产品方案变更后、local commit 前生成并纳入同一提交 |
-| `dist/client/` | 产品 ProductArtifact 的已验证静态产物 | 在最终 commit/tag 后由 `release:build` 生成；Coordinator 在独立 staging 中将 ProductArtifact 与 active ContentSet 组成 SiteSnapshot，普通产品 build 不读 ignored 内容 |
+| `dist/client/` | 产品 ProductArtifact 的已验证静态产物 | 在最终 commit/tag 后由 `release:build` 生成；Coordinator 在独立临时 staging 中将 ProductArtifact、active ContentSet 与 ContentDataArtifact 适配到既有 site-snapshot-v1，普通产品 build 不读 ignored 内容 |
 | `tests/` | 结构、内容、发布、运行时和治理合同验证 | 测试失败不得被发布命令自动绕过 |
 
 ## 二、工程执行原则
@@ -34,7 +34,7 @@ flowchart LR
 - scope manifest（`docs/iterations/scopes/v{版本号}.json`）是本次提交的唯一范围事实；它只保存 pre-commit baseHead。closeout、release-build、preflight 和 unified-publish 必须调用同一个 path classifier；post-commit committedHead 放在独立 machine evidence，并按 phase 校验 firstParent(committedHead)=baseHead、声明集合、owner/reason、scope digest 和工作区实际路径一致。`excludedExternal` 只记录不属于本次范围的 owner，不绕过 dirty；目录 allowlist 或单独 gate 例外均无效。
 - 生成器 `architecture:views`、`framework:data`、`framework:layout`、`article:figures` 只在源/方案变化后显式运行；构建和发布不无条件调用会回写 tracked 输出的生成器。
 - `npm run release:prepare` / `release:build` 负责产品业务准备、构建和验证；最终 build 必须发生在 commit/tag 后；`publish-xingbuild.command` / `unified-publish --kind product` 只校验 classifier-confirmed scope-clean 的 exact HEAD/tag 与 ProductArtifact，随后由 Coordinator 按授权执行 push、唯一 deploy、传播和公网验证，不包含网站业务逻辑。
-- 产品 publish 与内容 publish 是两个独立责任边界：产品 publish 提交 ProductRelease intent；内容 publish 生成 ContentSet Candidate（包括 `home` 首页内容入口）；两者都不能直接调用 EdgeOne，统一由 Coordinator 取得站点 lease、组装一个 SiteSnapshot、部署、等待传播和精确验证。旧 receipts、ContentSlotRegistry、PublicationLineageBinding、projection 和 package 只读保留为迁移/审计证据，不再进入正常运行路径。
+- 产品 publish 与内容 publish 是两个独立责任边界：产品 publish 提交 ProductRelease intent；内容 publish 生成 ContentSet Candidate 与 ContentDataArtifact（包括 `home` 首页内容入口）；两者都不能直接调用 EdgeOne，统一由 Coordinator 取得站点 lease、以既有 site-snapshot-v1 组装引用、部署、等待传播和精确验证。内容-only 变更复用 ProductArtifact 的 JS/CSS，完整 client 只存在于临时 upload root；旧 receipts、ContentSlotRegistry、PublicationLineageBinding、projection 和 package 只读保留为迁移/审计证据，不再进入正常运行路径。
 - 任一构建后未分类 tracked dirty、版本身份不一致、产物缺失或发布目标不明确，必须停止并形成 Publish Incident；已由 owner 明确标记为 `record-only` 且纳入版本暂存/history 的候选不属于未分类 dirty。closeout、build、preflight、publish 不得自行读取全局 dirty 作为结论，只能使用同一 classifier 的分类结果；不得自动 patch、commit、tag、重试或继续后续阶段。
 
 ## 三、代码与事实边界

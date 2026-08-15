@@ -99,7 +99,11 @@ const requiredFiles = [
   "scripts/lib/content-set.mjs",
   "scripts/lib/home-content-adapter.mjs",
   "scripts/lib/content-set-candidate.mjs",
+  "scripts/lib/content-data-plane.mjs",
+  "scripts/lib/content-only-publication.mjs",
   "scripts/lib/site-snapshot.mjs",
+  "src/content/contentDataArtifact.js",
+  "src/content/contentDataRuntimeHook.js",
   "scripts/lib/publication-run.mjs",
   "scripts/lib/product-artifact.mjs",
   "scripts/release-build.mjs",
@@ -113,6 +117,7 @@ const requiredFiles = [
   "scripts/lib/qa-browser-install-policy.mjs",
   "scripts/governance-cli.mjs",
   "scripts/qa-v0279-governance.mjs",
+  "scripts/qa-v0280-content-data-plane.mjs",
   "scripts/content-lifecycle-governance.mjs",
   "tests/product-content-isolation.test.mjs",
   "scripts/verify-public-release.mjs",
@@ -150,6 +155,7 @@ const requiredFiles = [
   "tests/v0275-content-lifecycle-evidence.test.mjs",
   "tests/v0278-lifecycle-evidence.test.mjs",
   "tests/v0279-governance-cli.test.mjs",
+  "tests/v0280-content-data-plane.test.mjs",
 ];
 
 for (const file of requiredFiles) {
@@ -168,6 +174,7 @@ assert.equal(packageJson.scripts["site-publication"], "node scripts/site-publica
 assert.equal(packageJson.scripts["content:preview:site"], "node scripts/content-site-preview.mjs", "content site preview must use the single dev-only entry point");
 assert.equal(packageJson.scripts["qa:resume-artifact"], "node scripts/lib/resume-artifact.mjs", "resume artifact verification must use the single registry check");
 assert.equal(packageJson.scripts["qa:content-preview:evidence"], "node scripts/qa-v02631-content-preview-evidence.mjs", "content preview evidence must use the exact-head evidence entry point");
+assert.equal(packageJson.scripts["qa:content-data-plane:v0280"], "node scripts/qa-v0280-content-data-plane.mjs", "v0.28.0 content data-plane QA must use the bounded evidence entry point");
 assert.match(packageJson.scripts["content:lifecycle"], /^node scripts\/content-lifecycle-governance\.mjs inventory --dry-run .*--output \.content-workspace\/qa\/v0279-lifecycle-evidence\.json$/, "content lifecycle governance must stay bounded and explicit");
 assert.match(packageJson.scripts["content:storage:check"], /^node scripts\/content-storage-governance\.mjs inventory --dry-run .*--output \.content-workspace\/qa\/v0279-storage-evidence\.json$/, "content storage governance must stay bounded and explicit");
 assert.equal(packageJson.scripts["content:storage:check:v0274"], "node scripts/content-storage-governance-v0274.mjs", "v0.27.4 storage evidence must use the sole reducer entry point");
@@ -190,6 +197,19 @@ const siteContent = await readFile(
   new URL("../src/content/siteContent.js", import.meta.url),
   "utf8",
 );
+const pageContentResolver = await readFile(
+  new URL("../src/content/pageContentResolver.js", import.meta.url),
+  "utf8",
+);
+const contentDataRuntime = await readFile(
+  new URL("../src/content/contentDataArtifact.js", import.meta.url),
+  "utf8",
+);
+assert(contentDataRuntime.includes("fetchRuntimeContentData"), "ContentDataArtifact runtime must fetch immutable data manifests");
+assert(contentDataRuntime.includes("/content-data/active.json"), "ContentDataArtifact runtime must read the active tuple URL");
+assert(!contentDataRuntime.includes("import.meta.glob"), "ContentDataArtifact runtime must not eagerly import workspace data");
+assert(pageContentResolver.includes("resolveRuntimeContentData"), "page content resolver must consume the ContentDataArtifact runtime adapter");
+assert(pageContentResolver.includes("contentDataRuntimeEnabled"), "page content resolver must keep product-only fallback behind the data-plane capability check");
 const resumeModule = await readFile(new URL("../src/content/resumeArtifact.js", import.meta.url), "utf8");
 const resumeActions = await readFile(new URL("../src/components/profile/ResumeActions.jsx", import.meta.url), "utf8");
 assert(!resumeModule.includes("Kami") && !resumeModule.includes("htmlPath"), "public resume registry must not expose legacy HTML/template identity");
@@ -263,6 +283,10 @@ for (const composition of ["HomeComposition", "ShowcaseComposition", "Collection
 assert(app.includes("findPageDefinitionByRoute"), "app routes must resolve through the page definition registry");
 assert(app.includes("PageCompositionRenderer"), "app routes must use the shared composition renderer");
 const viteConfig = await readFile(new URL("../vite.config.mjs", import.meta.url), "utf8");
+const releaseBuild = await readFile(new URL("../scripts/release-build.mjs", import.meta.url), "utf8");
+assert(viteConfig.includes("__XINGBUILD_CONTENT_RUNTIME__"), "Vite must define the independent ContentDataArtifact runtime capability");
+assert(releaseBuild.includes("XINGBUILD_CONTENT_RUNTIME: \"1\""), "final ProductArtifact builds must enable runtime content reads explicitly");
+assert(!releaseBuild.includes("XINGBUILD_CONTENT_BUILD: \"1\""), "final ProductArtifact builds must not enable build-time workspace embedding");
 assert(viteConfig.includes("xingbuild:content-target-update"), "content preview must use the target update event");
 assert(viteConfig.includes("contentPreviewRuntimeV2"), "content preview must use the explicit runtime v2");
 assert(viteConfig.includes("preview-events"), "content preview must expose the explicit event channel");

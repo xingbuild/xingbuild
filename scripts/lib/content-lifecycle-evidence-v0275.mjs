@@ -260,7 +260,16 @@ export function reduceLifecycleAcceptance({ evidence } = {}) {
   const requiredScopePaths = ["scripts/check-project.mjs", "scripts/release-build.mjs", "scripts/release-closeout-check.mjs", "scripts/release-preflight.mjs"];
   const scopePaths = new Set(evidence?.scope?.allowedPaths || []);
   const exclusions = evidence?.scope?.excludedExternalPaths || [];
-  const scopeComplete = requiredScopePaths.every((entry) => scopePaths.has(entry)) && exclusions.includes("AGENTS.md") && exclusions.some((entry) => entry.startsWith("docs/rules/")) && typeof evidence?.scope?.excludedExternalReason === "string";
+  const legacyScopeComplete = requiredScopePaths.every((entry) => scopePaths.has(entry))
+    && exclusions.includes("AGENTS.md")
+    && exclusions.some((entry) => entry.startsWith("docs/rules/"))
+    && typeof evidence?.scope?.excludedExternalReason === "string";
+  const manifestScopeComplete = /^docs\/iterations\/scopes\/v\d+\.\d+\.\d+\.json$/.test(evidence?.scopeManifestPath || "")
+    && SHA256.test(evidence?.scopeManifestDigest || "")
+    && evidence?.scope?.scopeManifestPath === evidence.scopeManifestPath
+    && evidence?.scope?.baseHead === evidence?.baseHead
+    && scopePaths.has(evidence.scopeManifestPath);
+  const scopeComplete = legacyScopeComplete || manifestScopeComplete;
   const pre = evidence?.stage === "pre-commit" && /^[a-f0-9]{40}$/.test(evidence?.baseHead || "") && SHA256.test(evidence?.scopeDigest || "") && evidence?.provenance?.realRun === true && scopeComplete;
   const post = evidence?.stage === "post-commit" && /^v\d+\.\d+\.\d+$/.test(evidence?.version || "") && /^[a-f0-9]{40}$/.test(evidence?.commit || "") && evidence?.tag === evidence?.version && evidence?.tagType === "tag" && evidence?.tagCommit === evidence?.commit && evidence?.productVersion === evidence?.version && evidence?.productCommit === evidence?.commit && evidence?.productArtifactId && SHA256.test(evidence?.artifactHash || "") && evidence?.baseSiteArtifactId && evidence?.rootManifestHash === evidence?.inventory?.rootManifestHash;
   out["C-01"] = pre || post ? pass({ stage: evidence.stage, baseHead: evidence.baseHead, commit: evidence.commit, tag: evidence.tag, scopeDigest: evidence.scopeDigest, allowedPaths: [...scopePaths].sort(), excludedExternalPaths: exclusions }) : fail("two-stage identity or complete scope binding is incomplete", { scopeComplete, requiredScopePaths, allowedPaths: [...scopePaths].sort(), excludedExternalPaths: exclusions });

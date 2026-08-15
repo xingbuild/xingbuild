@@ -6,6 +6,7 @@ import { profile } from "./profileRepository.js";
 import { site } from "./siteContent.js";
 import { home } from "./homeContentAdapter.js";
 import { normalizeLongFormDocument } from "./longFormDocument.js";
+import { contentDataRuntimeEnabled, resolveRuntimeContentData } from "./contentDataArtifact.js";
 
 const contentResolvers = Object.freeze({
   home: (reference) => reference.id === "home" ? home : null,
@@ -17,12 +18,35 @@ const contentResolvers = Object.freeze({
   observationBriefs: (reference) => selectObservationBriefs({ scope: reference.scope === "all" ? undefined : reference.scope }),
 });
 
+function runtimeLogicalContentId(reference) {
+  const kindByType = {
+    home: "home",
+    profile: "profile",
+    practice: "practice",
+    businessObservation: "businessObservation",
+    evergreenArticle: "article",
+  };
+  const kind = kindByType[reference?.type];
+  return kind && reference?.id ? `${kind}:${reference.id}` : null;
+}
+
+function resolveRuntimeReference(reference, runtimeData = null) {
+  if (!contentDataRuntimeEnabled()) return { enabled: false, value: null };
+  const logicalContentId = runtimeLogicalContentId(reference);
+  if (!logicalContentId) return { enabled: true, value: null };
+  const resolved = resolveRuntimeContentData({ logicalContentId, data: runtimeData });
+  return { enabled: Boolean(runtimeData), value: resolved ?? null };
+}
+
 /** Resolve only approved repository objects referenced by a validated page definition. */
-export function resolvePageContent(definition) {
+export function resolvePageContent(definition, { runtimeData = null } = {}) {
   const content = {};
   for (const [key, reference] of Object.entries(definition.contentRefs)) {
     const resolver = contentResolvers[reference.type];
-    const value = resolver?.(reference);
+    const runtime = resolveRuntimeReference(reference, runtimeData);
+    const value = runtime.enabled && runtimeLogicalContentId(reference)
+      ? runtime.value
+      : resolver?.(reference);
     const resolved = reference.type === "observationBriefs" && !Array.isArray(value) ? [] : value ?? null;
     content[key] = ["profile", "evergreenArticle"].includes(reference.type) && resolved
       ? normalizeLongFormDocument(resolved, { documentId: resolved.slug || resolved.id })

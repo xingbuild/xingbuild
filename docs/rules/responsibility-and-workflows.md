@@ -13,8 +13,8 @@
 | --- | --- | --- |
 | 产品与视觉 | 产品总案、IA、页面能力、视觉合同、候选评审、正式方案、`current.md`、产品/视觉验收 | 日常选题、逐条事实审核、产品代码提交、线上 transport |
 | Engineering | 读取 `current.md` 实现产品能力，按 checklist 自 QA 并回传未提交证据；收到 `elon` 的 `READY_FOR_COMMIT` 后完成版本记录、commit/tag/clean、build/preflight，并按持续授权提交产品 transport 意图 | 在 `READY_FOR_COMMIT` 前 commit/tag/build/preflight；自行改变产品目标、越过方案、把内容发布当产品版本、擅自创建 task/分支/worktree、直接调用 EdgeOne deploy |
-| 内容与发布 | Brief/Article/Practice、B 端产品页面内容、事实审核、独立 `ContentReleaseIntent` 和内容事实验收；将意图提交给 SitePublication Coordinator | 修改页面能力、IA、schema、组件、视觉 token、产品版本、产品 tag、直接调用 EdgeOne deploy |
-| SitePublication Coordinator | 读取当前 ProductArtifact 与 active ContentReleaseIntent，取得站点 lease，生成整站 snapshot，唯一调用 EdgeOne，保存 deployment、传播验证、recovery 和 finalize | 决定产品业务、编写内容、替代产品/内容 owner、改变产品或内容事实 |
+| 内容与发布 | Brief/Article/Practice、B 端产品页面内容、事实审核、独立 `ContentReleaseIntent`/ContentSet Candidate/ContentDataArtifact 和内容事实验收；将意图提交给 SitePublication Coordinator | 修改页面能力、IA、schema、组件、视觉 token、产品版本、产品 tag、直接调用 EdgeOne deploy |
+| SitePublication Coordinator | 读取当前 ProductArtifact、active ContentSet 与 active ContentDataArtifact，取得站点 lease，引用既有 site-snapshot-v1，唯一调用 EdgeOne，保存 deployment、传播验证、recovery 和 finalize | 决定产品业务、编写内容、替代产品/内容 owner、改变产品或内容事实 |
 | Ops | 来源覆盖、可信证据候选、去重和运行记录 | 写公开正文、人工审核、发布、创建或复制 scheduler |
 | Xing | 产品方向、关键未决项、持续发布授权的暂停/撤销和其他不可逆外部决策 | 不替代执行 owner 的实现和验证 |
 
@@ -85,7 +85,7 @@ flowchart LR
     P[ProductRelease] --> S
 ```
 
-内容和 Ops 使用各自合同、被忽略 `.content-workspace/` 与独立发布身份，不进入产品 `current.md`、产品实现范围或产品 commit/tag；内容 transport 可以独立准备，但物理站点 transport 必须由 SitePublication Coordinator 串行合并 active 内容。规则、候选、history 等 tracked 项目记录不属于内容 Ops，它们按 `record-only` 进入 Git；只有新增页面、路由、schema、组件、交互或共享视觉能力时，才转为产品候选并进入产品工程闭环。
+内容和 Ops 使用各自合同、被忽略 `.content-workspace/` 与独立发布身份，不进入产品 `current.md`、产品实现范围或产品 commit/tag；内容 transport 可以独立准备，但物理站点 transport 必须由 SitePublication Coordinator 串行合并 active ContentSet 与 ContentDataArtifact。规则、候选、history 等 tracked 项目记录不属于内容 Ops，它们按 `record-only` 进入 Git；只有新增页面、路由、schema、组件、交互或共享视觉能力时，才转为产品候选并进入产品工程闭环。
 
 ## 六、固定收口报告
 

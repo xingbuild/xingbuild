@@ -6,12 +6,14 @@
 
 | 当前 task 别名 | 原职责/兼容标识 | threadId | hostId | returnThreadId | 状态 | 最后核验 |
 | --- | --- | --- | --- | --- | --- |
-| `elon` | 原产品/视觉主线 | `019fc260-e14e-7211-97f1-44e075d0cc0f` | `local` | `019fc260-e14e-7211-97f1-44e075d0cc0f` | active | 2026-08-15 |
-| `elon1` | 历史过程文件与清理治理，只读分析 | `019ff905-7298-7bf0-b3fb-ba3fc10a40c2` | `local` | `019fc260-e14e-7211-97f1-44e075d0cc0f` | active | 2026-08-15 |
+| `elon` | 产品总负责人 | `01a00637-f0b0-79c3-aa1e-6dd463dd37d1` | `local` | `01a00637-f0b0-79c3-aa1e-6dd463dd37d1` | active | 2026-08-16 |
+| `elon1` | 历史过程文件与清理治理，只读分析 | `019ff905-7298-7bf0-b3fb-ba3fc10a40c2` | `local` | `01a00637-f0b0-79c3-aa1e-6dd463dd37d1` | active | 2026-08-16 |
+| 历史归档 | 原产品总负责人（上下文污染后停止） | `01a0061d-a36c-79a2-a128-67e94035eab4` | `local` | `01a00637-f0b0-79c3-aa1e-6dd463dd37d1` | archived | 2026-08-16 |
+| 历史归档 | 原产品/视觉主线（旧 elon） | `019fc260-e14e-7211-97f1-44e075d0cc0f` | `local` | `01a0061d-a36c-79a2-a128-67e94035eab4` | archived | 2026-08-15 |
 | 历史归档 | 原 Engineering 主线（旧） | `019fc263-abf9-7732-84ef-73914e6a0a85` | `local` | `019fc260-e14e-7211-97f1-44e075d0cc0f` | archived | 2026-08-04 |
-| `elon engin` | 原 Engineering 主线 | `019fcbf2-20e3-7d51-a4de-87ad7c94b190` | `local` | `019fc260-e14e-7211-97f1-44e075d0cc0f` | active | 2026-08-15 |
-| `elon ui`（slug：`elon-ui`） | 原 `design-ui` 视觉方向 | `019fd068-cd5d-7f30-9642-32d0589a4953` | `local` | `019fc260-e14e-7211-97f1-44e075d0cc0f` | active | 2026-08-15 |
-| `elon ops` | 原内容及发布主线；兼容标识 `ops-content` | `019fa166-9645-7532-87f6-99ae4cf9508a` | `local` | `019fc260-e14e-7211-97f1-44e075d0cc0f` | active | 2026-08-15 |
+| `elon engin` | 原 Engineering 主线 | `019fcbf2-20e3-7d51-a4de-87ad7c94b190` | `local` | `01a00637-f0b0-79c3-aa1e-6dd463dd37d1` | active | 2026-08-16 |
+| `elon ui`（slug：`elon-ui`） | 原 `design-ui` 视觉方向 | `019fd068-cd5d-7f30-9642-32d0589a4953` | `local` | `01a00637-f0b0-79c3-aa1e-6dd463dd37d1` | active | 2026-08-16 |
+| `elon ops` | 原内容及发布主线；兼容标识 `ops-content` | `019fa166-9645-7532-87f6-99ae4cf9508a` | `local` | `01a00637-f0b0-79c3-aa1e-6dd463dd37d1` | active | 2026-08-16 |
 | 历史归档 | 原 Ops 采集主线（旧） | `019fb57b-e90e-75a3-8898-ce380d6dc1fa` | `local` | `unverified` | archived | 2026-08-05 |
 | `elon ops1` | 原 Ops 采集主线 | `019fd012-6699-7b90-aadf-c2da6b097644` | `local` | `019fa166-9645-7532-87f6-99ae4cf9508a` | active | 2026-08-15 |
 

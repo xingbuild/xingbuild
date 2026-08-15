@@ -85,7 +85,7 @@ transport 顺序固定：
 3. 校验 `dist/client/release.json` 与版本/commit 匹配；
 4. 执行 `release:preflight`；
 5. Xing 已授予产品闭环持续发布授权；`elon` 在 commit 前回传 `READY_FOR_COMMIT`、Engineering 完成精确 commit/tag/build/preflight、必要的 `elon ui` 或内容分流通过后，Engineering 直接使用显式 `--authorize-publish` 执行，不再逐次向 Xing 询问；除非 Xing 明确暂停、停止、撤销或要求人工接管，否则自动完成后续 push、deploy、public verify；硬失败仍立即停止；
-6. 由协调器将当前 ProductArtifact 与 active `ContentSet` 合并为一个 `SiteSnapshot`，取得站点 lease 后部署到固定 EdgeOne 目标：`name=xingbuild-nochina`、`projectId=makers-ze0f6txvlhco`、`domain=xingbuild.top`；
+6. 由协调器将当前 ProductArtifact、active `ContentSet` 与 active `ContentDataArtifact` 以既有 `site-snapshot-v1` 引用合并，取得站点 lease 后部署到固定 EdgeOne 目标：`name=xingbuild-nochina`、`projectId=makers-ze0f6txvlhco`、`domain=xingbuild.top`；内容-only 变更只使用临时 upload root，不持久化完整 client。
 7. 持久化 machine-readable deployment JSON，按有界退避等待传播，校验 `release.json`、`content-manifest.json`、目标页面/媒体与 active/candidate 集合；
 8. 只有 `SitePublication` finalized 才报告线上统一产品和内容结果；Deploy Success、push 或单页 HTTP 200 均不等于完成。
 
@@ -93,7 +93,7 @@ transport 顺序固定：
 
 ## 7. 内容运营边界
 
-内容 Observation、Article、Practice、Profile、Business Observation 和不改变页面能力的 B 端产品内容不进入产品版本；它们使用独立 `ContentSet Candidate`、ignored `.content-workspace/` 和独立运营生命周期。内容 task 不读取当前产品 HEAD/tag 作为内容身份，不创建产品 commit/tag；它提交 ContentSet Candidate 给唯一 `Site Publication Coordinator`，由协调器选择当前稳定 ProductArtifact 并与 active ContentSet 组装 SiteSnapshot，不使用旧产品 dist 作为内容事实。详细阶段、日志和内容事实以内容运营规则为准。
+内容 Observation、Article、Practice、Profile、Business Observation 和不改变页面能力的 B 端产品内容不进入产品版本；它们使用独立 `ContentSet Candidate`、`ContentDataArtifact`、ignored `.content-workspace/` 和独立运营生命周期。内容 task 不读取当前产品 HEAD/tag 作为内容身份，不创建产品 commit/tag；它提交 Candidate/DataArtifact intent 给唯一 `Site Publication Coordinator`，由协调器选择当前稳定 ProductArtifact 并与 active ContentSet/active data tuple 组装既有 SiteSnapshot，不使用旧产品 dist 作为内容事实。详细阶段、日志和内容事实以内容运营规则为准。
 
 产品与内容可以独立准备，但不能并行 transport：产品 transport 中 ContentSet Candidate 保持 queued；内容 transport 中 ProductArtifact 保持未部署。产品方案必须声明 `contentImpact`、`affectedTargets`、`affectedRoutes`、`affectedFields` 和 `compatibilityEvidence`，缺失或为 breaking/unknown 时发布前形成 Product Incident 并阻断。产品能力只要保持已有 content slot 合同，内容无需重新准备；删除或改变被使用的必需 slot 时，必须先完成产品版本迁移或合法 fallback。
 

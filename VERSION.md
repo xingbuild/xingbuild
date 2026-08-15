@@ -1,3 +1,16 @@
+## v0.28.0 — 内容数据平面与内容增量发布架构
+
+父版本：`v0.27.9` / `7374b75a7a611217cfa0199e2d81ec7964dc3386`
+
+- 建立 ContentDataArtifact、immutable object CAS、runtime reader 与原子 active tuple；ContentSet 仍是内容运营身份。
+- 内容-only 增量发布只引用 ProductArtifact + ContentSet + ContentDataArtifact，临时 materialization 不成为 durable SitePublication 身份。
+- 相同输入复用对象与快照，单 target 只产生 changed object；失败/取消保持旧 active 并写入最小可恢复 receipt。
+- 本版本不执行物理清理、迁移、transport 或 content publish。
+
+## 验证与发布边界
+
+- 先完成 SA-00～SA-11 未提交 Engineering 自 QA，交 `elon` 逐项复核；收到 `READY_FOR_COMMIT` 前不 commit/tag/build/preflight/transport/content publish。
+
 ## v0.27.9 — 治理 CLI 资源边界与进程生命周期根治
 
 父版本：`v0.27.8` / `707c22c500b50edf30770c41678126a272e4e421`

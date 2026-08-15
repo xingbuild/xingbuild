@@ -76,7 +76,7 @@ sequenceDiagram
 ```
 
 - 产品和内容可以独立准备，但不能并行调用物理 transport；Coordinator 是唯一 EdgeOne deploy owner。
-- 内容 task 不因产品版本变化自动重写或重建内容事实；它只提交 `ContentReleaseIntent`，由 Coordinator 使用当前稳定 ProductArtifact 组装快照。
+- 内容 task 不因产品版本变化自动重写或重建内容事实；它只提交 `ContentReleaseIntent`/ContentSet Candidate 与 ContentDataArtifact intent，由 Coordinator 使用当前稳定 ProductArtifact 与 active data tuple 组装既有 site-snapshot-v1 引用。
 - Coordinator 未返回 `finalized` 前，不得通知下游“已上线并可继续依赖”；失败只回传 Incident/recoveryId，不能让内容和产品进入并行发布。
 - 传播等待是一次有界执行，不以固定 30 秒假定成功或失败；有 deploymentId 时恢复只查询和验证同一 deployment，不创建新 deployment。
 

@@ -41,6 +41,9 @@ export async function buildFinalProductArtifact({ sourceRoot = root } = {}) {
   run("npm", ["run", "build"], {
     ...process.env,
     XINGBUILD_FINAL_BUILD: "1",
+    // ProductArtifact must be able to read a separately published
+    // ContentDataArtifact; it must not enable build-time workspace embedding.
+    XINGBUILD_CONTENT_RUNTIME: "1",
     XINGBUILD_PRODUCT_VERSION: version,
     XINGBUILD_PRODUCT_COMMIT: identity.head,
   });

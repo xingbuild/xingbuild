@@ -23,21 +23,38 @@ export function productArtifactIdentity(productArtifact = {}) {
     .map((field) => [field, productArtifact[field]]));
 }
 
-function snapshotIdentity({ productArtifact, contentSet, contentManifest }) {
+function contentDataIdentity(contentDataArtifact = null) {
+  if (!contentDataArtifact) return null;
+  text(contentDataArtifact.contentDataArtifactId, "contentDataArtifact.contentDataArtifactId");
+  if (!/^[a-f0-9]{64}$/.test(contentDataArtifact.contentDataHash || "")) {
+    throw new Error("SiteSnapshot contentDataArtifact.contentDataHash must be SHA-256");
+  }
+  if (contentDataArtifact.manifestHash != null && !/^[a-f0-9]{64}$/.test(contentDataArtifact.manifestHash)) {
+    throw new Error("SiteSnapshot contentDataArtifact.manifestHash must be SHA-256");
+  }
+  return {
+    contentDataArtifactId: contentDataArtifact.contentDataArtifactId,
+    contentDataHash: contentDataArtifact.contentDataHash,
+    ...(contentDataArtifact.manifestHash ? { manifestHash: contentDataArtifact.manifestHash } : {}),
+  };
+}
+
+function snapshotIdentity({ productArtifact, contentSet, contentManifest, contentDataArtifact = null }) {
   return {
     schemaVersion: SITE_SNAPSHOT_SCHEMA_VERSION,
     productArtifact: productArtifactIdentity(productArtifact),
     contentSetId: contentSet.contentSetId,
     contentSetHash: contentSet.contentSetHash,
     contentManifest,
+    ...(contentDataArtifact ? { contentDataArtifact: contentDataIdentity(contentDataArtifact) } : {}),
   };
 }
 
-export function createSiteSnapshot({ productArtifact, contentSet, previousSnapshotId = null, createdAt = new Date().toISOString() } = {}) {
+export function createSiteSnapshot({ productArtifact, contentSet, contentDataArtifact = null, previousSnapshotId = null, createdAt = new Date().toISOString() } = {}) {
   validateContentSet(contentSet);
   const product = productArtifactIdentity(productArtifact);
   const contentManifest = contentManifestFromContentSet(contentSet, { productArtifact: product });
-  const identity = snapshotIdentity({ productArtifact: product, contentSet, contentManifest });
+  const identity = snapshotIdentity({ productArtifact: product, contentSet, contentManifest, contentDataArtifact });
   const snapshotHash = hashSiteSnapshotValue(identity);
   const siteSnapshotId = `site-snapshot-${snapshotHash}`;
   const snapshot = {
@@ -71,7 +88,12 @@ export function assertSiteSnapshotIdentity(snapshot = {}) {
   // present in the snapshot.  Callers that have the full set validate it at
   // assembly time.
   const product = productArtifactIdentity(snapshot.productArtifact);
-  const identity = snapshotIdentity({ productArtifact: product, contentSet: { contentSetId: snapshot.contentSetId, contentSetHash: snapshot.contentSetHash }, contentManifest: snapshot.contentManifest });
+  const identity = snapshotIdentity({
+    productArtifact: product,
+    contentSet: { contentSetId: snapshot.contentSetId, contentSetHash: snapshot.contentSetHash },
+    contentManifest: snapshot.contentManifest,
+    contentDataArtifact: snapshot.contentDataArtifact || null,
+  });
   const expected = hashSiteSnapshotValue(identity);
   if (expected !== snapshot.snapshotHash || snapshot.siteSnapshotId !== `site-snapshot-${expected}`) throw new Error("SiteSnapshot identity hash drift");
   text(snapshot.createdAt, "createdAt");

@@ -44,7 +44,7 @@
 - `current.md` 与 `docs/design/` 只定义本次要实现的产品能力，不是本次 Git 变更的完整清单。
 - 一次 canonical Git 收口包含本次已确认且由 owner 收口的全部 tracked 变更：产品实现文件为 `implementation`，规则、候选、history 和其他项目记录为 `record-only`。两类都必须进入同一次 commit/tag；`current.md` 只约束前者。
 - `record-only` 进入 Git/history，但不进入 ProductArtifact 的运行输入、ContentSet 或页面行为；最终 ProductArtifact 仍记录完整 commit identity，这是追溯事实，不代表 record-only 改变产品功能。
-- 内容正文、媒体、审核和 Ops 运行事实位于被忽略 `.content-workspace/`，走独立 ContentSet/内容发布流程，不纳入产品 Git commit；内容能力代码仍属于 `implementation`。
+- 内容正文、媒体、审核和 Ops 运行事实位于被忽略 `.content-workspace/`，走独立 ContentSet/ContentDataArtifact/内容发布流程，不纳入产品 Git commit；内容能力代码仍属于 `implementation`。
 - 只有未确认、未授权、归属不明或其他 task 尚未完成的 tracked 变更属于 `unclassified`；已声明但仍 dirty 的 `excludedExternal` 也阻断收口。已确认的 record-only 不得再标为 external dirty。
 - 每个版本必须有 tracked scope manifest，固定为 `docs/iterations/scopes/v{版本号}.json`，逐路径声明 `implementation`、`record-only` 或 `excludedExternal`（owner/reason）；未声明路径一律为 `unclassified`。manifest 只保存 pre-commit 的 `baseHead`；post-commit 的 `committedHead` 写入独立 machine evidence，并要求其 first parent 等于 `baseHead`，不得回写 tracked manifest。`excludedExternal` 只是外部 owner 记录，不豁免 dirty；自 QA 阶段仅允许 manifest 已声明且 state=added 的新路径暂未 tracked/staged，未知 untracked 一律阻断；READY 后 closeout 必须要求声明路径全部 staged。closeout、build、preflight 和 publish 必须复用同一个 classifier，不得按目录默认放行，也不得直接用 `git status --porcelain` 把所有 dirty 一概判为阻断。
 
@@ -71,9 +71,9 @@
 - `current.md` 只保存当前可执行产品方案；Engineering 必须先完成自 QA 并回传未提交的实现证据，由 `elon` 按当前方案逐项验收。只有 `elon` 明确回传 `READY_FOR_COMMIT` 后，Engineering 才能形成 local commit/tag/clean 并一次性写 history。产品/视觉验收、publish 授权和线上状态是外部事件，不回写已打 tag 的 current/history。
 - 提交前的普通工程缺陷由 Engineering 在当前版本内修复；`elon` 验收发现当前方案内缺陷时，直接回传缺陷清单，Engineering 继续修复同一版本并重新自 QA，不创建下一版本。方案目标全部通过前不得提交、build、preflight 或发布；提交后的新产品/视觉范围问题才定义下一版本并写入 `current.md`，不修改旧版本。
 - 活动 candidates 只保存未确认 `pending`/`DRAFT`；候选纳入正式设计方案或关闭时，必须移入 `docs/iterations/history/candidates/`，不能长期保留 `confirmed`。
-- 内容正文/媒体默认位于被忽略 `.content-workspace/content`；draft/review/recovery、Ops 运行记录和内容运行事实只写被忽略 `.content-workspace/`，不进入产品版本或产品 bundle。内容构建形成独立 `ContentSet Candidate`；物理站点快照由 Coordinator 读取当前 ProductArtifact 与 active ContentSet 组装，旧 receipts、Registry、lineage、projection 和 `baseSiteArtifact` 仅保留迁移/审计 provenance。
+- 内容正文/媒体默认位于被忽略 `.content-workspace/content`；draft/review/recovery、Ops 运行记录和内容运行事实只写被忽略 `.content-workspace/`，不进入产品版本或产品 bundle。内容构建形成独立 `ContentSet Candidate` 与 `ContentDataArtifact`；物理站点快照由 Coordinator 读取当前 ProductArtifact、active ContentSet 和 active ContentDataArtifact 组装，旧 receipts、Registry、lineage、projection 和 `baseSiteArtifact` 仅保留迁移/审计 provenance。
 - 产品 publish 只消费已完成“对应验收分流”的 classifier-confirmed scope-clean exact HEAD/tag 和预生成 `dist/client`：产品能力必须先通过 `elon` 的方案 checklist；涉及页面 IA、组件、视觉 token、响应式、交互或可访问性时，`elon ui` 在提交前做独立只读验收，提交后只做精确制品一致性确认；纯内容变更由 `elon ops` 做内容正确性与受影响页面 smoke，不把 `elon ui` 作为默认前置。Xing 已授予持续发布授权：上述门禁全部通过且未被暂停时，Engineering 可直接提交并由 Coordinator 自动完成产品 transport 与公网验证，不再逐次询问；硬失败、身份不一致或任何 `⚠️` 阻断仍立即停止。内容 publish 仍须由 `elon ops` 按独立内容合同执行，不因产品 publish 自动触发。
-- 产品与内容的物理站点发布统一由 `scripts/lib/site-publication-coordinator.mjs` 的 Site Publication Coordinator 负责；`publish-xingbuild.command` 与 `content-release` 只能提交意图，禁止各自直接调用 EdgeOne。Coordinator 以站点 lease 串行部署当前 ProductArtifact + active ContentSet 组成的 SiteSnapshot，保存 deployment JSON，等待传播并完成精确公网验证后才返回成功。
+- 产品与内容的物理站点发布统一由 `scripts/lib/site-publication-coordinator.mjs` 的 Site Publication Coordinator 负责；`publish-xingbuild.command` 与 `content-release` 只能提交意图，禁止各自直接调用 EdgeOne。Coordinator 以站点 lease 串行部署当前 ProductArtifact + active ContentSet + active ContentDataArtifact 组成的既有 `site-snapshot-v1` SiteSnapshot；内容-only 变更只物化临时 upload root，保存最小 receipt，等待传播并完成精确公网验证后才返回成功。
 - 生成器只在源/方案变化后显式运行并把生成物纳入同一 local commit；构建后的 tracked dirty、身份不一致或产物缺失必须停止。
 - EdgeOne 生产目标固定为 `xingbuild-nochina` / `makers-ze0f6txvlhco` / `xingbuild.top`；目标合同变化必须形成明确治理版本并同步验证，禁止环境变量静默覆盖。
 - 任何 branch/worktree、并行 task、automation/cron/scheduled task 都是受控资源；未经用户明确授权不得创建、复制、更新、暂停、删除或替代。经营观察只能复用运营合同登记的唯一 scheduler。
