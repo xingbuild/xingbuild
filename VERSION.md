@@ -1,3 +1,16 @@
+## v0.27.4 — 内容存储治理证据门禁修复
+
+父版本：`v0.27.3` / `2cb564c81834ac37e6b28e598113ebff00be91e0`
+
+- 以唯一 acceptance reducer/validator 从真实 machine evidence 计算 AC74-01～AC74-14，禁止固定字符串或无条件 PASS。
+- evidence 顶层绑定 exact version/commit/annotated tag/ProductArtifact/artifactHash/baseSiteArtifact；inventory 使用 full deterministic path-set/bytes/exact SHA-256，并解析 resolved/external/unresolved reference graph。
+- durable SitePublication 与 persisted materialization、临时 staging/uploadRoot 分离；零动作 dry-run、CAS、changed-only、失败原子性、恢复幂等和保护身份均保存机器证据。
+- 本版本仍不执行物理删除、迁移、content publish、product transport 或 EdgeOne。
+
+## 验证与发布边界
+
+- 通过 `npm run check`、`npm run release:prepare`、v0.27.4 storage evidence/回归测试、`npm run release:closeout-check`、exact `release:build`、`release:preflight` 与 `git diff --check` 后交产品/架构验收。
+
 ## v0.27.3 — 内容派生存储保留与清理闭环
 
 父版本：`v0.27.2` / `ae0befadc177e049380795c948109ddd31d7c13d`

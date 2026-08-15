@@ -8,6 +8,7 @@ import { assertProductContentCompatibility } from "./lib/content-compatibility.m
 import { assertNoVersionStateFields, evaluateProductReleaseReadiness, parseCurrentIterationVersion } from "./lib/release-readiness.mjs";
 import { readProductArtifact } from "./lib/product-artifact.mjs";
 import { readFile as readFileAsync } from "node:fs/promises";
+import { validateStorageEvidenceFile } from "./lib/content-storage-governance.mjs";
 
 function git(...args) {
   try {
@@ -29,6 +30,11 @@ if (installPolicyEvidence.status !== "passed" || installPolicyEvidence.policyVer
 }
 assertProductContentCompatibility({ currentText: currentIteration });
 assertNoVersionStateFields(currentIteration);
+try {
+  await validateStorageEvidenceFile({ sourceRoot: fileURLToPath(new URL("..", import.meta.url)) });
+} catch (error) {
+  throw new Error(`V0274_STORAGE_PREFLIGHT: ${error.message}`);
+}
 const result = evaluateProductReleaseReadiness({
   branch: git("branch", "--show-current"),
   allowReleaseWorktree: process.env.XINGBUILD_RELEASE_WORKTREE === "1",

@@ -1,6 +1,6 @@
 {
   "name": "xingbuild",
-  "version": "0.27.3",
+  "version": "0.27.4",
   "private": true,
   "type": "module",
   "scripts": {
@@ -17,7 +17,7 @@
     "test:sites": "node --test tests/*.test.mjs",
     "check": "node scripts/check-project.mjs",
     "preinstall": "node scripts/qa-browser-install-check.mjs --install-guard",
-    "release:prepare": "npm run check && npm run content:check && npm run article:check && npm run practice:check && npm run qa:browser:install-policy && npm run qa:browser:check",
+    "release:prepare": "npm run check && npm run content:check && npm run article:check && npm run practice:check && npm run qa:browser:install-policy && npm run qa:browser:check && node scripts/content-storage-governance-v0274.mjs --prepare",
     "release:build": "node scripts/release-build.mjs",
     "release:qa": "npm run qa:browser:install-policy && npm run qa:browser:check && npm run test:sites",
     "qa:browser:install-policy": "node scripts/qa-browser-install-check.mjs",
@@ -29,6 +29,7 @@
     "content:preview:site": "node scripts/content-site-preview.mjs",
     "content:lifecycle": "node scripts/content-lifecycle-governance.mjs --inventory --dry-run",
     "content:storage:check": "node scripts/content-storage-governance.mjs",
+    "content:storage:check:v0274": "node scripts/content-storage-governance-v0274.mjs",
     "qa:resume-artifact": "node scripts/lib/resume-artifact.mjs",
     "qa:content-preview:evidence": "node scripts/qa-v02631-content-preview-evidence.mjs",
     "content:approve": "node scripts/content-approve.mjs",

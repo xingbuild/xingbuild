@@ -41,6 +41,7 @@ export async function buildFinalProductArtifact({ sourceRoot = root } = {}) {
     XINGBUILD_PRODUCT_VERSION: version,
     XINGBUILD_PRODUCT_COMMIT: identity.head,
   });
+  run("node", ["scripts/content-storage-governance-v0274.mjs"], process.env);
   const artifact = await readProductArtifact({
     clientDirectory: path.join(root, "dist", "client"),
     sourceRoot: root,

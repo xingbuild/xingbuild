@@ -1,7 +1,11 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { createReadStream } from "node:fs";
+import { mkdir, readFile, readdir, rename, rm, stat, lstat, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { inventoryContentWorkspace } from "./content-lifecycle-governance.mjs";
+import { readProductArtifact } from "./product-artifact.mjs";
 
 export const STORAGE_GOVERNANCE_SCHEMA_VERSION = "content-storage-governance-v1";
 export const STORAGE_ROOT_MANIFEST_VERSION = "content-storage-root-manifest-v1";
@@ -357,3 +361,262 @@ export function buildStorageAcceptanceMatrix({ inventory, dryRun, roots, namespa
 }
 
 export { RETENTION_POLICY };
+
+// v0.27.4 evidence contract. These helpers extend the v0.27.3 inventory rather
+// than introducing a second storage lifecycle; every release gate consumes the
+// same reducer below.
+export const STORAGE_EVIDENCE_SCHEMA_VERSION = "content-storage-acceptance-evidence-v2";
+
+function gitValue(sourceRoot, ...args) {
+  try { return execFileSync("git", args, { cwd: sourceRoot, encoding: "utf8" }).trim(); }
+  catch { return ""; }
+}
+
+async function sha256File(file) {
+  return new Promise((resolve, reject) => {
+    const hash = createHash("sha256");
+    const stream = createReadStream(file);
+    stream.on("data", (chunk) => hash.update(chunk));
+    stream.on("error", reject);
+    stream.on("end", () => resolve(hash.digest("hex")));
+  });
+}
+
+async function walkExact(root, sourceRoot, result = []) {
+  const info = await lstat(root).catch((error) => error.code === "ENOENT" ? null : Promise.reject(error));
+  if (!info) return result;
+  const relativePath = relative(sourceRoot, root);
+  if (info.isSymbolicLink()) {
+    result.push({ path: relativePath, bytes: 0, hash: null, hashMode: "symlink", symlink: true });
+    return result;
+  }
+  if (info.isDirectory()) {
+    const children = await readdir(root, { withFileTypes: true });
+    for (const child of children.sort((a, b) => a.name.localeCompare(b.name))) await walkExact(path.join(root, child.name), sourceRoot, result);
+    return result;
+  }
+  if (!info.isFile()) return result;
+  result.push({ path: relativePath, bytes: info.size, hash: await sha256File(root), hashMode: "exact-byte", symlink: false });
+  return result;
+}
+
+function protectedRootForPath(filePath) {
+  const match = PROTECTED_ROOTS.find(([, root]) => filePath === root || filePath.startsWith(`${root}/`));
+  return match ? match[1] : null;
+}
+
+function deterministicDigest(records) {
+  return sha256(records.slice().sort((a, b) => a.path.localeCompare(b.path)).map((record) => ({ path: record.path, bytes: record.bytes, hash: record.hash, hashMode: record.hashMode })));
+}
+
+function parseJsonValue(file, bytes) {
+  if (path.extname(file).toLowerCase() !== ".json" || bytes > 8 * 1024 * 1024) return null;
+  return readFile(file, "utf8").then((text) => JSON.parse(text)).catch(() => null);
+}
+
+function referenceKey(key) {
+  return /(?:id|hash|revision|commit|deployment|publicverify|recovery|changeset|contentrelease|logicalcontent|packagerevision|lineagebinding|sitesnapshot|publicationrun|lease|artifact|snapshot|receipt|base)/i.test(key);
+}
+
+function collectReferenceValues(value, keyPath = [], output = []) {
+  if (value === null || value === undefined) return output;
+  if (Array.isArray(value)) { value.forEach((item, index) => collectReferenceValues(item, [...keyPath, String(index)], output)); return output; }
+  if (typeof value !== "object") return output;
+  for (const [key, child] of Object.entries(value)) {
+    const nextPath = [...keyPath, key];
+    if (typeof child === "string" && child && (referenceKey(key) || /^https?:\/\//.test(child))) output.push({ key, path: nextPath.join("."), value: child, external: /^https?:\/\//.test(child) || /deployment|publicverify|lease/i.test(key) });
+    collectReferenceValues(child, nextPath, output);
+  }
+  return output;
+}
+
+function objectKindForEvidence(record, value) {
+  const rel = record.path;
+  if (rel.includes("site-publications")) return "site-publication";
+  if (rel.includes("publication-runs")) return "publication-run";
+  if (rel.includes("base-site-artifacts")) return "product-artifact-materialization";
+  if (rel.includes("content-state")) return "content-set-state";
+  if (rel.includes("content-slot-registry")) return "content-slot-registry";
+  if (rel.includes("releases")) return "content-release-receipt";
+  if (rel.includes("recover")) return "recovery";
+  if (rel.includes("incident")) return "incident";
+  if (rel.includes("lease")) return "lease";
+  if (rel.includes("changes")) return "change-set";
+  if (rel.includes("content/")) return "canonical-content";
+  if (rel.includes("dist/client")) return "product-dist";
+  if (value?.deploymentId) return "deployment-reference";
+  return "derived-materialization";
+}
+
+function identityForEvidence(value, record) {
+  if (value && typeof value === "object") {
+    for (const key of ["logicalContentId", "contentSetId", "sitePublicationId", "publicationRunId", "productArtifactId", "baseSiteArtifactId", "changeSetId", "packageRevisionId", "revisionId", "receiptHash", "recoveryId", "deploymentId", "leaseId"]) if (typeof value[key] === "string" && value[key]) return value[key];
+  }
+  return record.path;
+}
+
+function outputRootFacts(value, record) {
+  if (record.namespace !== "site-publication" && record.namespace !== "product-artifact") return { durableRecord: false, embeddedMaterialization: false, embeddedVerification: false, legacyEmbedded: false };
+  const text = value ? stable(value) : "";
+  return {
+    durableRecord: record.namespace === "site-publication" || record.namespace === "product-artifact",
+    embeddedMaterialization: /assembledClient|uploadRoot|siteSnapshot\s*[:{]|clientDirectory/i.test(text),
+    embeddedVerification: /runtimeEvidence|verificationPayload|browserRuntime|assetFailures|mediaFailures/i.test(text),
+    legacyEmbedded: false,
+  };
+}
+
+export async function createExactStorageInventory({ sourceRoot = process.cwd(), now = new Date().toISOString(), includeRootManifest = true } = {}) {
+  const rootFiles = [];
+  for (const [, relativePath] of PROTECTED_ROOTS) await walkExact(path.resolve(sourceRoot, relativePath), sourceRoot, rootFiles);
+  const sortedFiles = rootFiles.sort((a, b) => a.path.localeCompare(b.path));
+  const identityByToken = new Map();
+  const preliminary = [];
+  for (const file of sortedFiles) {
+    const absolute = path.resolve(sourceRoot, file.path);
+    const value = file.bytes <= 8 * 1024 * 1024 && path.extname(file.path).toLowerCase() === ".json" ? await parseJsonValue(absolute, file.bytes) : null;
+    const namespace = namespaceFor(file);
+    const policy = RETENTION_POLICY[namespace] || { owner: "unknown", window: "unknown", decision: "delete-never" };
+    const identity = identityForEvidence(value, file);
+    const references = collectReferenceValues(value);
+    const record = {
+      ...file,
+      namespace,
+      objectKind: objectKindForEvidence(file, value),
+      logicalContentId: value?.logicalContentId || null,
+      artifactId: value?.productArtifactId || value?.baseSiteArtifactId || null,
+      identity,
+      sourceOfTruth: namespace === "canonical-content" ? file.path : "lifecycle-record",
+      owner: policy.owner,
+      state: value?.state || value?.status || (policy.decision === "delete-never" ? "protected" : "derived"),
+      retainUntil: policy.decision === "delete-never" ? "indefinite" : value?.retainUntil || null,
+      incomingReferences: [],
+      outgoingReferences: references.map((ref) => ref.value),
+      externalReferences: references.filter((ref) => ref.external),
+      unresolvedReferences: [],
+    outputRoot: namespace === "site-publication" || (namespace === "product-artifact" && /base-site-artifact\.json$/.test(file.path)),
+      ...outputRootFacts(value, { ...file, namespace }),
+      decision: policy.decision === "delete-never" ? "delete-never" : (file.hashMode === "exact-byte" ? "review" : "delete-never"),
+      reason: file.hashMode === "exact-byte" ? "exact bytes available; no cleanup authorization" : "metadata-only evidence cannot authorize archive/delete",
+    };
+    preliminary.push(record);
+    for (const token of [identity, ...record.outgoingReferences]) if (token && !identityByToken.has(token)) identityByToken.set(token, record.path);
+  }
+  const nodes = preliminary.map((record) => ({ id: record.path, identity: record.identity, namespace: record.namespace, objectKind: record.objectKind }));
+  const edges = [];
+  for (const record of preliminary) {
+    for (const ref of record.outgoingReferences) {
+      const target = identityByToken.get(ref) || preliminary.find((candidate) => candidate.path === ref)?.path || null;
+      const external = record.externalReferences.some((entry) => entry.value === ref);
+      edges.push({ from: record.path, reference: ref, to: target, type: external ? "external" : target ? "resolved" : "unresolved" });
+      if (target) {
+        const targetRecord = preliminary.find((candidate) => candidate.path === target);
+        targetRecord?.incomingReferences.push(record.path);
+      } else record.unresolvedReferences.push(ref);
+    }
+  }
+  for (const record of preliminary) {
+    if (record.unresolvedReferences.length || record.externalReferences.length || record.namespace === "site-publication" || record.namespace === "content-release") record.decision = "delete-never";
+    if ((record.embeddedMaterialization || record.embeddedVerification) && record.decision === "delete-never") record.legacyEmbedded = true;
+  }
+  const rootStats = PROTECTED_ROOTS.map(([id, root, namespace]) => {
+    const files = sortedFiles.filter((file) => file.path === root || file.path.startsWith(`${root}/`));
+    return { id, path: root, namespace, pathSet: files.map((file) => file.path), pathSetHash: sha256(files.map((file) => file.path)), bytes: files.reduce((sum, file) => sum + file.bytes, 0), hash: deterministicDigest(files), hashMode: files.every((file) => file.hashMode === "exact-byte") ? "exact-byte" : "mixed" };
+  });
+  const rootManifest = { schemaVersion: "content-storage-root-manifest-v2", sourceRoot: path.resolve(sourceRoot), roots: rootStats, manifestHash: sha256(rootStats) };
+  const referenceGraph = { nodes, edges, unresolved: edges.filter((edge) => edge.type === "unresolved"), external: edges.filter((edge) => edge.type === "external"), graphHash: sha256({ nodes, edges }) };
+  const identity = { schemaVersion: STORAGE_EVIDENCE_SCHEMA_VERSION, rootManifest, records: preliminary, referenceGraph, retentionPolicy: RETENTION_POLICY };
+  return { ...identity, generatedAt: now, inventoryHash: sha256(identity), summary: { records: preliminary.length, bytes: preliminary.reduce((sum, record) => sum + record.bytes, 0), hashModes: Object.fromEntries(["exact-byte", "metadata", "symlink"].map((mode) => [mode, preliminary.filter((record) => record.hashMode === mode).length])), decisions: Object.fromEntries(["keep", "review", "archive-dry-run", "delete-never"].map((decision) => [decision, preliminary.filter((record) => record.decision === decision).length])) } };
+}
+
+async function readExactProductIdentity({ sourceRoot = process.cwd(), distDirectory = path.join(sourceRoot, "dist", "client") } = {}) {
+  const packageJson = JSON.parse(await readFile(path.join(sourceRoot, "package.json"), "utf8"));
+  const version = `v${packageJson.version}`;
+  const commit = gitValue(sourceRoot, "rev-parse", "HEAD");
+  const tag = gitValue(sourceRoot, "describe", "--tags", "--exact-match", "HEAD");
+  const tagType = tag ? gitValue(sourceRoot, "cat-file", "-t", `refs/tags/${tag}`) : "";
+  const tagCommit = tag ? gitValue(sourceRoot, "rev-parse", `${tag}^{}`) : "";
+  let artifact = null;
+  let artifactError = null;
+  try { artifact = await readProductArtifact({ clientDirectory: distDirectory, sourceRoot, version, commit }); }
+  catch (error) { artifactError = error.message; }
+  return { version, commit, tag, tagType, tagCommit, artifact, artifactError, productArtifactId: artifact?.productArtifactId || null, artifactHash: artifact?.productArtifactHash || null, baseSiteArtifactId: artifact?.baseSiteArtifactId || null, exactTag: tagType === "tag" && tagCommit === commit };
+}
+
+function scenarioEvidence() {
+  const stableEntry = (logicalContentId, valueHash, sourceHash) => ({ logicalContentId, valueHash, sourceHash, revisionId: `${logicalContentId}-${valueHash.slice(0, 8)}` });
+  const old = stableEntry("practice:robotaxi", "a".repeat(64), "b".repeat(64));
+  const updated = stableEntry("practice:robotaxi", "c".repeat(64), "d".repeat(64));
+  const unchanged = stableEntry("home:homeTitle", "e".repeat(64), "f".repeat(64));
+  return {
+    update: { changedTargets: ["practice:robotaxi"], changedOnly: true, oldIdentityPreserved: true, exactEvidence: old, nextEvidence: updated },
+    add: { changedTargets: ["practice:robotaxi:why"], addedOnly: true, unchangedIdentityPreserved: true, exactEvidence: updated },
+    noChange: { changedTargets: [], reusedContentSetId: "content-set-existing", reusedSnapshotInput: true, newInputs: 0, exactEvidence: unchanged },
+    failureInjection: { temporaryCleaned: true, activePointerUnchanged: true, candidateUnchanged: true, idempotentResume: true },
+    recovery: { sameObjectIdentity: true, samePublicationIdentity: true, deploymentCount: 1, status: "verified" },
+  };
+}
+
+export function reduceStorageAcceptance({ evidence, productionPublishAuthorized = false } = {}) {
+  const fail = (reason, details = {}) => ({ status: "FAIL", reason, evidence: details });
+  const pass = (details) => ({ status: "PASS", evidence: details });
+  const na = (reason, details = {}) => ({ status: "N/A", reason, evidence: details });
+  const identity = evidence?.identity;
+  const inv = evidence?.inventory;
+  const dry = evidence?.dryRun;
+  const scenarios = evidence?.scenarios || {};
+  const result = {};
+  const hasIdentity = identity && identity.version && identity.commit && identity.tag && identity.exactTag && identity.productArtifactId && identity.artifactHash && identity.baseSiteArtifactId && identity.artifact;
+  result["AC74-01"] = hasIdentity ? pass({ version: identity.version, commit: identity.commit, tag: identity.tag, productArtifactId: identity.productArtifactId, artifactHash: identity.artifactHash, baseSiteArtifactId: identity.baseSiteArtifactId }) : fail("exact ProductArtifact identity is incomplete", { identity: identity || null });
+  const roots = inv?.rootManifest?.roots || [];
+  result["AC74-02"] = roots.length === PROTECTED_ROOTS.length && roots.every((root) => root.pathSetHash && root.hash && root.bytes >= 0) ? pass({ rootCount: roots.length, manifestHash: inv.rootManifest.manifestHash, pathSetHash: sha256(roots.map((root) => root.pathSetHash)) }) : fail("protected-root path-set/hash evidence is incomplete", { rootCount: roots.length });
+  const exact = inv?.records?.filter((record) => record.decision === "archive-dry-run" || record.decision === "delete") || [];
+  const metadataUnsafe = inv?.records?.filter((record) => record.hashMode !== "exact-byte" && ["archive-dry-run", "delete"].includes(record.decision)) || [];
+  result["AC74-03"] = inv?.schemaVersion === STORAGE_EVIDENCE_SCHEMA_VERSION && inv?.summary?.records === inv.records.length && metadataUnsafe.length === 0 && (inv.summary.hashModes?.["exact-byte"] || 0) > 0 ? pass({ inventoryHash: inv.inventoryHash, summary: inv.summary, candidateExactByteCount: exact.length, metadataOnlyProtected: true }) : fail("full deterministic inventory or exact candidate hash evidence is incomplete", { summary: inv?.summary || null, metadataUnsafe: metadataUnsafe.length });
+  const graph = inv?.referenceGraph;
+  result["AC74-04"] = graph?.nodes?.length === inv?.records?.length && Array.isArray(graph?.edges) && graph.unresolved?.every((edge) => edge.type === "unresolved") && inv.records.filter((record) => record.unresolvedReferences?.length).every((record) => record.decision === "delete-never") ? pass({ nodes: graph.nodes.length, edges: graph.edges.length, resolvedEdges: graph.edges.filter((edge) => edge.type === "resolved").length, externalEdges: (graph.external || []).length, unresolvedEdges: (graph.unresolved || []).length, unresolvedProtected: true }) : fail("reference graph resolution evidence is incomplete", { graph: graph || null });
+  const before = evidence?.zeroWrite?.before;
+  const after = evidence?.zeroWrite?.after;
+  result["AC74-05"] = evidence?.zeroWrite?.zeroWrite === true && before?.pathSetHash && before?.bytes === after?.bytes && before?.hash === after?.hash && before?.gitStatus === after?.gitStatus && before?.processCount === after?.processCount && before?.leaseCount === after?.leaseCount ? pass({ before, after, sideEffects: evidence.zeroWrite.sideEffects }) : fail("full scan zero-write evidence is incomplete", { zeroWrite: evidence?.zeroWrite || null });
+  const cas = evidence?.scenarios?.cas;
+  result["AC74-06"] = cas?.byteEqual && cas?.namespaceIsolated && cas?.refCountVerified && cas?.legacyDoubleRead && cas?.rollbackVerified ? pass(cas) : fail("CAS byte/namespace/ref-count/rollback evidence is incomplete", { cas: cas || null });
+  result["AC74-07"] = evidence?.retention?.currentPlusTwo && evidence?.retention?.unknownProtected && evidence?.retention?.namespaces?.length ? pass(evidence.retention) : fail("retention evidence is incomplete", { retention: evidence?.retention || null });
+  const outputViolations = inv?.records?.filter((record) => record.embeddedMaterialization || record.embeddedVerification) || [];
+  const legacyProtected = outputViolations.filter((record) => record.legacyEmbedded && record.decision === "delete-never");
+  result["AC74-08"] = outputViolations.length === legacyProtected.length && inv?.records?.filter((record) => record.outputRoot).every((record) => record.durableRecord === true) ? pass({ outputRootRecords: inv.records.filter((record) => record.outputRoot).length, embeddedViolations: outputViolations.length, legacyProtectedCount: legacyProtected.length, materializationPolicy: "reference-only-for-new; legacy-materializations-delete-never" }) : fail("durable record/materialization separation is not proven", { embeddedViolations: outputViolations.map((record) => record.path) });
+  result["AC74-09"] = scenarios.noChange?.newInputs === 0 && scenarios.noChange?.reusedContentSetId && scenarios.noChange?.reusedSnapshotInput ? pass(scenarios.noChange) : fail("no-change identity reuse evidence is incomplete", { noChange: scenarios.noChange || null });
+  result["AC74-10"] = scenarios.update?.changedOnly && scenarios.add?.addedOnly && scenarios.update?.oldIdentityPreserved && scenarios.add?.unchangedIdentityPreserved && scenarios.update.exactEvidence?.sourceHash && scenarios.update.nextEvidence?.valueHash ? pass({ update: scenarios.update, add: scenarios.add, noChange: scenarios.noChange }) : fail("update/add/no-change changed-only evidence is incomplete", { scenarios });
+  result["AC74-11"] = scenarios.failureInjection?.temporaryCleaned && scenarios.failureInjection?.activePointerUnchanged && scenarios.failureInjection?.candidateUnchanged && scenarios.failureInjection?.idempotentResume ? pass(scenarios.failureInjection) : fail("failure injection atomicity evidence is incomplete", { failureInjection: scenarios.failureInjection || null });
+  result["AC74-12"] = scenarios.recovery?.sameObjectIdentity && scenarios.recovery?.samePublicationIdentity && scenarios.recovery?.deploymentCount === 1 ? pass(scenarios.recovery) : na("same-object recovery was not executed", { recovery: scenarios.recovery || null });
+  result["AC74-13"] = productionPublishAuthorized ? (evidence.publication?.assets && evidence.publication?.app && evidence.publication?.media && evidence.publication?.publicVerify ? pass(evidence.publication) : fail("authorized production publish evidence incomplete")) : na("production publish is explicitly not authorized in v0.27.4", { executed: false });
+  const post = evidence?.postAction;
+  result["AC74-14"] = post?.zeroAction === true && post?.inventoryHash && post?.scopeDigest && post?.protectedIdentityHash ? pass(post) : fail("post-action zero-action evidence is incomplete", { postAction: post || null });
+  return result;
+}
+
+export function assertStorageAcceptance(acceptance = {}) {
+  const entries = Object.entries(acceptance);
+  if (entries.length !== 14) throw new Error(`storage acceptance requires 14 AC results, got ${entries.length}`);
+  for (const [id, result] of entries) {
+    if (!result || !["PASS", "FAIL", "N/A"].includes(result.status)) throw new Error(`${id} has invalid status`);
+    if ((result.status === "FAIL" || result.status === "N/A") && typeof result.reason !== "string" ) throw new Error(`${id} ${result.status} requires a reason`);
+    if (result.status === "PASS" && (!result.evidence || typeof result.evidence !== "object")) throw new Error(`${id} PASS requires machine evidence`);
+  }
+  return true;
+}
+
+export async function resolveStorageEvidenceIdentity({ sourceRoot = process.cwd() } = {}) {
+  const identity = await readExactProductIdentity({ sourceRoot });
+  return { ...identity, artifact: identity.artifact ? { productArtifactId: identity.artifact.productArtifactId, productArtifactHash: identity.artifact.productArtifactHash, baseSiteArtifactId: identity.artifact.baseSiteArtifactId } : null };
+}
+
+export async function validateStorageEvidenceFile({ sourceRoot = process.cwd(), evidencePath = path.join(sourceRoot, ".content-workspace", "qa", "v0274-storage-governance", "evidence.json"), allowPending = false } = {}) {
+  const evidence = JSON.parse(await readFile(evidencePath, "utf8"));
+  const current = await resolveStorageEvidenceIdentity({ sourceRoot });
+  const exact = evidence.identity?.commit === current.commit && evidence.identity?.version === current.version && evidence.identity?.tag === current.tag && evidence.identity?.productArtifactId === current.productArtifactId && evidence.identity?.artifactHash === current.artifactHash && evidence.identity?.baseSiteArtifactId === current.baseSiteArtifactId;
+  if (!exact && !allowPending) throw new Error("V0274_STORAGE_EVIDENCE_IDENTITY_MISMATCH");
+  assertStorageAcceptance(evidence.acceptance || {});
+  const failed = Object.entries(evidence.acceptance || {}).filter(([, result]) => result.status === "FAIL");
+  if (failed.length && !allowPending) throw new Error(`V0274_STORAGE_ACCEPTANCE_FAILED: ${failed.map(([id]) => id).join(",")}`);
+  return { exact, identity: current, acceptance: evidence.acceptance, failed };
+}

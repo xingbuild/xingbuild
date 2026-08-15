@@ -135,6 +135,9 @@ const requiredFiles = [
   "tests/v02631-resume-artifact.test.mjs",
   "scripts/qa-v02631-content-preview-evidence.mjs",
   "tests/v0270-content-lifecycle-governance.test.mjs",
+  "scripts/content-storage-governance-v0274.mjs",
+  "scripts/lib/content-storage-governance.mjs",
+  "tests/v0274-content-storage-governance.test.mjs",
 ];
 
 for (const file of requiredFiles) {
@@ -154,6 +157,7 @@ assert.equal(packageJson.scripts["content:preview:site"], "node scripts/content-
 assert.equal(packageJson.scripts["qa:resume-artifact"], "node scripts/lib/resume-artifact.mjs", "resume artifact verification must use the single registry check");
 assert.equal(packageJson.scripts["qa:content-preview:evidence"], "node scripts/qa-v02631-content-preview-evidence.mjs", "content preview evidence must use the exact-head evidence entry point");
 assert.equal(packageJson.scripts["content:lifecycle"], "node scripts/content-lifecycle-governance.mjs --inventory --dry-run", "content lifecycle governance must stay read-only and explicit");
+assert.equal(packageJson.scripts["content:storage:check:v0274"], "node scripts/content-storage-governance-v0274.mjs", "v0.27.4 storage evidence must use the sole reducer entry point");
 const version = await readFile(new URL("../VERSION.md", import.meta.url), "utf8");
 const current = await readFile(
   new URL("../docs/iterations/current.md", import.meta.url),

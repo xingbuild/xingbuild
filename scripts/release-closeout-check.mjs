@@ -6,6 +6,7 @@ import process from "node:process";
 import { assertProductContentCompatibility } from "./lib/content-compatibility.mjs";
 import { assertNoVersionStateFields, evaluateCloseoutReadiness, parseCurrentIterationVersion } from "./lib/release-readiness.mjs";
 import { access, readFile as readFileAsync } from "node:fs/promises";
+import { validateStorageEvidenceFile } from "./lib/content-storage-governance.mjs";
 
 function git(...args) {
   return execFileSync("git", args, { encoding: "utf8" }).trim();
@@ -24,6 +25,14 @@ if (installPolicyEvidence.status !== "passed" || installPolicyEvidence.policyVer
 }
 assertProductContentCompatibility({ currentText: currentIteration });
 assertNoVersionStateFields(currentIteration);
+try {
+  const storageEvidencePath = new URL("../.content-workspace/qa/v0274-storage-governance/evidence.json", import.meta.url);
+  await access(storageEvidencePath);
+  await validateStorageEvidenceFile({ sourceRoot: new URL("..", import.meta.url).pathname, allowPending: true });
+} catch (error) {
+  if (error?.code !== "ENOENT") throw new Error(`V0274_STORAGE_CLOSEOUT: ${error.message}`);
+  console.log("v0.27.4 storage evidence pending exact post-tag build");
+}
 const result = evaluateCloseoutReadiness({
   branch: git("branch", "--show-current"),
   allowReleaseWorktree: process.env.XINGBUILD_RELEASE_WORKTREE === "1",
