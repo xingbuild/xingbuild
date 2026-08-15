@@ -1,3 +1,11 @@
+## v0.27.6 — Git 范围分类与发布门禁统一
+
+父版本：`v0.27.5` / `b28e597066d79fb3f14e13d7b463cf9248c862d8`
+
+- 建立唯一 release scope classifier，按 implementation、record-only、excludedExternal 与 unclassified 区分 Git 变更；四个发布门禁复用同一分类结果。
+- 以 pre-commit scope manifest 与独立 post-commit machine evidence 记录路径状态、字节哈希、base HEAD、committed HEAD 和 scope digest；ProductArtifact 只消费 implementation。
+- 本版本不改页面、内容事实、ContentSet、SitePublication 或发布目标，不执行 content publish、product transport、物理清理或 EdgeOne。
+
 ## v0.27.4 — 内容存储治理证据门禁修复
 
 父版本：`v0.27.3` / `2cb564c81834ac37e6b28e598113ebff00be91e0`

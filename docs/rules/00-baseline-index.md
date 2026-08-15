@@ -16,7 +16,7 @@ flowchart TD
     B --> F["2.4 产品与视觉架构"]
     B --> G["2.5 Engineering 架构与原则"]
     C --> H["Content / Ops 独立运营合同"]
-    E --> I["current → Engineering → history\n→ QA → publish"]
+    E --> I["current → Engineering 自 QA\n→ elon checklist → READY_FOR_COMMIT\n→ commit/history → 分流验收 → publish"]
 ```
 
 五层各自只回答一个问题；Xing 工作习惯文件是所有责任域共用的上下文入口，不定义产品或发布事实：
@@ -42,6 +42,8 @@ flowchart TD
 3. 具体责任域的专门文件优先于通用说明：产品事实看产品总案，运营事实看运营合同，工程发布看迭代与发布规则。
 4. `docs/iterations/current.md` 只定义当前正式产品方案；`docs/iterations/candidates/` 只保存未确认候选；`docs/iterations/history/` 与 `docs/qa/` 只保存历史或证据，不反向授权当前实现。
 5. 旧设计、旧 task 消息和旧问题清单不能覆盖现行基线；有冲突先报告，不自行合并解释。
+
+产品计划范围与 Git 变更范围必须分开判断：`current.md`/design 只决定产品实现；一次 Git 收口还必须记录本次已确认的规则、候选、history 等 `record-only` tracked 变更。每个版本用 scope manifest 逐路径声明分类；内容运营的 ignored `.content-workspace` 事实不进入产品 commit；只有未分类或未收口的 `excludedExternal` tracked 变更阻断 closeout。
 
 同一条规则只允许有一个正文 owner。其他文件只能引用该 owner；新增规则先判断是否已有 owner，只有确实出现新类别才新增文件并回到本索引登记。
 
@@ -80,4 +82,4 @@ AGENTS.md → 00-baseline-index.md → 任务类型对应规则 → current/cand
 
 ## 五、基线变更
 
-基线变化属于产品工程治理版本，必须按 2.3 的版本闭环完成：写入当前正式方案 → Engineering 自 QA → local commit/tag/clean → history → 产品/视觉验收 → 按 Xing 持续授权直接 publish。Xing 明确暂停/撤销时才停止；内容运营和 Ops 的独立规则变化不制造产品版本，除非它改变产品能力或产品工程合同。
+基线变化属于产品工程治理版本，必须按 2.3 的版本闭环完成：写入当前正式方案 → Engineering 自 QA/未提交证据 → elon 按同一 checklist 验收并回传 `READY_FOR_COMMIT` → local commit/tag/clean/build/preflight → 必要的产品/视觉/内容分流 → 按 Xing 持续授权直接 publish。Xing 明确暂停/撤销时才停止；内容运营和 Ops 的独立规则变化不制造产品版本，除非它改变产品能力或产品工程合同。

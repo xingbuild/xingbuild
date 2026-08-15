@@ -41,6 +41,8 @@ flowchart LR
 - 需要长期复用的决定先落到正确的事实文件，再交给责任 task；不能只留在聊天记录。
 - 产品能力由 `elon` 形成正式方案并交 `elon engin`；视觉独立验收由 `elon ui`；内容与发布由 `elon ops`；具体身份以 `task-registry.md` 为准。
 - 继续使用最小充分验证；没有新增风险时复用已有可靠证据，不重做与变更无关的整套验收。
+- `current.md`/design 只决定产品实现；一次 Git 收口还要包含本次已确认的规则、候选、history 等 tracked `record-only` 变更。每个版本用 `docs/iterations/scopes/v{版本号}.json` 逐路径确认；`excludedExternal` 不豁免 dirty，内容 Ops 的 ignored 事实保持独立，未分类或未收口 tracked 变更才阻断。
+- Engineering 实现后先回传未提交证据；`elon` 按当前方案 checklist 验收，范围内缺陷在同一版本修复。只有 `READY_FOR_COMMIT` 后才允许 commit/tag/build/preflight；持续发布授权有效时，门禁通过后可自动产品 transport，不重复询问 Xing。
 
 ### 3. Xing 可以随时提出多个想法
 

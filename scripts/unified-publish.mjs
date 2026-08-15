@@ -19,6 +19,7 @@ import {
 import { createSitePublication } from "./lib/site-publication.mjs";
 import { transportSitePublication } from "./lib/site-publication-coordinator.mjs";
 import { readProductArtifact } from "./lib/product-artifact.mjs";
+import { classifyReleaseScope } from "./lib/release-scope-classifier.mjs";
 
 export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const expectedOrigin = "https://github.com/Chizheng4/xingbuild.git";
@@ -81,15 +82,20 @@ export async function collectPublishContext(sourceCwd = root) {
   const resolved = path.resolve(sourceCwd);
   if (resolved !== root) throw new Error(`publish source cwd must be canonical direct-local: ${root}`);
   if (git(["symbolic-ref", "--short", "HEAD"], resolved) !== "main") throw new Error("publish source must be on main");
-  const status = git(["status", "--porcelain"], resolved);
-  if (status) throw new Error(`publish source worktree is dirty: ${trackedDirtyPaths(status).join(", ")}`);
   const identity = await readAcceptedVersion(resolved);
+  let scope;
+  try {
+    scope = classifyReleaseScope({ root: resolved, version: identity.version, phase: "post-commit", requireStaged: false, allowManifestUntracked: false });
+  } catch (error) {
+    throw new Error(`publish source scope classifier failed: ${error.message}`);
+  }
+  if (!scope.ready) throw new Error(`publish source scope is not clean: ${scope.blockers.join("; ")}`);
   const head = git(["rev-parse", "HEAD"], resolved);
   const tag = identity.version;
   if (git(["cat-file", "-t", tag], resolved) !== "tag") throw new Error(`${tag} is not an annotated tag`);
   const taggedCommit = git(["rev-parse", `${tag}^{commit}`], resolved);
   if (taggedCommit !== head) throw new Error(`${tag} points to ${taggedCommit}; expected HEAD ${head}`);
-  return { sourceCwd: resolved, head, tag, version: identity.version, historyFile: identity.historyFile, dirtyPaths: [] };
+  return { sourceCwd: resolved, head, tag, version: identity.version, historyFile: identity.historyFile, dirtyPaths: [], scope };
 }
 
 export async function readPreparedDist({ sourceCwd = root, version, head } = {}) {

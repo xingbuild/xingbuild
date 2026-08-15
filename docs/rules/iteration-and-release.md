@@ -6,17 +6,18 @@
 
 ```mermaid
 flowchart LR
-    A["正式产品方案\ncurrent.md"] --> B["Engineering\n实现 + 自 QA"]
-    B --> C["local commit + annotated tag + clean"]
-    C --> D["history\n不可变版本事实"]
-    D --> E["产品/视觉验收"]
-    E -->|有问题| F["下一版本方案\ncurrent.md"]
-    F --> B
-    E -->|通过| G["既有持续发布授权生效"]
+    A["正式产品方案\ncurrent.md"] --> B["Engineering\n实现 + 自 QA + 未提交证据"]
+    B --> C["elon\n逐项 checklist 验收"]
+    C -->|范围内问题| B
+    C -->|READY_FOR_COMMIT| D["commit/tag/build/preflight"]
+    D --> E["history\n不可变版本事实"]
+    E --> F["必要的 elon ui / 内容分流"]
+    F -->|通过| G["既有持续发布授权生效"]
     G --> H["SitePublication Coordinator：串行 transport → 公网验证"]
+    C -->|新范围问题| I["下一版本方案\ncurrent.md"]
 ```
 
-版本号用于可辨识的产品能力、页面结构、内容模型、视觉系统、作品详情、共享展示能力或发布架构变化；局部快速修订可合并后形成一个稳定版本，不为每次对话或未完成试验增加版本。
+版本号用于可辨识的产品能力、页面结构、内容模型、视觉系统、作品详情、共享展示能力或发布架构变化；局部快速修订可在同一未提交版本内完成后形成一个稳定版本，不为每次对话、范围内缺陷或未完成试验增加版本。
 
 ## 2. 事实源和范围
 
@@ -32,7 +33,7 @@ flowchart LR
 
 唯一当前指针是 `docs/iterations/current.md`。它只记录当前可执行产品方案，不保存 `pending`/`complete`、验收、授权或线上状态字段。
 
-版本开始至少写明：问题、范围、明确不做、页面/对象/工程文件、验收标准和当前正式方案。Engineering 只实现已写入 current 的范围；活动候选不是实现清单。候选文件与版本实现范围分开判定：版本期间新增或修改、且 owner 确认必须保留的 tracked candidate，可以作为 `record-only` 纳入同一版本 commit/history；它仍保持 `DRAFT`，不进入 `current.md`、Engineering、ProductArtifact 或发布范围。未获 owner 收口的外部 dirty candidate 仍阻断 closeout。
+版本开始至少写明：问题、范围、明确不做、页面/对象/工程文件、验收标准和当前正式方案。Engineering 只实现已写入 current 的范围；活动候选不是实现清单。候选文件与版本实现范围分开判定：版本期间新增或修改、且 owner 确认必须保留的 tracked candidate，可以作为 `record-only` 纳入同一版本 commit/history；它仍保持 `DRAFT`，不进入 `current.md`、Engineering、ProductArtifact 的运行输入或发布范围。规则、候选、history 等其他已确认项目记录同样按 `record-only` 收口；只有未分类、未授权或仍由其他 task 修改中的 tracked candidate 才阻断 closeout。
 
 候选属于产品设计前阶段：
 
@@ -42,16 +43,18 @@ flowchart LR
 
 ## 4. 本地版本收口
 
-Engineering 按以下顺序形成一个本地提交版本。最终 ProductArtifact 必须绑定提交后的精确 HEAD/tag：
+Engineering 按以下顺序形成一个本地提交版本。`READY_FOR_COMMIT` 前禁止 commit/tag/build/preflight；最终 ProductArtifact 必须绑定提交后的精确 HEAD/tag：
 
 1. `npm run release:prepare` 与分层 QA：项目结构、页面能力、内容兼容性和相关业务检查；
-2. 暂存预计范围，执行 `npm run release:closeout-check`；
-3. 创建本地 commit 和同名 annotated tag，确认 `HEAD == tag.peeledCommit` 且 tracked clean；
-4. 在该精确 HEAD/tag 上执行最终 `npm run release:build`，生成 ignored `dist/client` ProductArtifact；
-5. 执行 `npm run release:preflight`，同时校验 Git/版本和 ProductArtifact 三份 manifest 的身份、hash 与确定性；
-6. 只有 preflight 通过的同一 ProductArtifact 才能进入与变更影响面匹配的验收分流和 transport。
+2. Engineering 按 current/design checklist 自 QA，生成未提交实现证据、scope digest 和真实运行结果；
+3. `elon` 按同一 checklist 独立复核。范围内问题回到 Engineering 修复；全部通过后回传 `READY_FOR_COMMIT`；
+4. 只有 `READY_FOR_COMMIT` 后，按 scope manifest 暂存全部已确认的 `implementation` 与 `record-only` 路径，并执行 `npm run release:closeout-check`；
+5. 创建本地 commit 和同名 annotated tag，确认 `HEAD == tag.peeledCommit` 且 tracked clean；
+6. 在该精确 HEAD/tag 上执行最终 `npm run release:build`，生成 ignored `dist/client` ProductArtifact；
+7. 执行 `npm run release:preflight`，同时校验 Git/版本和 ProductArtifact 三份 manifest 的身份、hash 与确定性；
+8. 只有 preflight 通过且必要分流验收通过的同一 ProductArtifact 才能 transport。
 
-closeout 必须按路径、owner 和版本范围核对 tracked dirty：实现变更进入实现范围；已确认保留的 candidate 以 `record-only` 纳入暂存范围并在 history 留下路径、状态和“不进入本版本实现”的说明；未分类或外部 owner dirty 继续硬阻断。`git clean` 表示所有要保留的 tracked 变更都已被明确归类，不表示候选文件不能出现在版本提交中。当前检查器尚未提供 path-level scope lock 时，不得绕过门禁，需先登记治理缺口并由 owner 收口。
+closeout 必须按版本 scope manifest、owner 和路径核对全部 tracked dirty，并形成三类清单：`implementation`（进入产品实现和 ProductArtifact 输入）、`record-only`（进入 Git/history 但不进入 ProductArtifact 运行输入）和 `unclassified`（未确认、未授权或其他 task 未完成）。tracked manifest 只保存 pre-commit baseHead；post-commit 的 committedHead 写入独立 machine evidence，并验证其 first parent 等于 baseHead，不能回写 manifest 或要求新 HEAD 仍等于旧 baseHead。manifest 可声明 `excludedExternal` 作为外部 owner 记录，但必须逐路径写 owner/reason；它不豁免 dirty，发生变化时必须由 owner 收口或归入本次 record-only，不能从目录或“external”自动推断。自 QA 可保留 manifest 已声明且 state=added 的未 tracked/staged 新路径；未知 untracked 一律阻断，READY 后 closeout 必须要求声明路径全部 staged。前两类必须在本次 commit 前全部收口，只有未声明或未收口路径阻断。内容 Ops 的 ignored `.content-workspace` 不纳入产品 commit。`git clean` 表示已确认变更全部已提交，不表示所有变更都必须属于 current/design；closeout、build、preflight 和 publish 必须使用同一 classifier。
 
 Engineering 同一轮一次性更新 `VERSION.md`、`current.md` 和 `docs/iterations/history/v{版本号}.md`；history 记录版本号、commit、annotated tag、clean、父版本、范围和验收合同，提交后不可回写。
 
@@ -62,6 +65,7 @@ Engineering 同一轮一次性更新 `VERSION.md`、`current.md` 和 `docs/itera
 - 标准启动入口：`./start-xingbuild.command`；固定预览 `http://127.0.0.1:4317/`。
 - 预览资源必须绑定当前 worktree、HEAD、版本、PID 和 task；端口冲突或归属不明时停止，不换端口、不终止未知进程。
 - 涉及页面 IA、组件、视觉 token、响应式、交互或可访问性变化时，必须做桌面和手机真实页面验证；纯内容变更只做受影响页面的内容/溢出 smoke，构建通过不等于对应验收通过。
+- Engineering 的自 QA 不是最终产品验收；它必须先于 `elon` 的逐项方案验收，且两者都在 commit 前完成。验收只覆盖当前方案范围，不把未列入方案的偏好或新需求混入本版本。
 - `npm run release:check` 仅作兼容性/诊断命令，不替代四阶段门禁，不由 transport publish 调用。
 
 ## 6. 产品线上发布
@@ -80,7 +84,7 @@ transport 顺序固定：
 2. 确认官方 direct-local clean `main`，记录 source HEAD；
 3. 校验 `dist/client/release.json` 与版本/commit 匹配；
 4. 执行 `release:preflight`；
-5. Xing 已授予产品闭环持续发布授权；产品/视觉验收通过后，Engineering 直接使用显式 `--authorize-publish` 执行，不再逐次向 Xing 询问；除非 Xing 明确暂停、停止、撤销或要求人工接管，否则自动完成后续 push、deploy、public verify；硬失败仍立即停止；
+5. Xing 已授予产品闭环持续发布授权；`elon` 在 commit 前回传 `READY_FOR_COMMIT`、Engineering 完成精确 commit/tag/build/preflight、必要的 `elon ui` 或内容分流通过后，Engineering 直接使用显式 `--authorize-publish` 执行，不再逐次向 Xing 询问；除非 Xing 明确暂停、停止、撤销或要求人工接管，否则自动完成后续 push、deploy、public verify；硬失败仍立即停止；
 6. 由协调器将当前 ProductArtifact 与 active `ContentSet` 合并为一个 `SiteSnapshot`，取得站点 lease 后部署到固定 EdgeOne 目标：`name=xingbuild-nochina`、`projectId=makers-ze0f6txvlhco`、`domain=xingbuild.top`；
 7. 持久化 machine-readable deployment JSON，按有界退避等待传播，校验 `release.json`、`content-manifest.json`、目标页面/媒体与 active/candidate 集合；
 8. 只有 `SitePublication` finalized 才报告线上统一产品和内容结果；Deploy Success、push 或单页 HTTP 200 均不等于完成。
@@ -116,7 +120,7 @@ owner：唯一执行责任人/task
 
 ## 9. 产品版本状态和报告
 
-产品工程阶段严格区分：实现完成、本地验证完成、本地提交版本完成、可发布、部署完成、域名生效、公网验收完成。前一状态不能替代后一状态。
+产品工程阶段严格区分：实现完成、Engineering 自 QA 完成、`elon` checklist 验收完成并 `READY_FOR_COMMIT`、本地提交版本完成、可发布、部署完成、域名生效、公网验收完成。前一状态不能替代后一状态。
 
 每次产品/视觉或 Engineering 收口报告：本地版本状态、本地 URL、线上版本状态、线上 URL、已确定项、未确定项、候选状态、阻断 ID、下一动作和授权边界。内容与 Ops 按自己的合同报告内容身份或采集状态，不把运营状态写成产品版本状态。
 

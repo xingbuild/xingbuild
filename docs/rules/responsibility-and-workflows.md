@@ -12,7 +12,7 @@
 | 责任域 | 负责 | 不负责 |
 | --- | --- | --- |
 | 产品与视觉 | 产品总案、IA、页面能力、视觉合同、候选评审、正式方案、`current.md`、产品/视觉验收 | 日常选题、逐条事实审核、产品代码提交、线上 transport |
-| Engineering | 读取 `current.md` 实现产品能力，测试、自 QA、版本记录、commit/tag/clean；产品/视觉验收通过后按 Xing 的持续授权提交产品 transport 意图并由协调器完成公网验证 | 自行改变产品目标、越过方案、把内容发布当产品版本、擅自创建 task/分支/worktree、直接调用 EdgeOne deploy |
+| Engineering | 读取 `current.md` 实现产品能力，按 checklist 自 QA 并回传未提交证据；收到 `elon` 的 `READY_FOR_COMMIT` 后完成版本记录、commit/tag/clean、build/preflight，并按持续授权提交产品 transport 意图 | 在 `READY_FOR_COMMIT` 前 commit/tag/build/preflight；自行改变产品目标、越过方案、把内容发布当产品版本、擅自创建 task/分支/worktree、直接调用 EdgeOne deploy |
 | 内容与发布 | Brief/Article/Practice、B 端产品页面内容、事实审核、独立 `ContentReleaseIntent` 和内容事实验收；将意图提交给 SitePublication Coordinator | 修改页面能力、IA、schema、组件、视觉 token、产品版本、产品 tag、直接调用 EdgeOne deploy |
 | SitePublication Coordinator | 读取当前 ProductArtifact 与 active ContentReleaseIntent，取得站点 lease，生成整站 snapshot，唯一调用 EdgeOne，保存 deployment、传播验证、recovery 和 finalize | 决定产品业务、编写内容、替代产品/内容 owner、改变产品或内容事实 |
 | Ops | 来源覆盖、可信证据候选、去重和运行记录 | 写公开正文、人工审核、发布、创建或复制 scheduler |
@@ -24,21 +24,24 @@
 
 ```mermaid
 flowchart LR
-    A["产品/视觉：正式方案\n写入 current"] --> B["Engineering：实现 + 自 QA"]
-    B --> C["本地 commit + annotated tag + clean"]
-    C --> D["history：不可变版本事实"]
-    D --> E["对应验收分流：产品 / elon ui（按影响面）"]
-    E -->|有产品/视觉问题| F["下一版本方案\n直接写入 current"]
-    F --> B
-    E -->|通过| G["既有持续发布授权"]
+    A["产品/视觉：正式方案\n写入 current"] --> B["Engineering：实现 + 自 QA\n未提交证据"]
+    B --> C["elon：逐项 checklist 验收"]
+    C -->|范围内问题| B
+    C -->|READY_FOR_COMMIT| D["Engineering：commit/tag/build/preflight"]
+    D --> E["history：不可变版本事实"]
+    E --> F["必要的 elon ui / 内容分流确认"]
+    F -->|通过| G["既有持续发布授权"]
     G --> H["Coordinator：SitePublication transport + 公网证据"]
+    C -->|新范围问题| I["下一版本方案\n直接写入 current"]
 ```
 
 - `current.md` 只保存当前可执行产品方案，不保存生命周期状态字段。
-- Engineering 在本地形成 commit/tag/clean 后一次性写入对应 history；已打 tag 的 current/history 不因验收或线上事件回写。
-- 提交前发现普通工程缺陷，Engineering 在当前版本内修复并重新自 QA；发现产品目标、对象边界或验收合同不成立，停止越界并回到产品/视觉确认。
-- 提交后产品/视觉验收发现问题，直接定义下一个 patch/小迭代/大迭代并写入 current，不重新创建普通候选，也不改旧版本。
-- Xing 已授予产品闭环持续发布授权；对应验收分流通过后 Engineering 提交产品 transport 意图，由 Coordinator 串行完成站点发布，不再逐次询问。页面表现变更才需要 `elon ui` 独立验收；纯内容变更由 `elon ops` 做内容正确性与受影响页面 smoke。Xing 明确暂停或撤销时，立即停止后续 publish；线上版本必须与同一 ProductRelease 对齐。
+- `current.md` 只约束产品实现范围；一次 Git 收口由 Engineering 按 owner 已确认的变更清单提交，包含 `implementation` 与 `record-only` 两类 tracked 文件。`record-only` 包括规则、候选和 history，不进入 ProductArtifact 的运行输入；内容 Ops 的 ignored 事实不进入产品 commit。
+- 该变更清单必须落为本版本 scope manifest；它逐路径记录分类、owner/reason、base HEAD 和 scope digest，供所有 release gate 复用。
+- Engineering 先在未提交状态完成 checklist 自 QA；`elon` 对同一版本方案逐项验收，范围内缺陷回到 Engineering 修复，不扩展版本、不提前提交。
+- `elon` 回传 `READY_FOR_COMMIT` 后，Engineering 才能 commit/tag/build/preflight，并一次性写入对应 history；已打 tag 的 current/history 不因验收或线上事件回写。
+- 提交前产品/视觉合同不成立或范围内实现缺陷，继续当前版本；只有提交后发现的新范围问题才定义下一版本并写入 current，不改旧版本。
+- Xing 已授予产品闭环持续发布授权；`READY_FOR_COMMIT`、精确制品门禁、必要的 `elon ui`/内容分流全部通过后，Engineering 可直接提交产品 transport 意图，由 Coordinator 串行完成站点发布，不再逐次询问。页面表现变更的 `elon ui` 必须在提交前独立验收；纯内容变更由 `elon ops` 做内容正确性与受影响页面 smoke。Xing 明确暂停或撤销时，立即停止后续 publish；线上版本必须与同一 ProductRelease 对齐。
 - 默认自动闭环：在方案、验收和既有授权均满足时，各责任 task 继续完成本责任域的 prepare、build、transport、verify、finalize；只有 Xing 明确暂停、停止、撤销或要求人工接管时才停。硬失败、身份不一致和安全边界仍立即停止并上报。
 
 ## 三、候选分流与归档
@@ -82,7 +85,7 @@ flowchart LR
     P[ProductRelease] --> S
 ```
 
-内容和 Ops 使用各自合同、被忽略 `.content-workspace/` 与独立发布身份，不进入产品 `v0.x`、`current.md`、产品 history、commit/tag 或 ProductRelease。内容 transport 可以独立准备，但物理站点 transport 必须由 SitePublication Coordinator 串行合并 active 内容；只有新增页面、路由、schema、组件、交互或共享视觉能力时，才转为产品候选并进入产品工程闭环。
+内容和 Ops 使用各自合同、被忽略 `.content-workspace/` 与独立发布身份，不进入产品 `current.md`、产品实现范围或产品 commit/tag；内容 transport 可以独立准备，但物理站点 transport 必须由 SitePublication Coordinator 串行合并 active 内容。规则、候选、history 等 tracked 项目记录不属于内容 Ops，它们按 `record-only` 进入 Git；只有新增页面、路由、schema、组件、交互或共享视觉能力时，才转为产品候选并进入产品工程闭环。
 
 ## 六、固定收口报告
 

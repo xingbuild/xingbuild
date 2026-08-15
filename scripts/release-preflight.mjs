@@ -9,6 +9,7 @@ import { assertNoVersionStateFields, evaluateProductReleaseReadiness, parseCurre
 import { readProductArtifact } from "./lib/product-artifact.mjs";
 import { readFile as readFileAsync } from "node:fs/promises";
 import { validateLifecycleEvidence } from "./lib/content-lifecycle-evidence-v0275.mjs";
+import { classifyReleaseScope } from "./lib/release-scope-classifier.mjs";
 
 function git(...args) {
   try {
@@ -36,6 +37,18 @@ try {
 } catch (error) {
   throw new Error(`V0275_LIFECYCLE_PREFLIGHT: ${error.message}`);
 }
+let scopeResult;
+try {
+  scopeResult = classifyReleaseScope({
+    root: process.cwd(),
+    version: `v${packageJson.version}`,
+    phase: "post-commit",
+    requireStaged: false,
+    allowManifestUntracked: false,
+  });
+} catch (error) {
+  scopeResult = { ready: false, blockers: [`release scope classifier: ${error.message}`] };
+}
 const result = evaluateProductReleaseReadiness({
   branch: git("branch", "--show-current"),
   allowReleaseWorktree: process.env.XINGBUILD_RELEASE_WORKTREE === "1",
@@ -45,6 +58,7 @@ const result = evaluateProductReleaseReadiness({
   currentVersion: parseCurrentIterationVersion(currentIteration),
   headTag: git("describe", "--tags", "--exact-match", "HEAD"),
   origin: git("remote", "get-url", "origin"),
+  scopeResult,
 });
 let productArtifact = null;
 const artifactBlockers = [];
@@ -72,3 +86,4 @@ console.log(JSON.stringify({
   productArtifactHash: productArtifact.productArtifactHash,
   baseSiteArtifactId: productArtifact.baseSiteArtifactId,
 }, null, 2));
+console.log(JSON.stringify({ scope: scopeResult }, null, 2));

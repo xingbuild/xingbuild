@@ -30,10 +30,12 @@ flowchart LR
 
 - 官方项目目录与 canonical `main` 是唯一工程基线；默认 direct-local，不自动创建 branch/worktree/detached checkout。
 - Engineering 只实现 `current.md` 的正式方案；产品目标、对象边界、视觉合同或上游事实不成立时停止并回到责任 task。
+- `current.md`/design 只定义 `implementation`，不是 Git 提交清单；一次提交还必须收口 owner 已确认的 `record-only` tracked 项目记录。两类都进入同一 commit/tag；未分类、未授权或未收口的 `excludedExternal` 变更阻断；Content/Ops ignored 事实另走内容生命周期。不得只暂存 current/design 文件，也不得把 ProductArtifact 运行输入范围当成 Git 提交范围。
+- scope manifest（`docs/iterations/scopes/v{版本号}.json`）是本次提交的唯一范围事实；它只保存 pre-commit baseHead。closeout、release-build、preflight 和 unified-publish 必须调用同一个 path classifier；post-commit committedHead 放在独立 machine evidence，并按 phase 校验 firstParent(committedHead)=baseHead、声明集合、owner/reason、scope digest 和工作区实际路径一致。`excludedExternal` 只记录不属于本次范围的 owner，不绕过 dirty；目录 allowlist 或单独 gate 例外均无效。
 - 生成器 `architecture:views`、`framework:data`、`framework:layout`、`article:figures` 只在源/方案变化后显式运行；构建和发布不无条件调用会回写 tracked 输出的生成器。
-- `npm run release:prepare` / `release:build` 负责产品业务准备、构建和验证；最终 build 必须发生在 commit/tag 后；`publish-xingbuild.command` / `unified-publish --kind product` 只校验已存在的 clean HEAD/tag 与 ProductArtifact，随后由 Coordinator 按授权执行 push、唯一 deploy、传播和公网验证，不包含网站业务逻辑。
+- `npm run release:prepare` / `release:build` 负责产品业务准备、构建和验证；最终 build 必须发生在 commit/tag 后；`publish-xingbuild.command` / `unified-publish --kind product` 只校验 classifier-confirmed scope-clean 的 exact HEAD/tag 与 ProductArtifact，随后由 Coordinator 按授权执行 push、唯一 deploy、传播和公网验证，不包含网站业务逻辑。
 - 产品 publish 与内容 publish 是两个独立责任边界：产品 publish 提交 ProductRelease intent；内容 publish 生成 ContentSet Candidate（包括 `home` 首页内容入口）；两者都不能直接调用 EdgeOne，统一由 Coordinator 取得站点 lease、组装一个 SiteSnapshot、部署、等待传播和精确验证。旧 receipts、ContentSlotRegistry、PublicationLineageBinding、projection 和 package 只读保留为迁移/审计证据，不再进入正常运行路径。
-- 任一构建后未分类 tracked dirty、版本身份不一致、产物缺失或发布目标不明确，必须停止并形成 Publish Incident；已由 owner 明确标记为 `record-only` 且纳入版本暂存/history 的候选不属于未分类 dirty。不得自动 patch、commit、tag、重试或继续后续阶段。
+- 任一构建后未分类 tracked dirty、版本身份不一致、产物缺失或发布目标不明确，必须停止并形成 Publish Incident；已由 owner 明确标记为 `record-only` 且纳入版本暂存/history 的候选不属于未分类 dirty。closeout、build、preflight、publish 不得自行读取全局 dirty 作为结论，只能使用同一 classifier 的分类结果；不得自动 patch、commit、tag、重试或继续后续阶段。
 
 ## 三、代码与事实边界
 
@@ -45,11 +47,12 @@ flowchart LR
 ## 四、验证最小闭环
 
 ```text
-方案/current → release:prepare + QA → closeout
-→ commit/tag/clean → final release:build
-→ ProductArtifact preflight → 产品/视觉验收
-→ SiteSnapshot Coordinator → 唯一 deployment
-→ 公网证据 → active ContentSet 原子切换
+方案/current → release:prepare + Engineering 自 QA
+→ 未提交证据 → elon checklist 验收
+→ READY_FOR_COMMIT → commit/tag/clean → final release:build/preflight
+→ 必要的 elon ui/内容分流 → SiteSnapshot Coordinator
+→ 唯一 deployment → 公网证据 → active ContentSet 原子切换
 ```
 
+Engineering 自 QA 不能替代 `elon` 的方案验收；`READY_FOR_COMMIT` 前不得提交版本或生成最终 ProductArtifact。范围内问题必须在同一版本未提交阶段修复，不能因为提前提交而被迫拆成下一版本。
 内容运营和 Ops 不进入这条产品版本闭环；它们使用各自合同和独立身份。Engineering 的交接使用 [`collaboration-workflow.md`](collaboration-workflow.md) 的一次性模板。

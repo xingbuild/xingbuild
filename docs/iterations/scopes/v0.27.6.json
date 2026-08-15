@@ -1,0 +1,194 @@
+{
+  "schemaVersion": "release-scope-v1",
+  "phase": "pre-commit",
+  "version": "v0.27.6",
+  "baseHead": "b28e597066d79fb3f14e13d7b463cf9248c862d8",
+  "scopeManifestPath": "docs/iterations/scopes/v0.27.6.json",
+  "scopeDigest": "13f8057c4247f74539b7e7a88bce7e5ed1f77e206f5f8927c10e02ebab5a8eae",
+  "paths": [
+    {
+      "path": "AGENTS.md",
+      "classification": "record-only",
+      "owner": "elon",
+      "reason": "v0.27.6 confirmed product/governance record",
+      "pathHash": "888793688f60393594b0bb2922bed0abff79737fba42f5434d62850504bec6de",
+      "state": "modified"
+    },
+    {
+      "path": "VERSION.md",
+      "classification": "record-only",
+      "owner": "elon",
+      "reason": "v0.27.6 confirmed product/governance record",
+      "pathHash": "3a7d06dfa6cfa46492946d8ea0a6b4e29c0c8c786173bab52da08426b2ca606d",
+      "state": "modified"
+    },
+    {
+      "path": "docs/design/v0.27.6 Git范围分类与发布门禁统一方案.md",
+      "classification": "record-only",
+      "owner": "elon",
+      "reason": "v0.27.6 confirmed product/governance record",
+      "pathHash": "498d9913c504e88d2d6277c46e6455a90360170011a6097a0df7a35d1bf5e4b3",
+      "state": "modified"
+    },
+    {
+      "path": "docs/iterations/current.md",
+      "classification": "record-only",
+      "owner": "elon",
+      "reason": "v0.27.6 confirmed product/governance record",
+      "pathHash": "38db04ebb997fc96a7f13170c810ee3acfbec00c86f84921986ca4f2045ffcc1",
+      "state": "modified"
+    },
+    {
+      "path": "docs/iterations/history/candidates/XBUILD-RELEASE-SCOPE-MANIFEST-001.md",
+      "classification": "record-only",
+      "owner": "elon",
+      "reason": "v0.27.6 confirmed product/governance record",
+      "pathHash": "e8dbcb746fd72624f4d7ab64f99a65d45a89cb5fc3b799ef75f2f1bb034845e8",
+      "state": "modified"
+    },
+    {
+      "path": "docs/iterations/history/v0.27.6.md",
+      "classification": "record-only",
+      "owner": "elon",
+      "reason": "v0.27.6 confirmed product/governance record",
+      "pathHash": "60523b53befde8884238a301857a805c53fd925b2a749bfbee49019d3fb6d83e",
+      "state": "modified"
+    },
+    {
+      "path": "docs/iterations/scopes/v0.27.6.json",
+      "classification": "record-only",
+      "owner": "elon engin",
+      "reason": "v0.27.6 scope manifest record",
+      "pathHash": "self-excluded",
+      "state": "added"
+    },
+    {
+      "path": "docs/rules/00-baseline-index.md",
+      "classification": "record-only",
+      "owner": "elon",
+      "reason": "v0.27.6 confirmed product/governance record",
+      "pathHash": "38e192909942efe6fd914a1ddf34d7ea2f2f4e62256da9712b0e13137324dd21",
+      "state": "modified"
+    },
+    {
+      "path": "docs/rules/collaboration-workflow.md",
+      "classification": "record-only",
+      "owner": "elon",
+      "reason": "v0.27.6 confirmed product/governance record",
+      "pathHash": "a0800f8579ee8d65facf7d2517a00543cb1ba4a5b7a1a5864872db7f330c45b4",
+      "state": "modified"
+    },
+    {
+      "path": "docs/rules/engineering-architecture-and-principles.md",
+      "classification": "record-only",
+      "owner": "elon",
+      "reason": "v0.27.6 confirmed product/governance record",
+      "pathHash": "2ee4a3e9b63f1123ec3ceede8732503316ee49a3d01e23c662ded02bdd6979e1",
+      "state": "modified"
+    },
+    {
+      "path": "docs/rules/iteration-and-release.md",
+      "classification": "record-only",
+      "owner": "elon",
+      "reason": "v0.27.6 confirmed product/governance record",
+      "pathHash": "7f610d9cfd8b8f5c50e0e10caa46824308ab56c729a952eba7569927191f5b5a",
+      "state": "modified"
+    },
+    {
+      "path": "docs/rules/responsibility-and-workflows.md",
+      "classification": "record-only",
+      "owner": "elon",
+      "reason": "v0.27.6 confirmed product/governance record",
+      "pathHash": "97bd8e42784519894eaa47996a794c1533fdafbf06c99aec863256004abfddf4",
+      "state": "modified"
+    },
+    {
+      "path": "docs/rules/task-onboarding.md",
+      "classification": "record-only",
+      "owner": "elon",
+      "reason": "v0.27.6 confirmed product/governance record",
+      "pathHash": "041984335949c251ba2967acdf878c4f80bd420217c914da8d84d0a15b50b380",
+      "state": "modified"
+    },
+    {
+      "path": "docs/rules/xing-workstyle-and-context.md",
+      "classification": "record-only",
+      "owner": "elon",
+      "reason": "v0.27.6 confirmed product/governance record",
+      "pathHash": "6b92882a7873d2c8c1150c768e818d89445755e28274a301c017f463687a4fcd",
+      "state": "modified"
+    },
+    {
+      "path": "package-lock.json",
+      "classification": "implementation",
+      "owner": "elon",
+      "reason": "v0.27.6 confirmed product/governance record",
+      "pathHash": "4035ff1bd1549ba6d36d2419b4c7f03ef77dd6da60e0355791f97be0c4c00c48",
+      "state": "modified"
+    },
+    {
+      "path": "package.json",
+      "classification": "implementation",
+      "owner": "elon",
+      "reason": "v0.27.6 confirmed product/governance record",
+      "pathHash": "50bd33d22f09e6869e4afff7fc7caf6fc230a69fef193b7a2a4cc2134bf03edd",
+      "state": "modified"
+    },
+    {
+      "path": "scripts/lib/release-readiness.mjs",
+      "classification": "implementation",
+      "owner": "elon engin",
+      "reason": "v0.27.6 shared release classifier and gate integration",
+      "pathHash": "f87d653ef67500fc2b799051863bd2c66e5373eaccfaba1ae97e81bbc0afacf0",
+      "state": "modified"
+    },
+    {
+      "path": "scripts/lib/release-scope-classifier.mjs",
+      "classification": "implementation",
+      "owner": "elon engin",
+      "reason": "v0.27.6 shared release classifier and gate integration",
+      "pathHash": "c5bfe955232287b2524d320621dfb67d6798db5561aa048e20f1ab68e2af2893",
+      "state": "modified"
+    },
+    {
+      "path": "scripts/release-build.mjs",
+      "classification": "implementation",
+      "owner": "elon engin",
+      "reason": "v0.27.6 shared release classifier and gate integration",
+      "pathHash": "b33b94c96b0ac7f9cb9971055f46f4962e0779749ce37672ec5ed42b0c2bc75f",
+      "state": "modified"
+    },
+    {
+      "path": "scripts/release-closeout-check.mjs",
+      "classification": "implementation",
+      "owner": "elon engin",
+      "reason": "v0.27.6 shared release classifier and gate integration",
+      "pathHash": "cb7a73f1dbef6b7332c9e45ab6472946d9352a0a79f0955f27c92aa3820510c2",
+      "state": "modified"
+    },
+    {
+      "path": "scripts/release-preflight.mjs",
+      "classification": "implementation",
+      "owner": "elon engin",
+      "reason": "v0.27.6 shared release classifier and gate integration",
+      "pathHash": "7494120ea6048fcd8dee8858134c515cfa0de39893411e1839a2c5108396d21b",
+      "state": "modified"
+    },
+    {
+      "path": "scripts/unified-publish.mjs",
+      "classification": "implementation",
+      "owner": "elon engin",
+      "reason": "v0.27.6 shared release classifier and gate integration",
+      "pathHash": "2208c4f814c01c45fd468d1cebedd0085eebd9baa7883fb739006f538314ece5",
+      "state": "modified"
+    },
+    {
+      "path": "tests/release-scope-classifier.test.mjs",
+      "classification": "implementation",
+      "owner": "elon engin",
+      "reason": "v0.27.6 shared release classifier and gate integration",
+      "pathHash": "821c359a525d78be4de90ce3e1acf3f3a9dcc28b46895d3a35bd5316d514ee00",
+      "state": "modified"
+    }
+  ]
+}

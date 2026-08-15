@@ -66,13 +66,21 @@ git log -1 --oneline --decorate
 | 责任域 | 可以负责 | 默认禁止 |
 | --- | --- | --- |
 | elon | 产品判断、产品总案、candidate、current.md、视觉验收边界 | 直接改产品代码、VERSION、tag、内容事实或发布状态 |
-| elon engin | 已批准 current.md 的代码、测试、VERSION、history、commit/tag/clean、发布意图 | 自行改变产品目标、擅自创建协作资源、直接调用 EdgeOne |
+| elon engin | 已批准 current.md 的代码、测试、VERSION、history、commit/tag/clean、发布意图 | 在 `elon` 方案验收前 commit/tag/build/preflight/发布；自行改变产品目标、擅自创建协作资源、直接调用 EdgeOne |
 | elon ui（slug：elon-ui） | 读取本地/公网证据并给出独立 Verdict | 修改代码、方案、版本、内容或发布 |
 | elon ops | ContentSet、正文、媒体、审核和内容 transport intent | 改产品 IA、schema、组件、视觉、VERSION 或 tag |
 | elon ops 子 task（采集） | 来源、EvidenceCandidate、覆盖证据、运行记录 | 写稿、审核、发布、改产品代码 |
 | 只读分析 task | 事实核查、方案比较、风险和验收建议 | 修改任何项目事实 |
 
 同一文件、版本、内容身份、发布动作只有一个 owner。责任不清时停止并报告，不猜测、不替代。
+
+### 提交范围与产品范围
+
+- `current.md`/design 是 Engineering 的产品实现清单，不是 Git 提交清单。
+- Engineering 在收口时提交 owner 已确认的全部 tracked 变更：产品代码、测试和版本文件属于 `implementation`；AGENTS、规则、候选、history 等项目记录属于 `record-only`。后者不授权实现，也不进入 ProductArtifact 的运行输入；commit identity 仍完整记录它们。
+- `.content-workspace` 的正文、媒体、审核和 Ops 运行事实属于独立内容生命周期，不纳入产品 commit；内容能力代码仍按产品方案处理。
+- 只有未确认、未授权、归属不明或仍由其他 task 修改中的 tracked 变更才是 `unclassified`，必须在 closeout 前解决；已声明但仍 dirty 的 `excludedExternal` 同样阻断，不能用“外部 owner”作为 record-only 的替代分类。
+- 版本收口前由 owner 确认 `docs/iterations/scopes/v{版本号}.json`；tracked manifest 只包含 pre-commit phase、版本、baseHead、scope digest、逐路径分类和 owner/reason。post-commit 的 committedHead 只能写入独立 machine evidence，并要求 firstParent(committedHead)=baseHead；`excludedExternal` 不能豁免 dirty。自 QA 可保留 manifest 已声明且 state=added 的未 tracked/staged 新路径；未知 untracked 立即阻断，READY 后 closeout 必须要求声明路径全部 staged。不能用目录名、task 消息或“外部”字样替代声明。
 
 ## 五、按责任域的最小必读清单
 
@@ -129,9 +137,11 @@ Xing
 1. 多个想法 task 可以同时存在，但默认只读，不创建 worktree。
 2. 每个想法 task 只返回问题、对象、影响范围、方案、风险、验收和未决问题。
 3. canonical 产品主线统一评审，决定合并、否决、形成 candidate 或写入 current.md。
-4. 只有正式方案进入 current.md 后，Engineering 才能实现。
-5. 同一时间不允许两个 task 写 canonical main，也不允许两个 task 同时修改 current.md、VERSION、tag 或 active ContentSet。
-6. 内容、产品工程和物理发布可以各自准备，但实际 SitePublication/EdgeOne transport 始终由 Coordinator 串行执行。
+4. 只有正式方案进入 current.md 后，Engineering 才能实现；实现后先按方案 checklist 自 QA 并回传未提交证据。
+5. `elon` 必须按同一 checklist 对未提交实现逐项验收；未通过项回到 Engineering 在同一版本内修复，不能把范围内缺陷提前变成下一版本。
+6. 只有 `elon` 回传 `READY_FOR_COMMIT`，Engineering 才能 commit/tag/build/preflight；若涉及视觉变更，`elon ui` 先完成独立只读验收。
+7. 同一时间不允许两个 task 写 canonical main，也不允许两个 task 同时修改 current.md、VERSION、tag 或 active ContentSet。
+8. 内容、产品工程和物理发布可以各自准备，但实际 SitePublication/EdgeOne transport 始终由 Coordinator 串行执行。
 
 ## 七、Direct-local 与 Worktree 选择规则
 
