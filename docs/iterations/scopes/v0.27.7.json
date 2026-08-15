@@ -1,0 +1,82 @@
+{
+  "schemaVersion": "release-scope-v1",
+  "phase": "pre-commit",
+  "version": "v0.27.7",
+  "baseHead": "10e03917981f91eb120c4eadfba674d65da0896e",
+  "scopeManifestPath": "docs/iterations/scopes/v0.27.7.json",
+  "scopeDigest": "e478568c6e4bcfe4d7f79e84934dc7a61d4a8dfdbfa2b8b7ce6e36e6c1460223",
+  "paths": [
+    {
+      "path": "VERSION.md",
+      "classification": "record-only",
+      "owner": "elon",
+      "reason": "v0.27.7 confirmed release record",
+      "pathHash": "3364d02d69948b432010b7c3f63b81fb7009e7242477d95a35333467fae7f5f3",
+      "state": "modified"
+    },
+    {
+      "path": "docs/design/v0.27.7 Scope classifier 路径身份修复方案.md",
+      "classification": "record-only",
+      "owner": "elon",
+      "reason": "v0.27.7 confirmed release record",
+      "pathHash": "74cfadda7e3d2baf07084d1aa68176399b77398184b59957c4d44ed9956826a8",
+      "state": "added"
+    },
+    {
+      "path": "docs/iterations/current.md",
+      "classification": "record-only",
+      "owner": "elon",
+      "reason": "v0.27.7 confirmed release record",
+      "pathHash": "41e17adac351f5f4fda5930989d0a6df0daeb538c85ee736cc9cfba0900b14c0",
+      "state": "modified"
+    },
+    {
+      "path": "docs/iterations/history/v0.27.7.md",
+      "classification": "record-only",
+      "owner": "elon",
+      "reason": "v0.27.7 confirmed release record",
+      "pathHash": "d884a3c49031efe17752c4557235bd3b9e263396375115e9b0fe64903765b9b0",
+      "state": "added"
+    },
+    {
+      "path": "docs/iterations/scopes/v0.27.7.json",
+      "classification": "record-only",
+      "owner": "elon engin",
+      "reason": "v0.27.7 scope manifest record",
+      "pathHash": "self-excluded",
+      "state": "added"
+    },
+    {
+      "path": "package-lock.json",
+      "classification": "implementation",
+      "owner": "elon",
+      "reason": "v0.27.7 confirmed release record",
+      "pathHash": "0d5a080a17a5f3e0290f7ea5068caa77a34063e37a4be013e7062fdf40909eed",
+      "state": "modified"
+    },
+    {
+      "path": "package.json",
+      "classification": "implementation",
+      "owner": "elon",
+      "reason": "v0.27.7 confirmed release record",
+      "pathHash": "34f0b2b2ae3e838212330db551cd45e17f1f01254c64faa1132f42639a9f76b7",
+      "state": "modified"
+    },
+    {
+      "path": "scripts/lib/release-scope-classifier.mjs",
+      "classification": "implementation",
+      "owner": "elon engin",
+      "reason": "v0.27.7 NUL-safe committed path identity",
+      "pathHash": "bfbc28d6341abe8b3bdc97ef796c4571c35c3ac9c08c6bf4ff92bd91a64d9030",
+      "state": "modified"
+    },
+    {
+      "path": "tests/v0277-scope-paths.test.mjs",
+      "classification": "implementation",
+      "owner": "elon engin",
+      "reason": "v0.27.7 NUL-safe committed path identity",
+      "pathHash": "ff40b4914478cba260cc3178415adcc9fd8d9bedf561533fc772422dabc2525d",
+      "state": "added"
+    }
+  ]
+}

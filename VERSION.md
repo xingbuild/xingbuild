@@ -1,3 +1,11 @@
+## v0.27.7 — Scope classifier 路径身份修复
+
+父版本：`v0.27.6` / `10e03917981f91eb120c4eadfba674d65da0896e`
+
+- 将 committed scope path 读取改为 NUL-safe Git 原始路径解析，修复中文、空格、引号、删除和重命名路径的身份误判。
+- 保持 v0.27.6 classifier、scopeDigest、ProductArtifact、ContentSet、SitePublication 与 Content/Ops 边界不变。
+- 本版本不回写或重打 v0.27.6，不执行 content publish、product transport、物理清理或 EdgeOne。
+
 ## v0.27.6 — Git 范围分类与发布门禁统一
 
 父版本：`v0.27.5` / `b28e597066d79fb3f14e13d7b463cf9248c862d8`

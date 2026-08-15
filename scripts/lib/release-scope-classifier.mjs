@@ -105,8 +105,23 @@ function fileHash(root, relativePath) {
   }
 }
 
-function commitPaths(root, commit) {
-  return new Set(git(root, ["diff-tree", "--no-commit-id", "--name-only", "-r", commit]).split("\n").filter(Boolean));
+export function commitPaths(root, commit) {
+  const tokens = git(root, ["diff-tree", "--no-commit-id", "--name-status", "--find-renames", "-r", "-z", commit]).split("\0").filter(Boolean);
+  const paths = new Set();
+  for (let index = 0; index < tokens.length;) {
+    const status = tokens[index++];
+    if (!status) continue;
+    if (status.startsWith("R")) {
+      const from = tokens[index++];
+      const to = tokens[index++];
+      if (from) paths.add(from);
+      if (to) paths.add(to);
+    } else {
+      const relativePath = tokens[index++];
+      if (relativePath) paths.add(relativePath);
+    }
+  }
+  return paths;
 }
 
 export function readPostCommitScopeEvidence(root, version) {
