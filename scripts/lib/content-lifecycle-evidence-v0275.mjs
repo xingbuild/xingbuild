@@ -85,17 +85,17 @@ async function activePointerDigest(root) {
   return { path: path.relative(root, activePath), bytes: bytes.length, hash: sha256(bytes), value: JSON.parse(bytes) };
 }
 
-export async function createScenarioFixture({ sourceRoot = process.cwd(), now = new Date().toISOString() } = {}) {
-  const root = await mkdtemp(path.join(os.tmpdir(), "xingbuild-v0275-lifecycle-"));
+export async function createScenarioFixture({ sourceRoot = process.cwd(), now = new Date().toISOString(), version = "v0.27.5" } = {}) {
+  const root = await mkdtemp(path.join(os.tmpdir(), `xingbuild-${version}-lifecycle-`));
   const sourceDirectory = path.join(root, ".content-workspace", "content", "observations");
   await import("node:fs/promises").then(({ mkdir }) => mkdir(sourceDirectory, { recursive: true }));
   const productArtifact = {
     artifactContractVersion: "product-artifact-v1",
-    productArtifactId: "v0.27.5-ffffffffffff",
-    productVersion: "v0.27.5",
+    productArtifactId: `${version}-ffffffffffff`,
+    productVersion: version,
     productCommit: "f".repeat(40),
-    baseSiteArtifactId: "v0.27.5-ffffffffffff",
-    productArtifactHash: sha256("product-artifact-fixture-v0275"),
+    baseSiteArtifactId: `${version}-ffffffffffff`,
+    productArtifactHash: sha256(`product-artifact-fixture-${version}`),
   };
   const makeEntry = (target, value) => {
     const sourcePath = `content/observations/${target}.json`;
@@ -121,7 +121,7 @@ export async function createScenarioFixture({ sourceRoot = process.cwd(), now = 
   const addEntry = makeEntry("new", JSON.stringify({ target: "new", text: "added" }) + "\n");
   const add = await prepareContentSetCandidate({ sourceRoot: root, entries: [afterEntry, keepEntry, addEntry], previousContentSetId: active.contentSetId, createdAt: now });
   const noChange = await prepareContentSetCandidate({ sourceRoot: root, entries: [beforeEntry, keepEntry], previousContentSetId: active.contentSetId, createdAt: now });
-  const failureRoot = await mkdtemp(path.join(os.tmpdir(), "xingbuild-v0275-failure-"));
+  const failureRoot = await mkdtemp(path.join(os.tmpdir(), `xingbuild-${version}-failure-`));
   const failureSource = path.join(failureRoot, ".content-workspace", "content", "observations");
   await import("node:fs/promises").then(({ mkdir }) => mkdir(failureSource, { recursive: true }));
   await writeFile(path.join(failureSource, "demo.json"), beforeValue);
@@ -139,7 +139,7 @@ export async function createScenarioFixture({ sourceRoot = process.cwd(), now = 
   const failureTempAfter = await snapshotDirectory(path.join(failureRoot, ".content-workspace", "content-state"));
   const failureEvidence = { runId: `run-${sha256(beforeValue).slice(0, 16)}`, fixtureHash: sha256({ beforeValue, keepValue }), source: { activeContentSetId: failureActive.contentSetId, activePointerBeforeHash: failureActiveBefore.hash, activePointerAfterHash: failureActiveAfter.hash }, failure: { code: "CONTENT_CANDIDATE_COMMIT_INJECTED", phase: "candidate-commit" }, before: { ...failureBefore, activePointer: failureActiveBefore, activePointerHash: failureActiveBefore.hash, candidateHash: null, temp: failureTempBefore }, after: { ...failureAfter, activePointer: failureActiveAfter, activePointerHash: failureActiveAfter.hash, candidateHash: null, temp: failureTempAfter }, temporary: { root: ".content-workspace/content-state", before: failureTempBefore, after: failureTempAfter, leftoverPaths: failureTempAfter.entries.filter((entry) => entry.path.endsWith(".tmp")) }, temporaryCleaned: failureTempAfter.entries.every((entry) => !entry.path.endsWith(".tmp")), activePointerUnchanged: failureActiveAfter.hash === failureActiveBefore.hash && activeAfterFailure.contentSet.contentSetId === failureActive.contentSetId, candidateUnchanged: failureTempAfter.hash === failureTempBefore.hash, idempotentResume: true };
   const snapshot = createDeterministicSiteSnapshot({ productArtifact, contentSet: active, manifest: { contentSetId: active.contentSetId, contentSetHash: active.contentSetHash } });
-  const recoveryRoot = await mkdtemp(path.join(os.tmpdir(), "xingbuild-v0275-recovery-"));
+  const recoveryRoot = await mkdtemp(path.join(os.tmpdir(), `xingbuild-${version}-recovery-`));
   const outputRoot = path.join(recoveryRoot, "upload-root");
   const leaseRoot = path.join(recoveryRoot, "lease");
   await mkdir(outputRoot, { recursive: true });
@@ -179,10 +179,10 @@ async function assertRejectsCode(fn, expected) {
   try { await fn(); throw new Error("expected injected failure"); } catch (error) { if (!String(error.message).includes(expected)) throw error; }
 }
 
-export async function createLifecycleEvidence({ sourceRoot = process.cwd(), allowedPaths = [], excludedExternalPaths = [], excludedExternalReason = null, now = new Date().toISOString(), stage = "pre-commit", artifact = null } = {}) {
+export async function createLifecycleEvidence({ sourceRoot = process.cwd(), allowedPaths = [], excludedExternalPaths = [], excludedExternalReason = null, now = new Date().toISOString(), stage = "pre-commit", artifact = null, version = "v0.27.5", generatedBy = "scripts/content-lifecycle-evidence-v0275.mjs" } = {}) {
   const baseHead = git(sourceRoot, "rev-parse", "HEAD");
   const scope = allowedScopeDigest({ sourceRoot, allowedPaths, excludedExternalPaths, excludedExternalReason });
-  const scenarios = await createScenarioFixture({ sourceRoot, now });
+  const scenarios = await createScenarioFixture({ sourceRoot, now, version });
   const inventory = await createExactStorageInventory({ sourceRoot, now });
   const inventoryRecords = inventory.records.map((record) => ({
     ...record,
@@ -192,8 +192,8 @@ export async function createLifecycleEvidence({ sourceRoot = process.cwd(), allo
   const inventoryGraph = { ...inventory.referenceGraph, nodes: inventoryNodes, graphHash: sha256({ nodes: inventoryNodes, edges: inventory.referenceGraph.edges }) };
   const inventoryIdentity = { schemaVersion: inventory.schemaVersion, rootManifest: inventory.rootManifest, records: inventoryRecords, referenceGraph: inventoryGraph, retentionPolicy: inventory.retentionPolicy };
   const evidenceInventory = { ...inventory, records: inventoryRecords, referenceGraph: inventoryGraph, inventoryHash: sha256(inventoryIdentity) };
-  const archiveBytes = Buffer.from(`v0.27.5 archive fixture ${scenarios.fixture.runId}\n`);
-  const archiveRoot = await mkdtemp(path.join(os.tmpdir(), "xingbuild-v0275-archive-"));
+  const archiveBytes = Buffer.from(`${version} archive fixture ${scenarios.fixture.runId}\n`);
+  const archiveRoot = await mkdtemp(path.join(os.tmpdir(), `xingbuild-${version}-archive-`));
   const archiveFile = path.join(archiveRoot, "archive-candidate.json");
   await writeFile(archiveFile, archiveBytes);
   const archiveDigest = await fileDigest(archiveFile);
@@ -203,7 +203,7 @@ export async function createLifecycleEvidence({ sourceRoot = process.cwd(), allo
     schemaVersion: LIFECYCLE_EVIDENCE_SCHEMA_VERSION,
     stage,
     generatedAt: now,
-    version: "v0.27.5",
+    version,
     commit: stage === "post-commit" ? baseHead : null,
     tag: stage === "post-commit" ? git(sourceRoot, "describe", "--tags", "--exact-match", "HEAD") : null,
     tagType: stage === "post-commit" ? git(sourceRoot, "cat-file", "-t", git(sourceRoot, "describe", "--tags", "--exact-match", "HEAD")) : null,
@@ -218,13 +218,13 @@ export async function createLifecycleEvidence({ sourceRoot = process.cwd(), allo
     rootManifestHash: evidenceInventory.rootManifest.manifestHash,
     scope: { ...scope, allowedPaths },
     fixture: scenarios.fixture,
-    provenance: { runId: scenarios.fixture.runId, fixtureHash: scenarios.fixture.fixtureHash, source: "createLifecycleEvidence", generatedBy: "scripts/content-lifecycle-evidence-v0275.mjs", realRun: true },
+    provenance: { runId: scenarios.fixture.runId, fixtureHash: scenarios.fixture.fixtureHash, source: "createLifecycleEvidence", generatedBy, realRun: true },
     scenarios,
     inventory: { inventoryHash: evidenceInventory.inventoryHash, rootManifestHash: evidenceInventory.rootManifest.manifestHash, rootManifest: evidenceInventory.rootManifest, records: evidenceInventory.records, summary: evidenceInventory.summary, referenceGraph: evidenceInventory.referenceGraph, retentionPolicy: evidenceInventory.retentionPolicy, exact: true, sourceOfTruth: "canonical protected roots" },
     outputRootEvidence: evidenceInventory.records.filter((record) => record.outputRoot).map((record) => ({ path: record.path, identity: record.identity, logicalId: record.logicalId, namespace: record.namespace, bytes: record.bytes, hash: record.hash, hashMode: record.hashMode, durableRecord: record.durableRecord, embeddedMaterialization: record.embeddedMaterialization, embeddedVerification: record.embeddedVerification, legacyEmbedded: record.legacyEmbedded, decision: record.decision })),
     archiveFixture,
     zeroWrite: { physicalDeletion: false, moved: false, archived: false, activeContentSetChanged: false, sitePublicationChanged: false },
-    productionPublish: { authorized: false, executed: false, reason: "v0.27.5 does not authorize production publish" },
+    productionPublish: { authorized: false, executed: false, reason: `${version} does not authorize production publish` },
   };
   evidence.acceptance = reduceLifecycleAcceptance({ evidence });
   return evidence;
@@ -262,7 +262,7 @@ export function reduceLifecycleAcceptance({ evidence } = {}) {
   const exclusions = evidence?.scope?.excludedExternalPaths || [];
   const scopeComplete = requiredScopePaths.every((entry) => scopePaths.has(entry)) && exclusions.includes("AGENTS.md") && exclusions.some((entry) => entry.startsWith("docs/rules/")) && typeof evidence?.scope?.excludedExternalReason === "string";
   const pre = evidence?.stage === "pre-commit" && /^[a-f0-9]{40}$/.test(evidence?.baseHead || "") && SHA256.test(evidence?.scopeDigest || "") && evidence?.provenance?.realRun === true && scopeComplete;
-  const post = evidence?.stage === "post-commit" && /^[a-f0-9]{40}$/.test(evidence?.commit || "") && evidence?.tag && evidence?.tagType === "tag" && evidence?.tagCommit === evidence?.commit && evidence?.version === "v0.27.5" && evidence?.productVersion === evidence?.version && evidence?.productCommit === evidence?.commit && evidence?.productArtifactId && SHA256.test(evidence?.artifactHash || "") && evidence?.baseSiteArtifactId && evidence?.rootManifestHash === evidence?.inventory?.rootManifestHash;
+  const post = evidence?.stage === "post-commit" && /^v\d+\.\d+\.\d+$/.test(evidence?.version || "") && /^[a-f0-9]{40}$/.test(evidence?.commit || "") && evidence?.tag === evidence?.version && evidence?.tagType === "tag" && evidence?.tagCommit === evidence?.commit && evidence?.productVersion === evidence?.version && evidence?.productCommit === evidence?.commit && evidence?.productArtifactId && SHA256.test(evidence?.artifactHash || "") && evidence?.baseSiteArtifactId && evidence?.rootManifestHash === evidence?.inventory?.rootManifestHash;
   out["C-01"] = pre || post ? pass({ stage: evidence.stage, baseHead: evidence.baseHead, commit: evidence.commit, tag: evidence.tag, scopeDigest: evidence.scopeDigest, allowedPaths: [...scopePaths].sort(), excludedExternalPaths: exclusions }) : fail("two-stage identity or complete scope binding is incomplete", { scopeComplete, requiredScopePaths, allowedPaths: [...scopePaths].sort(), excludedExternalPaths: exclusions });
   try { rejectPlaceholder(evidence); requiredScenarioIdentity(evidence.fixture, "fixture"); out["C-02"] = pass({ fullEnvelopeScanned: true, provenance: evidence.provenance }); } catch (error) { out["C-02"] = fail(error.message); }
   const update = evidence?.scenarios?.update;
@@ -312,8 +312,9 @@ export function assertLifecycleAcceptance(acceptance = {}) {
   return true;
 }
 
-export function validateLifecycleEvidence(evidence, { requirePostCommit = false } = {}) {
+export function validateLifecycleEvidence(evidence, { requirePostCommit = false, expectedVersion = null } = {}) {
   if (evidence?.schemaVersion !== LIFECYCLE_EVIDENCE_SCHEMA_VERSION) throw new Error("V0275_EVIDENCE_SCHEMA");
+  if (expectedVersion && evidence?.version !== expectedVersion) throw new Error(`LIFECYCLE_EVIDENCE_VERSION:${evidence?.version || "missing"}`);
   if (requirePostCommit && evidence.stage !== "post-commit") throw new Error("V0275_POST_COMMIT_EVIDENCE_REQUIRED");
   rejectPlaceholder(evidence);
   const recomputed = reduceLifecycleAcceptance({ evidence });

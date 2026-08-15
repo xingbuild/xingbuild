@@ -8,8 +8,9 @@ import { assertProductContentCompatibility } from "./lib/content-compatibility.m
 import { assertNoVersionStateFields, evaluateProductReleaseReadiness, parseCurrentIterationVersion } from "./lib/release-readiness.mjs";
 import { readProductArtifact } from "./lib/product-artifact.mjs";
 import { readFile as readFileAsync } from "node:fs/promises";
-import { validateLifecycleEvidence } from "./lib/content-lifecycle-evidence-v0275.mjs";
+import { validateLifecycleEvidence } from "./lib/content-lifecycle-evidence.mjs";
 import { classifyReleaseScope } from "./lib/release-scope-classifier.mjs";
+import { readLifecycleEvidence } from "./lib/lifecycle-evidence-path.mjs";
 
 function git(...args) {
   try {
@@ -32,10 +33,10 @@ if (installPolicyEvidence.status !== "passed" || installPolicyEvidence.policyVer
 assertProductContentCompatibility({ currentText: currentIteration });
 assertNoVersionStateFields(currentIteration);
 try {
-  const lifecycleEvidence = JSON.parse(await readFileAsync(new URL("../.content-workspace/qa/v0275-lifecycle-evidence/evidence.json", import.meta.url), "utf8"));
-  validateLifecycleEvidence(lifecycleEvidence, { requirePostCommit: true });
+  const lifecycleEvidence = await readLifecycleEvidence({ root: process.cwd(), version: `v${packageJson.version}`, allowMissing: false });
+  validateLifecycleEvidence(lifecycleEvidence, { requirePostCommit: true, expectedVersion: `v${packageJson.version}` });
 } catch (error) {
-  throw new Error(`V0275_LIFECYCLE_PREFLIGHT: ${error.message}`);
+  throw new Error(`LIFECYCLE_EVIDENCE_PREFLIGHT: ${error.message}`);
 }
 let scopeResult;
 try {

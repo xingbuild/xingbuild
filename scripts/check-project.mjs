@@ -139,8 +139,12 @@ const requiredFiles = [
   "scripts/lib/content-storage-governance.mjs",
   "tests/v0274-content-storage-governance.test.mjs",
   "scripts/lib/content-lifecycle-evidence-v0275.mjs",
+  "scripts/lib/content-lifecycle-evidence.mjs",
+  "scripts/lib/lifecycle-evidence-path.mjs",
   "scripts/content-lifecycle-evidence-v0275.mjs",
+  "scripts/content-lifecycle-evidence.mjs",
   "tests/v0275-content-lifecycle-evidence.test.mjs",
+  "tests/v0278-lifecycle-evidence.test.mjs",
 ];
 
 for (const file of requiredFiles) {
@@ -162,6 +166,8 @@ assert.equal(packageJson.scripts["qa:content-preview:evidence"], "node scripts/q
 assert.equal(packageJson.scripts["content:lifecycle"], "node scripts/content-lifecycle-governance.mjs --inventory --dry-run", "content lifecycle governance must stay read-only and explicit");
 assert.equal(packageJson.scripts["content:storage:check:v0274"], "node scripts/content-storage-governance-v0274.mjs", "v0.27.4 storage evidence must use the sole reducer entry point");
 assert.equal(packageJson.scripts["content:lifecycle:evidence:v0275"], "node scripts/content-lifecycle-evidence-v0275.mjs", "v0.27.5 lifecycle evidence must use the sole stage-aware entry point");
+assert.equal(packageJson.scripts["content:lifecycle:evidence"], "node scripts/content-lifecycle-evidence.mjs", "current lifecycle evidence must use the version-aware entry point");
+assert.match(packageJson.scripts["release:prepare"], /node scripts\/content-lifecycle-evidence\.mjs --precommit$/, "release:prepare must use current version lifecycle evidence");
 const version = await readFile(new URL("../VERSION.md", import.meta.url), "utf8");
 const current = await readFile(
   new URL("../docs/iterations/current.md", import.meta.url),

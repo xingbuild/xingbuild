@@ -1,20 +1,20 @@
 # 当前迭代
 
-## 当前唯一版本：`v0.27.7`
+## 当前唯一版本：`v0.27.8`
 
-父版本：v0.27.6 / `10e03917981f91eb120c4eadfba674d65da0896e`
+父版本：v0.27.7 / `8605e54dbc251e3012aa80763def1ef16c1c6d11`
 
 contentImpact: compatible
-contentImpactReason: release-scope-path-identity-correction
+contentImpactReason: version-neutral-lifecycle-evidence-gates
 affectedTargets: []
 affectedRoutes: []
 affectedFields: []
-compatibilityEvidence: v0.27.6-scope-classifier-backward-compatible
+compatibilityEvidence: v0.27.7-scope-path-backward-compatible
 
 ## 正式方案
 
-[v0.27.7 Scope classifier 路径身份修复方案](../design/v0.27.7%20Scope%20classifier%20%E8%B7%AF%E5%BE%84%E8%BA%AB%E4%BB%BD%E4%BF%AE%E5%A4%8D%E6%96%B9%E6%A1%88.md)
+[v0.27.8 版本无关生命周期 evidence 门禁方案](../design/v0.27.8%20%E7%89%88%E6%9C%AC%E6%97%A0%E5%85%B3%E7%94%9F%E5%91%BD%E5%91%A8%E6%9C%9Fevidence%20%E9%97%A8%E7%A6%81%E6%96%B9%E6%A1%88.md)
 
 ## 执行范围
 
-修复 v0.27.6 scope classifier 对中文、空格、引号和重命名路径的 commit 读取误判：使用 NUL-safe Git path 输出并保持声明路径与 committedHead 精确匹配。仅修复发布证据读取与回归测试；不改 UI/IA/schema/正文/review/active ContentSet，不回写 v0.27.6 tag，不执行物理清理，不运行 content publish。
+消除 release gate 对 `v0.27.5` lifecycle evidence 的硬编码：所有 gate 按当前版本解析 evidence，历史 evidence 只读兼容，不写旧版本；保持 v0.27.7 路径 classifier、ProductArtifact、ContentSet、SitePublication 与 Content/Ops 边界不变。

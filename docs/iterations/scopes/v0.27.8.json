@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "release-scope-v1",
+  "phase": "pre-commit",
+  "version": "v0.27.8",
+  "baseHead": "8605e54dbc251e3012aa80763def1ef16c1c6d11",
+  "scopeManifestPath": "docs/iterations/scopes/v0.27.8.json",
+  "scopeDigest": "e877cca830a4f64c0c87473e349429f11dcb0759c9e7da0a7acff341a0a303c2",
+  "paths": [
+    {"path":"VERSION.md","classification":"record-only","owner":"elon","reason":"v0.27.8 confirmed release record","pathHash":"877f7779df0873c20cdfe5c684f336fbcd5443b8a3c8153bb41baac16189a48e","state":"modified"},
+    {"path":"docs/design/v0.27.8 版本无关生命周期evidence 门禁方案.md","classification":"record-only","owner":"elon","reason":"v0.27.8 confirmed release design","pathHash":"5c9e8f1db0df1a5d2f639814088c3096196c42123703c8054efa7ad03e9bf3e8","state":"added"},
+    {"path":"docs/iterations/current.md","classification":"record-only","owner":"elon","reason":"v0.27.8 current contract","pathHash":"96e298738829e955357caf171463e3ba79b41166f5b9385e33624f1087b7a156","state":"modified"},
+    {"path":"docs/iterations/history/v0.27.8.md","classification":"record-only","owner":"elon engin","reason":"v0.27.8 release history","pathHash":"23b2772f8e018be5d671b82df9f6a330c278c5ff488b17f66328eb04cc58c1d0","state":"added"},
+    {"path":"docs/iterations/scopes/v0.27.8.json","classification":"record-only","owner":"elon engin","reason":"v0.27.8 scope manifest record","pathHash":"self-excluded","state":"added"},
+    {"path":"package-lock.json","classification":"implementation","owner":"elon engin","reason":"version-aware lifecycle gate","pathHash":"961988bcdba41c02e6d09298efdb75b4908e2c92c39b7690b3b7e8d1af05b809","state":"modified"},
+    {"path":"package.json","classification":"implementation","owner":"elon engin","reason":"version-aware lifecycle entry","pathHash":"6f71335b41bb0f6d11733d744b27ccebf2c6e05ad0827018d395167e5db6f11e","state":"modified"},
+    {"path":"scripts/check-project.mjs","classification":"implementation","owner":"elon engin","reason":"current lifecycle entry gate","pathHash":"463647085f376955a20299f44402fb9f945637ca336edcdf3d23b921fc90dcf9","state":"modified"},
+    {"path":"scripts/content-lifecycle-evidence.mjs","classification":"implementation","owner":"elon engin","reason":"version-aware lifecycle evidence entry","pathHash":"45340cfe90a65bc4b42219806ffbe1277c483b4f4b582b23432b13ed755c691e","state":"added"},
+    {"path":"scripts/lib/content-lifecycle-evidence-v0275.mjs","classification":"implementation","owner":"elon engin","reason":"version-neutral lifecycle evidence factory and validator","pathHash":"50f34a4544a7e7d7a4f373e3f1e9e3b5cdb8a3763ea94df582f4e6ffb35ed69c","state":"modified"},
+    {"path":"scripts/lib/content-lifecycle-evidence.mjs","classification":"implementation","owner":"elon engin","reason":"canonical version-aware lifecycle evidence API","pathHash":"97d91edf3f73fcb6177960232dafe8fe378c8c52e5382e850c473562ef466d02","state":"added"},
+    {"path":"scripts/lib/lifecycle-evidence-path.mjs","classification":"implementation","owner":"elon engin","reason":"current lifecycle evidence path and missing-file gate","pathHash":"eae8bf0edd69ec9858c1c2f6bb7f352b23274e94d1d0e92c1e6b7cdcb086264d","state":"added"},
+    {"path":"scripts/release-build.mjs","classification":"implementation","owner":"elon engin","reason":"current lifecycle evidence post-commit gate","pathHash":"9de9052706048d0d9bf358a2beb149cc583354767c098633002f6fb1558afd4c","state":"modified"},
+    {"path":"scripts/release-closeout-check.mjs","classification":"implementation","owner":"elon engin","reason":"current lifecycle evidence closeout gate","pathHash":"ac0daa5db0e89d6bd860274303c210ef3e23da7924fb7ed59e8ce77423477163","state":"modified"},
+    {"path":"scripts/release-preflight.mjs","classification":"implementation","owner":"elon engin","reason":"current lifecycle evidence preflight gate","pathHash":"72729b7ae76dceb772ac0d4430372ddf574962499e09e06f897eadafcb7bafb3","state":"modified"},
+    {"path":"tests/v0278-lifecycle-evidence.test.mjs","classification":"implementation","owner":"elon engin","reason":"version-aware lifecycle evidence regression","pathHash":"185afd8f045ef1bc852ff672b5b87e9bf545abdf609d944a9c8f429a58a95f82","state":"added"}
+  ]
+}

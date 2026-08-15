@@ -6,8 +6,9 @@ import process from "node:process";
 import { assertProductContentCompatibility } from "./lib/content-compatibility.mjs";
 import { assertNoVersionStateFields, evaluateCloseoutReadiness, parseCurrentIterationVersion } from "./lib/release-readiness.mjs";
 import { access, readFile as readFileAsync } from "node:fs/promises";
-import { validateLifecycleEvidence } from "./lib/content-lifecycle-evidence-v0275.mjs";
+import { validateLifecycleEvidence } from "./lib/content-lifecycle-evidence.mjs";
 import { classifyReleaseScope } from "./lib/release-scope-classifier.mjs";
+import { readLifecycleEvidence } from "./lib/lifecycle-evidence-path.mjs";
 
 function git(...args) {
   return execFileSync("git", args, { encoding: "utf8" }).trim();
@@ -27,12 +28,10 @@ if (installPolicyEvidence.status !== "passed" || installPolicyEvidence.policyVer
 assertProductContentCompatibility({ currentText: currentIteration });
 assertNoVersionStateFields(currentIteration);
 try {
-  const lifecycleEvidencePath = new URL("../.content-workspace/qa/v0275-lifecycle-evidence/evidence.json", import.meta.url);
-  const lifecycleEvidence = JSON.parse(await readFileAsync(lifecycleEvidencePath, "utf8"));
-  validateLifecycleEvidence(lifecycleEvidence, { requirePostCommit: false });
+  const lifecycleEvidence = await readLifecycleEvidence({ root: process.cwd(), version: `v${packageJson.version}`, allowMissing: false });
+  validateLifecycleEvidence(lifecycleEvidence, { requirePostCommit: false, expectedVersion: `v${packageJson.version}` });
 } catch (error) {
-  if (error?.code !== "ENOENT") throw new Error(`V0275_LIFECYCLE_CLOSEOUT: ${error.message}`);
-  console.log("v0.27.5 lifecycle evidence pending READY_FOR_COMMIT/post-tag build");
+  throw new Error(`LIFECYCLE_EVIDENCE_CLOSEOUT: ${error.message}`);
 }
 let scopeResult;
 try {

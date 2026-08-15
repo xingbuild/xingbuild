@@ -1,6 +1,6 @@
 {
   "name": "xingbuild",
-  "version": "0.27.7",
+  "version": "0.27.8",
   "private": true,
   "type": "module",
   "scripts": {
@@ -17,7 +17,7 @@
     "test:sites": "node --test tests/*.test.mjs",
     "check": "node scripts/check-project.mjs",
     "preinstall": "node scripts/qa-browser-install-check.mjs --install-guard",
-    "release:prepare": "npm run check && npm run content:check && npm run article:check && npm run practice:check && npm run qa:browser:install-policy && npm run qa:browser:check && node scripts/content-lifecycle-evidence-v0275.mjs --precommit",
+    "release:prepare": "npm run check && npm run content:check && npm run article:check && npm run practice:check && npm run qa:browser:install-policy && npm run qa:browser:check && node scripts/content-lifecycle-evidence.mjs --precommit",
     "release:build": "node scripts/release-build.mjs",
     "release:qa": "npm run qa:browser:install-policy && npm run qa:browser:check && npm run test:sites",
     "qa:browser:install-policy": "node scripts/qa-browser-install-check.mjs",
@@ -31,6 +31,7 @@
     "content:storage:check": "node scripts/content-storage-governance.mjs",
     "content:storage:check:v0274": "node scripts/content-storage-governance-v0274.mjs",
     "content:lifecycle:evidence:v0275": "node scripts/content-lifecycle-evidence-v0275.mjs",
+    "content:lifecycle:evidence": "node scripts/content-lifecycle-evidence.mjs",
     "qa:resume-artifact": "node scripts/lib/resume-artifact.mjs",
     "qa:content-preview:evidence": "node scripts/qa-v02631-content-preview-evidence.mjs",
     "content:approve": "node scripts/content-approve.mjs",

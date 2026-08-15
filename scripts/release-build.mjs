@@ -44,7 +44,7 @@ export async function buildFinalProductArtifact({ sourceRoot = root } = {}) {
     XINGBUILD_PRODUCT_VERSION: version,
     XINGBUILD_PRODUCT_COMMIT: identity.head,
   });
-  run("node", ["scripts/content-lifecycle-evidence-v0275.mjs", "--post-commit"], process.env);
+  run("node", ["scripts/content-lifecycle-evidence.mjs", "--post-commit"], process.env);
   const artifact = await readProductArtifact({
     clientDirectory: path.join(root, "dist", "client"),
     sourceRoot: root,

@@ -1,3 +1,11 @@
+## v0.27.8 — 版本无关生命周期 evidence 门禁
+
+父版本：`v0.27.7` / `8605e54dbc251e3012aa80763def1ef16c1c6d11`
+
+- 生命周期 evidence 入口、校验器和输出路径按当前版本解析，历史 v0.27.5/v0.27.7 evidence 只读兼容。
+- release-build、release-closeout-check、release-preflight 统一消费当前版本 evidence。
+- 本版本不改页面、内容事实、ContentSet、SitePublication 或 Content/Ops 发布边界。
+
 ## v0.27.7 — Scope classifier 路径身份修复
 
 父版本：`v0.27.6` / `10e03917981f91eb120c4eadfba674d65da0896e`
@@ -1356,3 +1364,10 @@ Engineering local implementation checkpoint；待产品/视觉独立验收，尚
 - 建立 pre-commit 生命周期证据 envelope：绑定 base HEAD、未提交 scope digest、fixture/run provenance。
 - 真实执行 update/add/no-change、atomic failure、same-publication resume/rollback 与 deterministic snapshot 场景；拒绝 placeholder、sentinel、路径代替结果。
 - 复用现有 ContentSet、ChangeSet、SiteSnapshot、PublicationRun、inventory 与唯一发布链路；本版本不执行物理清理、content publish 或 product transport。
+## v0.27.8 — 版本无关生命周期 evidence 门禁
+
+父版本：`v0.27.7` / `8605e54dbc251e3012aa80763def1ef16c1c6d11`
+
+- 生命周期 evidence 入口、校验器和输出路径按当前版本解析，历史 v0.27.5/v0.27.7 evidence 只读兼容。
+- release-build、release-closeout-check、release-preflight 统一消费当前版本 evidence。
+- 本版本不改页面、内容事实、ContentSet、SitePublication 或 Content/Ops 发布边界。
