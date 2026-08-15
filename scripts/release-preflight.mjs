@@ -8,7 +8,7 @@ import { assertProductContentCompatibility } from "./lib/content-compatibility.m
 import { assertNoVersionStateFields, evaluateProductReleaseReadiness, parseCurrentIterationVersion } from "./lib/release-readiness.mjs";
 import { readProductArtifact } from "./lib/product-artifact.mjs";
 import { readFile as readFileAsync } from "node:fs/promises";
-import { validateStorageEvidenceFile } from "./lib/content-storage-governance.mjs";
+import { validateLifecycleEvidence } from "./lib/content-lifecycle-evidence-v0275.mjs";
 
 function git(...args) {
   try {
@@ -31,9 +31,10 @@ if (installPolicyEvidence.status !== "passed" || installPolicyEvidence.policyVer
 assertProductContentCompatibility({ currentText: currentIteration });
 assertNoVersionStateFields(currentIteration);
 try {
-  await validateStorageEvidenceFile({ sourceRoot: fileURLToPath(new URL("..", import.meta.url)) });
+  const lifecycleEvidence = JSON.parse(await readFileAsync(new URL("../.content-workspace/qa/v0275-lifecycle-evidence/evidence.json", import.meta.url), "utf8"));
+  validateLifecycleEvidence(lifecycleEvidence, { requirePostCommit: true });
 } catch (error) {
-  throw new Error(`V0274_STORAGE_PREFLIGHT: ${error.message}`);
+  throw new Error(`V0275_LIFECYCLE_PREFLIGHT: ${error.message}`);
 }
 const result = evaluateProductReleaseReadiness({
   branch: git("branch", "--show-current"),

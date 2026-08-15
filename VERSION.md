@@ -1333,3 +1333,10 @@ Engineering local implementation checkpoint；待产品/视觉独立验收，尚
 - registered target/source/route/baseline、unknown/unsafe/missing source、responsive projection、content/product lease 隔离、workbench dev-only/无发布控制、零写入与 preview runtime 回归。
 - `npm run check`、`npm run release:prepare`、内容检查、`npm run release:closeout-check`、exact `npm run release:build`、`npm run release:preflight`、`git diff --check`；保留既有环境/内容 fixture failures 分层，不修改内容事实。
 - 本版本只形成本地 Engineering checkpoint；待 elon 产品/架构与 elon ui 本地 Web→Mobile 独立验收，未执行 product transport 或 content publish。
+## v0.27.5 — 内容生命周期证据与发布门禁纠偏
+
+父版本：`v0.27.4` / `b3ceb325f9be96bd3cb617f05ec66d6da8cf3551`
+
+- 建立 pre-commit 生命周期证据 envelope：绑定 base HEAD、未提交 scope digest、fixture/run provenance。
+- 真实执行 update/add/no-change、atomic failure、same-publication resume/rollback 与 deterministic snapshot 场景；拒绝 placeholder、sentinel、路径代替结果。
+- 复用现有 ContentSet、ChangeSet、SiteSnapshot、PublicationRun、inventory 与唯一发布链路；本版本不执行物理清理、content publish 或 product transport。
