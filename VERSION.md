@@ -1,3 +1,16 @@
+## v0.27.3 — 内容派生存储保留与清理闭环
+
+父版本：`v0.27.2` / `ae0befadc177e049380795c948109ddd31d7c13d`
+
+- 建立 protected-root 与 metadata inventory/reference graph，保留 canonical source、active/review/recovery、registry、release 与 SitePublication 等保护对象。
+- 增加 namespace CAS、staging/upload/output root 分离、retention 分类、quarantine/restore 与显式 cleanup gate；本版本只做零写入 dry-run 和可恢复门禁，不执行物理删除。
+- 以机器证据覆盖 SG-01～SG-07 与 AC-01～AC-14；生产发布未授权，AC-13 明确记录 N/A。
+
+## 验证与发布边界
+
+- 通过 `npm run check`、`npm run release:prepare`、存储治理定向测试、`npm run release:closeout-check`、exact `release:build`、`release:preflight` 与 `git diff --check` 后交产品/架构验收。
+- 本版本不执行物理删除/迁移、content publish、product transport 或 EdgeOne；不修改页面、内容事实、active ContentSet、SitePublication 或线上状态。
+
 ## v0.27.2 — 生命周期单一模型与原子变更
 
 父版本：`v0.27.1` / `cbf832d48ea2483c911f3cd494486a627caf7068`

@@ -1,20 +1,20 @@
 # 当前迭代
 
-## 当前唯一版本：`v0.27.2`
+## 当前唯一版本：`v0.27.3`
 
-父版本：v0.27.1 / `cbf832d48ea2483c911f3cd494486a627caf7068`
+父版本：v0.27.2 / `ae0befadc177e049380795c948109ddd31d7c13d`
 
 contentImpact: compatible
-contentImpactReason: lifecycle-single-model-and-atomic-change-closure
+contentImpactReason: derived-storage-retention-and-cleanup-governance
 affectedTargets: []
 affectedRoutes: []
 affectedFields: []
-compatibilityEvidence: v0.27.2-content-lifecycle-backward-compatible
+compatibilityEvidence: v0.27.3-storage-governance-backward-compatible
 
 ## 正式方案
 
-[v0.27.2 生命周期单一模型与原子变更方案](../design/v0.27.2%20生命周期单一模型与原子变更方案.md)
+[v0.27.3 内容派生存储保留与清理闭环方案](../design/v0.27.3%20内容派生存储保留与清理闭环方案.md)
 
 ## 执行范围
 
-收口 `V272-01`～`V272-05`：统一 snapshot 真源、原子 Candidate/ChangeSet、真实 sourceHash、无变化复用和 durable record 硬边界。仅做兼容性工程与证据；不改页面、内容事实、active ContentSet、线上状态，不运行 content publish。
+实现 `SG-01`～`SG-07`，逐项通过 `AC-01`～`AC-14`：保护根、可重跑 inventory/引用图、namespace CAS、临时/持久物分离、分层保留、quarantine/restore/清理门禁与失败恢复。保留官网、active ContentSet、当前内容/媒体和审计恢复事实；不自动删除，不改 UI/IA/schema/正文/review/active ContentSet，不运行 content publish 或 product transport。
