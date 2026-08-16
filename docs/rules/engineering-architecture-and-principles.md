@@ -2,6 +2,10 @@
 
 状态：生效。本文只记录当前项目已经存在的工程边界，不定义产品业务、页面文案或运营事实；产品能力以产品总案为准，版本和发布以 [`iteration-and-release.md`](iteration-and-release.md) 为准。
 
+## v0.28.3 内容数据发布事务补充
+
+canonical 内容发布的唯一输入是不可变 `ContentPublicationIntent`：它同时引用已批准 `ProductArtifact`、`ContentSet`、`ContentDataArtifact`、candidate active tuple、`SiteSnapshot` 与 `PublicationRun`。首次 cutover 前只能由 legacy `content-state/active.json` 只读重建 baseline；cutover 后所有 active 读取、Coordinator finalize 和 runtime proof 以 `content-data-active.json` 为唯一 authority，禁止双写或双判定。公网 release/content/data manifest、immutable object、目标页面和浏览器 runtime 证明完成前不得激活 tuple；失败、CAS 冲突、取消和恢复不得改写旧 authority。
+
 ## 一、当前工程边界
 
 ```mermaid

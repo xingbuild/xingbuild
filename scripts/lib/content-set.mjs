@@ -350,6 +350,37 @@ export function contentSetPaths(sourceRoot) {
   };
 }
 
+function contentDataActivePath(sourceRoot) {
+  return path.join(stateDirectory(sourceRoot), "content-data-active.json");
+}
+
+/**
+ * After the data-plane cutover, the tuple is the only active read authority.
+ * This low-level module cannot statically import content-data-plane (that
+ * module imports ContentSet), so validation is loaded lazily at call time.
+ * The legacy active.json remains a read-only bootstrap fallback only.
+ */
+async function readActiveContentDataPointer(root) {
+  let pointer;
+  try {
+    pointer = await readJson(contentDataActivePath(root));
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+  if (pointer?.schemaVersion !== "content-data-active-v1") throw new Error("ContentData active tuple schemaVersion is invalid");
+  const { assertActiveContentDataTuple } = await import("./content-data-plane.mjs");
+  return assertActiveContentDataTuple(pointer);
+}
+
+async function assertLegacyPointerWritable(root) {
+  if (await readActiveContentDataPointer(root)) {
+    const error = new Error("legacy ContentSet active pointer is read-only after ContentData cutover");
+    error.code = "CONTENT_SET_LEGACY_POINTER_READ_ONLY";
+    throw error;
+  }
+}
+
 async function atomicWrite(file, value) {
   await mkdir(path.dirname(file), { recursive: true });
   const temporary = `${file}.${process.pid}.${Date.now()}.tmp`;
@@ -370,6 +401,12 @@ export async function readContentSet({ sourceRoot, contentSetId } = {}) {
 
 export async function readActiveContentSet({ sourceRoot } = {}) {
   const root = sourceRoot || process.cwd();
+  const tuple = await readActiveContentDataPointer(root);
+  if (tuple) {
+    const contentSet = await readContentSet({ sourceRoot: root, contentSetId: tuple.contentSetId });
+    if (contentSet.contentSetHash !== tuple.contentSetHash) throw new Error("ContentData active tuple ContentSet hash drift");
+    return { pointer: tuple, activeTuple: tuple, mode: "tuple", contentSet };
+  }
   const { activePath } = contentSetPaths(root);
   const pointer = await readJson(activePath);
   if (pointer.schemaVersion !== ACTIVE_CONTENT_SET_SCHEMA_VERSION) throw new Error("ContentSet active pointer schemaVersion is invalid");
@@ -399,6 +436,7 @@ export async function writeContentSet({ sourceRoot, contentSet } = {}) {
 
 export async function activateContentSet({ sourceRoot, nextContentSetId, expectedContentSetId = undefined, now = new Date().toISOString() } = {}) {
   const root = sourceRoot || process.cwd();
+  await assertLegacyPointerWritable(root);
   const { activePath } = contentSetPaths(root);
   const current = await readJson(activePath).catch((error) => {
     if (error.code === "ENOENT") return null;
@@ -428,6 +466,7 @@ export async function activateContentSet({ sourceRoot, nextContentSetId, expecte
  */
 export async function restoreActiveContentSet({ sourceRoot, expectedContentSetId, previousPointer = null } = {}) {
   const root = sourceRoot || process.cwd();
+  await assertLegacyPointerWritable(root);
   const { activePath } = contentSetPaths(root);
   const current = await readJson(activePath).catch((error) => {
     if (error.code === "ENOENT") return null;

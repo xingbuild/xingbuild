@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFile, stat, rm } from "node:fs/promises";
+import { readFile, stat, rm, unlink } from "node:fs/promises";
 import path from "node:path";
 import { assertProductContentCompatibility } from "./content-compatibility.mjs";
 import { acquireSitePublicationLease, releaseSitePublicationLease, assertSitePublicationEvidence } from "./site-publication.mjs";
@@ -18,6 +18,8 @@ import {
   createPublicationPhaseEvidence,
 } from "./publication-evidence.mjs";
 import { assertProductArtifactIdentityShape } from "./product-artifact.mjs";
+import { assertActiveContentDataTuple, assertContentDataArtifact, activateContentDataTuple, contentDataObjectHash, contentDataPaths, readActiveContentDataTuple } from "./content-data-plane.mjs";
+import { assertSiteSnapshotDataPlane } from "./site-snapshot.mjs";
 import { assertDurableSitePublicationRecord, sanitizeDurableSitePublicationRecord } from "./content-lifecycle-governance.mjs";
 import {
   assertBindingCandidate,
@@ -35,6 +37,8 @@ import {
   readDeploymentResult,
   readFixedEdgeoneTarget,
 } from "./publish-target.mjs";
+
+const SHA256 = /^[a-f0-9]{64}$/;
 
 function runCapture(command, args, cwd, env = process.env) {
   const result = spawnSync(command, args, { cwd, encoding: "utf8", env, timeout: 120000, killSignal: "SIGTERM" });
@@ -164,7 +168,75 @@ async function finalizeContentSetPublication({ current, publicationDirectory, pu
   }
 }
 
-export async function finalizeSitePublication({ publicationDirectory, publicVerify, sourceRoot = null } = {}) {
+function isDataPlanePublication(publication = {}) {
+  return Boolean(publication.contentSetId && publication.contentSetHash && publication.contentDataArtifactId && publication.contentDataHash && publication.activeTupleHash && publication.siteSnapshotId && publication.snapshotHash && publication.publicationRunId);
+}
+
+async function finalizeDataPlanePublication({ current, publicationDirectory, publicVerify, sourceRoot, failAfterActivate = null }) {
+  if (publicVerify.contentSetId !== current.contentSetId
+    || publicVerify.contentSetHash !== current.contentSetHash
+    || publicVerify.siteSnapshotId !== current.siteSnapshotId
+    || publicVerify.snapshotHash !== current.snapshotHash
+    || publicVerify.baseSiteArtifactId !== (current.baseSiteArtifactId || current.productArtifactId)
+    || (current.productArtifactHash && publicVerify.productArtifactHash !== current.productArtifactHash)
+    || publicVerify.contentDataArtifactId !== current.contentDataArtifactId
+    || publicVerify.contentDataHash !== current.contentDataHash
+    || publicVerify.activeTupleHash !== current.activeTupleHash) {
+    throw new Error("ContentData SitePublication public evidence identity mismatch");
+  }
+  if (!current.activeTuple) throw new Error("ContentData SitePublication active tuple reference is missing");
+  assertActiveContentDataTuple(current.activeTuple);
+  const snapshot = current.siteSnapshot || null;
+  if (snapshot) assertSiteSnapshotDataPlane(snapshot, {
+    productArtifactId: current.productArtifactId,
+    tupleHash: current.activeTupleHash,
+    contentDataArtifactId: current.contentDataArtifactId,
+    contentDataHash: current.contentDataHash,
+  });
+  let run = await readPublicationRun({ sourceRoot, publicationRunId: current.publicationRunId });
+  if (run.siteSnapshotId !== current.siteSnapshotId || run.snapshotHash !== current.snapshotHash || run.contentSetId !== current.contentSetId || run.contentDataArtifactId !== current.contentDataArtifactId || run.contentDataHash !== current.contentDataHash || run.activeTupleHash !== current.activeTupleHash) {
+    throw new Error("PublicationRun ContentData identity drift during finalize");
+  }
+  let previous = null;
+  try { previous = await readActiveContentDataTuple({ sourceRoot }); } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  const expectedPrevious = current.expectedPreviousTupleHash ?? null;
+  if ((previous?.tupleHash || null) !== expectedPrevious && previous?.tupleHash !== current.activeTupleHash) {
+    const error = new Error("ContentData active tuple CAS conflict during finalize");
+    error.code = "CONTENT_DATA_ACTIVE_CAS";
+    throw error;
+  }
+  let activated = false;
+  try {
+    if (previous?.tupleHash === current.activeTupleHash) {
+      // Idempotent finalize: the same tuple is already authoritative.
+    } else {
+      await activateContentDataTuple({ sourceRoot, tuple: current.activeTuple, expectedTupleHash: expectedPrevious });
+      activated = true;
+    }
+    if (failAfterActivate === "crash") throw new Error("injected finalize crash after active tuple activation");
+    const releasedRun = run.state === "released" ? run : markPublicationReleased(run, publicVerify);
+    await writePublicationRun({ sourceRoot, run: releasedRun });
+    return await writePublicationRecord(publicationDirectory, {
+      ...current,
+      publicationRun: releasedRun,
+      state: "released",
+      publicVerify,
+      releasedAt: current.releasedAt || new Date().toISOString(),
+      failure: null,
+    });
+  } catch (error) {
+    if (activated) {
+      const activePath = contentDataPaths(sourceRoot).activePath;
+      if (previous) await activateContentDataTuple({ sourceRoot, tuple: previous, expectedTupleHash: current.activeTupleHash }).catch(() => {});
+      else await unlink(activePath).catch(() => {});
+    }
+    throw error;
+  }
+}
+
+export async function finalizeSitePublication({ publicationDirectory, publicVerify, sourceRoot = null, failAfterActivate = null } = {}) {
   let current = await readSitePublicationRecord(publicationDirectory);
   if (!current.deploymentId || !publicVerify) throw new Error("SitePublication finalize requires deploymentId and publicVerify");
   if (publicVerify.sitePublicationId !== current.sitePublicationId || publicVerify.snapshotHash !== current.snapshotHash) {
@@ -179,6 +251,9 @@ export async function finalizeSitePublication({ publicationDirectory, publicVeri
     });
   }
   const resolvedSourceRoot = sourceRoot || path.resolve(publicationDirectory, "..", "..", "..");
+  if (isDataPlanePublication(current)) {
+    return finalizeDataPlanePublication({ current, publicationDirectory, publicVerify, sourceRoot: resolvedSourceRoot, failAfterActivate });
+  }
   if (isContentSetPublication(current)) {
     return finalizeContentSetPublication({ current, publicationDirectory, publicVerify, sourceRoot: resolvedSourceRoot });
   }
@@ -327,6 +402,17 @@ export async function finalizeSitePublication({ publicationDirectory, publicVeri
 export async function rollbackSitePublication({ publicationDirectory, reason = "explicit rollback" } = {}) {
   const current = await readSitePublicationRecord(publicationDirectory);
   const sourceRoot = path.resolve(publicationDirectory, "..", "..", "..");
+  if (isDataPlanePublication(current)) {
+    const run = await readPublicationRun({ sourceRoot, publicationRunId: current.publicationRunId });
+    const rolledRun = markPublicationRolledBack(run, { reason, at: new Date().toISOString(), restoredContentDataArtifactId: current.contentDataArtifactId });
+    await writePublicationRun({ sourceRoot, run: rolledRun });
+    return writePublicationRecord(publicationDirectory, {
+      ...current,
+      publicationRun: rolledRun,
+      state: "rolled-back",
+      failure: { message: reason, at: new Date().toISOString() },
+    });
+  }
   if (isContentSetPublication(current)) {
     const active = await readActiveContentSet({ sourceRoot });
     if (active.contentSet.contentSetId !== current.contentSetId) {
@@ -627,6 +713,60 @@ async function verifyPublicationPhaseSet({ publication, base, indexHtml, assetMa
   return { assetsPhase, appPhase, mediaPhase, verificationEvidence };
 }
 
+async function verifyPublicContentDataPlane({ publication, base, fetchImpl, signal }) {
+  const active = await fetchJson(new URL("/content-data/active.json", base), fetchImpl, signal);
+  assertActiveContentDataTuple(active);
+  if (active.tupleHash !== publication.activeTupleHash
+    || active.contentSetId !== publication.contentSetId
+    || active.contentSetHash !== publication.contentSetHash
+    || active.contentDataArtifactId !== publication.contentDataArtifactId
+    || active.contentDataHash !== publication.contentDataHash
+    || (publication.productArtifactId && active.productArtifactId !== publication.productArtifactId)
+    || (publication.productArtifactHash && active.productArtifactHash !== publication.productArtifactHash)) {
+    throw propagationError("public ContentData active tuple identity does not match SitePublication", {
+      activeTupleHash: active.tupleHash || null,
+      contentSetId: active.contentSetId || null,
+      contentDataArtifactId: active.contentDataArtifactId || null,
+      contentDataHash: active.contentDataHash || null,
+      expectedActiveTupleHash: publication.activeTupleHash,
+      expectedContentDataArtifactId: publication.contentDataArtifactId,
+    });
+  }
+  const manifestUrl = `/content-data/${active.contentDataArtifactId}/content-data-manifest.json`;
+  if (active.manifestUrl !== manifestUrl) throw new Error("public ContentData active tuple manifest URL is not immutable");
+  const manifest = await fetchJson(new URL(manifestUrl, base), fetchImpl, signal);
+  if (manifest.schemaVersion !== "content-data-manifest-v1"
+    || manifest.contentDataArtifactId !== publication.contentDataArtifactId
+    || manifest.contentDataHash !== publication.contentDataHash
+    || manifest.activePointerHash !== publication.activeTupleHash
+    || (publication.activeTuple?.manifestHash && manifest.manifestHash !== publication.activeTuple.manifestHash)
+    || manifest.immutableDataUrl !== manifestUrl
+    || !SHA256.test(manifest.manifestHash || "")) {
+    throw new Error("public ContentData manifest identity is incomplete or drifted");
+  }
+  if (!Array.isArray(manifest.records) || manifest.records.length === 0) throw new Error("public ContentData manifest records are missing");
+  const objects = [];
+  const manifestBase = new URL(manifestUrl, base);
+  const artifact = assertContentDataArtifact(await fetchJson(new URL("content-data-artifact.json", manifestBase), fetchImpl, signal));
+  if (artifact.contentDataArtifactId !== publication.contentDataArtifactId
+    || artifact.contentDataHash !== publication.contentDataHash
+    || artifact.contentSetId !== publication.contentSetId
+    || artifact.contentSetHash !== publication.contentSetHash) {
+    throw new Error("public ContentData artifact identity is incomplete or drifted");
+  }
+  const artifactObjects = new Map(artifact.records.map((record) => [record.logicalContentId, record.objectHash]));
+  if (artifactObjects.size !== manifest.records.length || manifest.records.some((record) => artifactObjects.get(record.logicalContentId) !== record.objectHash)) {
+    throw new Error("public ContentData manifest/object projection is incomplete or drifted");
+  }
+  for (const record of manifest.records) {
+    if (!record.logicalContentId || !SHA256.test(record.objectHash || "")) throw new Error("public ContentData manifest object identity is invalid");
+    const object = await fetchJson(new URL(`objects/${record.objectHash}.json`, manifestBase), fetchImpl, signal);
+    if (object.objectHash !== record.objectHash || !object.record || object.record.logicalContentId !== record.logicalContentId || contentDataObjectHash(object.record) !== record.objectHash) throw new Error(`public ContentData object identity mismatch: ${record.logicalContentId}`);
+    objects.push({ logicalContentId: record.logicalContentId, objectHash: record.objectHash, verified: true });
+  }
+  return { active, artifact, manifest, objects, verified: true, manifestUrl };
+}
+
 export async function verifyPublicSitePublication({ publication, baseUrl = publicUrl, fetchImpl = fetch, browserRuntimeVerify = null, attemptId = null, onEvidence = null, signal = null } = {}) {
   const resolvedAttemptId = attemptId || `attempt-${Date.now()}`;
   await onEvidence?.({ phase: "verifying-assets", result: phaseEnvelope(publication, resolvedAttemptId, "verifying-assets", { result: "running" }) });
@@ -667,6 +807,99 @@ export async function verifyPublicSitePublication({ publication, baseUrl = publi
       observedProductArtifactHash: contentManifest.productArtifactHash || null,
       expectedProductArtifactHash: publication.productArtifactHash,
     });
+  }
+  if (isDataPlanePublication(publication)) {
+    if (release.productArtifactId !== publication.productArtifactId
+      || release.baseSiteArtifactId !== publication.baseSiteArtifactId
+      || release.productArtifactHash !== publication.productArtifactHash) {
+      throw identityDriftError("public release ProductArtifact identity does not match SitePublication", {
+        ...observedIdentity,
+        observedProductArtifactId: release.productArtifactId || null,
+        observedProductArtifactHash: release.productArtifactHash || null,
+        expectedProductArtifactId: publication.productArtifactId,
+        expectedProductArtifactHash: publication.productArtifactHash,
+      });
+    }
+    if (contentManifest.contentSetId !== publication.contentSetId
+      || contentManifest.contentSetHash !== publication.contentSetHash
+      || contentManifest.siteSnapshotId !== publication.siteSnapshotId
+      || contentManifest.contentDataArtifactId !== publication.contentDataArtifactId
+      || contentManifest.contentDataHash !== publication.contentDataHash
+      || contentManifest.activeTupleHash !== publication.activeTupleHash
+      || contentManifest.productArtifactId !== publication.productArtifactId
+      || contentManifest.productArtifactHash !== publication.productArtifactHash) {
+      throw propagationError("public ContentData SiteSnapshot identity does not match SitePublication", {
+        contentSetId: contentManifest.contentSetId || null,
+        contentSetHash: contentManifest.contentSetHash || null,
+        siteSnapshotId: contentManifest.siteSnapshotId || null,
+        contentDataArtifactId: contentManifest.contentDataArtifactId || null,
+        contentDataHash: contentManifest.contentDataHash || null,
+        activeTupleHash: contentManifest.activeTupleHash || null,
+      });
+    }
+    const dataProof = await verifyPublicContentDataPlane({ publication, base, fetchImpl, signal });
+    const routes = new Set(["/", "/products", "/business-observations", "/observations", "/about"]);
+    const pages = {};
+    let indexHtml = null;
+    for (const route of routes) {
+      const response = await fetchImpl(new URL(route, base), { redirect: "follow", cache: "no-store", ...(signal ? { signal } : {}) });
+      if (!response.ok) throw new Error(`public verify ${route} returned HTTP ${response.status}`);
+      const text = await response.text();
+      if (!/<title>xingbuild/i.test(text)) throw new Error(`public verify ${route} is not an xingbuild page`);
+      if (route === "/") indexHtml = text;
+      pages[route] = { status: response.status, verified: true };
+    }
+    const expectedParts = publication.contentManifest?.homeContent?.homeTitle?.parts || [];
+    const assetManifest = await loadPublicationAssetManifest(publication);
+    assertIndexIdentity(indexHtml, assetManifest);
+    const { assetsPhase, appPhase: browserRuntime, mediaPhase, verificationEvidence } = await verifyPublicationPhaseSet({
+      publication,
+      base,
+      indexHtml,
+      assetManifest,
+      routes,
+      mediaPaths: publication.contentManifest?.mediaPaths || [],
+      fetchImpl,
+      browserRuntimeVerify,
+      onEvidence,
+      signal,
+      attemptId: resolvedAttemptId,
+    });
+    // A data-plane home value is rendered by the browser runtime, not
+    // serialized into the SPA shell's index.html. Require the actual browser
+    // evidence when available; only legacy/audit adapters may fall back to a
+    // static shell assertion.
+    const homeRuntimeText = browserRuntime?.routes?.["/"]?.h1Text || browserRuntime?.routes?.["/"]?.bodyText || "";
+    for (const part of expectedParts) {
+      if (typeof part?.text === "string" && part.text && (browserRuntime ? !homeRuntimeText.includes(part.text) : !indexHtml.includes(part.text))) {
+        throw new Error(`public home runtime content is missing: ${part.id || "part"}`);
+      }
+    }
+    return {
+      sitePublicationId: publication.sitePublicationId,
+      snapshotHash: publication.snapshotHash,
+      siteSnapshotId: publication.siteSnapshotId,
+      contentSetId: publication.contentSetId,
+      contentSetHash: publication.contentSetHash,
+      contentDataArtifactId: publication.contentDataArtifactId,
+      contentDataHash: publication.contentDataHash,
+      activeTupleHash: publication.activeTupleHash,
+      baseSiteArtifactId: contentManifest.baseSiteArtifactId,
+      productArtifactId: contentManifest.productArtifactId || publication.productArtifactId,
+      productArtifactHash: contentManifest.productArtifactHash || publication.productArtifactHash || null,
+      version: publication.productVersion,
+      commit: publication.productCommit,
+      activeContentReleaseIds: [],
+      release: { version: release.version, commit: release.commit, baseSiteArtifactId: release.baseSiteArtifactId || null },
+      contentData: dataProof,
+      contentManifest,
+      pages,
+      assets: assetsPhase,
+      browserRuntime,
+      media: mediaPhase.media,
+      ...(verificationEvidence ? { verificationEvidence } : {}),
+      verifiedAt: new Date().toISOString(),
+    };
   }
   if (isContentSetPublication(publication)) {
     if (contentManifest.contentSetId !== publication.contentSetId
@@ -928,7 +1161,12 @@ export async function transportSitePublication({ publication, sourceRoot, argv =
     || persisted.productCommit !== productArtifact.productCommit
     || (persisted.productArtifactId || null) !== (productArtifact.productArtifactId || null)
     || (persisted.baseSiteArtifactId || persisted.productArtifactId || null) !== (productArtifact.baseSiteArtifactId || null)
-    || (persisted.productArtifactHash || null) !== (productArtifact.productArtifactHash || null))) {
+    // Legacy fixture publications do not persist a ProductArtifact hash.  A
+    // hash is part of the resume identity only once the request/record has an
+    // explicit v2 hash; otherwise comparing the adapter's derived legacy
+    // hash would make a valid first-run record impossible to resume.
+    || ((publication.productArtifactHash || publication.productArtifact?.productArtifactHash || persisted.productArtifactHash)
+      && (persisted.productArtifactHash || null) !== (productArtifact.productArtifactHash || null)))) {
     throw new Error("persisted SitePublication identity does not match resume request");
   }
   const leaseDirectory = path.join(sourceRoot, ".content-workspace", "site-publications", ".site-lease");

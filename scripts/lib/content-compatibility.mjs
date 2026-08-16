@@ -16,12 +16,18 @@ export const CONTENT_IMPACT_VALUES = Object.freeze([
   "none",
   "compatible",
   "compatible-metadata-correction",
+  "compatible-joint-first-activation",
   "migration-required",
   "breaking",
   "unknown",
 ]);
 
-export const ALLOWED_CONTENT_IMPACTS = Object.freeze(["none", "compatible", "compatible-metadata-correction"]);
+export const ALLOWED_CONTENT_IMPACTS = Object.freeze([
+  "none",
+  "compatible",
+  "compatible-metadata-correction",
+  "compatible-joint-first-activation",
+]);
 
 const V0280_VERSION = "v0.28.0";
 const V0280_REASON = "content-data-plane-runtime-and-content-only-publication";

@@ -30,8 +30,8 @@ function currentWith(overrides = {}) {
 }
 
 test("content impact exposes one closed machine enum", () => {
-  assert.deepEqual(CONTENT_IMPACT_VALUES, ["none", "compatible", "compatible-metadata-correction", "migration-required", "breaking", "unknown"]);
-  assert.deepEqual(ALLOWED_CONTENT_IMPACTS, ["none", "compatible", "compatible-metadata-correction"]);
+  assert.deepEqual(CONTENT_IMPACT_VALUES, ["none", "compatible", "compatible-metadata-correction", "compatible-joint-first-activation", "migration-required", "breaking", "unknown"]);
+  assert.deepEqual(ALLOWED_CONTENT_IMPACTS, ["none", "compatible", "compatible-metadata-correction", "compatible-joint-first-activation"]);
 });
 
 for (const contentImpact of CONTENT_IMPACT_VALUES) {

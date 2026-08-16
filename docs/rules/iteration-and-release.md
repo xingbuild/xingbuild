@@ -2,6 +2,10 @@
 
 状态：生效。本文只负责产品工程版本从正式方案到线上证据的生命周期、验证、Git、部署和回退；职责正文见 [`responsibility-and-workflows.md`](responsibility-and-workflows.md)，跨 task 消息见 [`collaboration-workflow.md`](collaboration-workflow.md)，内容和 Ops 见 `docs/operations/`。
 
+## v0.28.3 内容数据发布门禁
+
+内容发布不是 ContentSet-only 的站点发布。正式 CLI、`SiteSnapshot`、`PublicationRun`、materializer、Coordinator 和 public verifier 必须消费同一 `ContentPublicationIntent`，并共同校验 `ProductArtifact + ContentSet + ContentDataArtifact + active tuple`。`content-data-active.json` 只在同一 `PublicationRun` 的公网证据完成后以 expected tuple hash 原子切换；legacy `active.json` 仅为首次 baseline 的只读输入。任何缺少 CDA/tuple、identity 交叉替换、public data object/hash 漂移或 active CAS 冲突都停止，不得 transport 或把 partial dist 当制品。
+
 ## 1. 产品工程闭环
 
 ```mermaid

@@ -8,6 +8,7 @@ import {
   prepareContentOnlyMaterialization,
   writeContentOnlyReceipt,
 } from "./content-data-plane.mjs";
+import { assertContentPublicationIntent, createContentPublicationIntent } from "./content-publication-intent.mjs";
 
 /**
  * Content-only publication intent.  The existing Coordinator remains the only
@@ -20,6 +21,20 @@ export async function createContentOnlyPublicationIntent({ sourceRoot = process.
   assertActiveContentDataTuple(activeTuple);
   if (activeTuple.contentSetId !== contentSet.contentSetId || activeTuple.contentSetHash !== contentSet.contentSetHash) throw new Error("content-only tuple ContentSet drift");
   if (activeTuple.contentDataArtifactId !== contentDataArtifact.contentDataArtifactId || activeTuple.contentDataHash !== contentDataArtifact.contentDataHash) throw new Error("content-only tuple artifact drift");
+  if (product.artifactContractVersion === "product-artifact-v2") {
+    const canonical = await createContentPublicationIntent({ sourceRoot, productArtifact: product, contentSet, contentDataArtifact, activeTuple, manifest });
+    const materialization = await prepareContentOnlyMaterialization({ sourceRoot, productClient, productArtifact: product, contentSet, artifact: contentDataArtifact, activeTuple, manifest });
+    const intent = {
+      ...canonical.intent,
+      materialization: {
+        root: materialization.root,
+        activeTupleHash: activeTuple.tupleHash,
+        contentDataArtifactId: contentDataArtifact.contentDataArtifactId,
+      },
+    };
+    assertContentPublicationIntent(canonical.intent);
+    return { ...canonical, intent, materialization, deploymentCount: 0, transportOwner: "SitePublicationCoordinator" };
+  }
   const siteSnapshot = createSiteSnapshot({
     productArtifact: product,
     contentSet,
@@ -67,6 +82,7 @@ export async function persistContentOnlyReceipt({ sourceRoot = process.cwd(), in
 }
 
 export function assertContentOnlyPublicationIntent(intent = {}) {
+  if (intent.schemaVersion === "content-publication-intent-v1") return assertContentPublicationIntent(intent);
   if (intent.schemaVersion !== "content-only-publication-intent-v1") throw new Error("content-only publication intent schemaVersion is invalid");
   if (intent.transportOwner !== "SitePublicationCoordinator") throw new Error("content-only publication intent must use SitePublicationCoordinator");
   if (intent.deploymentCount !== 0) throw new Error("content-only publication intent cannot carry a deployment");

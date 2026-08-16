@@ -179,11 +179,33 @@ export function createContentChangeSet({ logicalContentId: explicitLogicalId = n
       revision,
     });
   }
+  // ChangeSet identity is immutable and idempotent. Revision timestamps are
+  // operational evidence, not identity; hashing the full revision object
+  // here made a second identical prepare create a new ChangeSet (or collide
+  // with a candidate/ChangeSet partial-state guard). Keep only the revision
+  // identity fields that are stable before the final ChangeSet ID is bound.
+  const identityChanges = changes.map((change) => ({
+    targetId: change.targetId,
+    before: change.before,
+    after: change.after,
+    revision: change.revision ? {
+      schemaVersion: change.revision.schemaVersion,
+      logicalContentId: change.revision.logicalContentId,
+      sourceHash: change.revision.sourceHash,
+      valueHash: change.revision.valueHash,
+      predecessorRevisionId: change.revision.predecessorRevisionId || null,
+      productArtifactId: change.revision.productArtifactId || null,
+      changeSetId: null,
+      revisionHash: change.revision.revisionHash,
+      revisionId: change.revision.revisionId,
+      contentHash: change.revision.contentHash,
+    } : null,
+  }));
   const identity = {
     schemaVersion: CONTENT_CHANGE_SET_SCHEMA_VERSION,
     logicalContentId: explicitLogicalId || (changes.length === 1 ? changes[0].revision?.logicalContentId || null : null),
     productArtifactId: productArtifactId || null,
-    changes,
+    changes: identityChanges,
     reused,
   };
   const changeSetHash = hashValue(identity);

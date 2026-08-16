@@ -20,7 +20,6 @@ import { assertBindingCandidate, createOrReusePublicationLineageBinding } from "
 import {
   contentManifestFromContentSet,
   readContentSet,
-  readActiveContentSet,
 } from "./content-set.mjs";
 import { createSiteSnapshot, productArtifactIdentity } from "./site-snapshot.mjs";
 import { createPublicationRun, publicationRunIdForSnapshot, readPublicationRun, writePublicationRun } from "./publication-run.mjs";
@@ -28,6 +27,12 @@ import { readProductArtifact, resolveProductArtifactIdentity } from "./product-a
 import { writePublicationAssetManifest } from "./publication-assets.mjs";
 import { assertPublicationPhaseAggregate, PUBLICATION_RUNTIME_EVIDENCE_V4 } from "./publication-evidence.mjs";
 import { assertDurableSitePublicationRecord, sanitizeDurableSitePublicationRecord } from "./content-lifecycle-governance.mjs";
+import { contentDataManifestHash, prepareContentOnlyMaterialization } from "./content-data-plane.mjs";
+import {
+  assertContentPublicationIntent,
+  assertIntentReferences,
+  readContentPublicationAuthority,
+} from "./content-publication-intent.mjs";
 
 export function sitePublicationId({ productVersion, productCommit, contentReleaseIds = [], contentSetId = null } = {}) {
   return [productVersion, productCommit, ...(contentSetId ? [contentSetId] : contentReleaseIds)].join("+");
@@ -368,7 +373,10 @@ export function createActiveContentSet(receipts = []) {
 
 async function readAuthoritativeContentSet(sourceRoot) {
   try {
-    return (await readActiveContentSet({ sourceRoot })).contentSet;
+    // After cutover the tuple is the only active authority. The legacy
+    // active.json reader remains available only through the explicit
+    // readContentPublicationAuthority bootstrap fallback.
+    return (await readContentPublicationAuthority({ sourceRoot, allowLegacy: true })).contentSet;
   } catch (error) {
     if (error.code === "ENOENT") return null;
     throw error;
@@ -381,17 +389,68 @@ function contentSetPublicationOutput({ publicationRoot, outputRoot, productRelea
     : outputRoot;
 }
 
-async function createContentSetSitePublication({ productClient, outputRoot, publicationRoot = null, sourceRoot, assemble = false, contentSetId = null } = {}) {
+async function createContentSetSitePublication({
+  productClient,
+  outputRoot,
+  publicationRoot = null,
+  sourceRoot,
+  assemble = false,
+  contentSetId = null,
+  contentSet: suppliedContentSet = null,
+  contentDataArtifact: suppliedContentDataArtifact = null,
+  activeTuple: suppliedActiveTuple = null,
+  contentPublicationIntent = null,
+} = {}) {
   if (assemble) throw new Error("canonical ContentSet SitePublication is client-only; sourceDirectory assembly is legacy/audit-only");
   const productArtifact = await readProductArtifact({
     clientDirectory: productClient,
     sourceRoot,
   });
-  const contentSet = contentSetId
-    ? await readContentSet({ sourceRoot, contentSetId })
-    : await readAuthoritativeContentSet(sourceRoot);
-  if (!contentSet) throw new Error("ContentSet active pointer is required; run one-time content:set:migrate before SiteSnapshot assembly");
-  const snapshot = createSiteSnapshot({ productArtifact, contentSet, previousSnapshotId: null });
+  let contentSet = suppliedContentSet;
+  let contentDataArtifact = suppliedContentDataArtifact;
+  let activeTuple = suppliedActiveTuple;
+  let intent = contentPublicationIntent;
+  if (intent) {
+    assertContentPublicationIntent(intent);
+    const refs = await assertIntentReferences({ sourceRoot, intent });
+    if (refs.intent.productArtifact.productArtifactId !== productArtifact.productArtifactId || refs.intent.productArtifact.productArtifactHash !== productArtifact.productArtifactHash) throw new Error("ContentPublicationIntent ProductArtifact does not match SitePublication client");
+    contentSet = refs.contentSet;
+    contentDataArtifact = refs.artifact;
+    activeTuple = intent.activeTuple;
+  }
+  if (contentSetId) contentSet = await readContentSet({ sourceRoot, contentSetId });
+  if (!contentSet && !intent) {
+    const authority = await readContentPublicationAuthority({ sourceRoot, allowLegacy: false });
+    contentSet = authority.contentSet;
+    contentDataArtifact = authority.artifact;
+    activeTuple = authority.tuple;
+  }
+  if (!contentSet || !contentDataArtifact || !activeTuple) {
+    const error = new Error("canonical ContentSet SitePublication requires ContentDataArtifact and active tuple");
+    error.code = "SITE_PUBLICATION_DATA_PLANE_REQUIRED";
+    throw error;
+  }
+  activeTuple = {
+    ...activeTuple,
+    manifestUrl: activeTuple.manifestUrl || `/content-data/${contentDataArtifact.contentDataArtifactId}/content-data-manifest.json`,
+  };
+  const snapshot = createSiteSnapshot({
+    productArtifact,
+    contentSet,
+    contentDataArtifact: {
+      contentDataArtifactId: contentDataArtifact.contentDataArtifactId,
+      contentDataHash: contentDataArtifact.contentDataHash,
+      manifestHash: activeTuple.manifestHash || null,
+    },
+    activeTuple,
+    requireContentData: true,
+    previousSnapshotId: null,
+  });
+  if (productArtifact.artifactContractVersion === "product-artifact-v2") {
+    if (!activeTuple.manifestHash || activeTuple.manifestHash !== contentDataManifestHash(snapshot.contentManifest)) {
+      throw new Error("canonical ContentData active tuple manifest hash is required and must bind the public manifest");
+    }
+  }
   // The adapter may retain immutable source documents for assembly, but every
   // persisted/runtime publication object receives only the normalized flat
   // ProductArtifactIdentity.  Raw manifests never become a second identity
@@ -407,6 +466,10 @@ async function createContentSetSitePublication({ productClient, outputRoot, publ
     sitePublicationId: id,
     siteSnapshotId: snapshot.siteSnapshotId,
     snapshotHash: snapshot.snapshotHash,
+    contentDataArtifactId: contentDataArtifact.contentDataArtifactId,
+    contentDataHash: contentDataArtifact.contentDataHash,
+    activeTupleHash: activeTuple.tupleHash,
+    contentDataManifestHash: activeTuple.manifestHash || null,
   };
   const resolvedOutputRoot = contentSetPublicationOutput({
     publicationRoot,
@@ -424,12 +487,26 @@ async function createContentSetSitePublication({ productClient, outputRoot, publ
   if (existingPublication?.deploymentId && existingPublication.sitePublicationId !== id) {
     throw new Error("refusing to overwrite a deployed ContentSet SitePublication with a different identity");
   }
-  if (assemble) {
-    await buildAssembledClientFromContentSet({ productClient, outputRoot: resolvedOutputRoot, contentSet, productArtifact, sourceRoot });
-  } else {
+  let dataMaterialization = null;
+  try {
+    dataMaterialization = await prepareContentOnlyMaterialization({
+      productClient,
+      sourceRoot,
+      artifact: contentDataArtifact,
+      activeTuple,
+      contentSet,
+      productArtifact,
+      // The immutable data manifest binds the canonical ContentSet manifest;
+      // sitePublicationId/snapshotHash are operational fields and must not
+      // change the tuple's data identity.
+      manifest: snapshot.contentManifest,
+    });
+    await dataMaterialization.validate();
     await rm(resolvedOutputRoot, { recursive: true, force: true });
     await mkdir(resolvedOutputRoot, { recursive: true });
-    await cp(productClient, resolvedOutputRoot, { recursive: true });
+    await cp(dataMaterialization.root, resolvedOutputRoot, { recursive: true });
+  } finally {
+    if (dataMaterialization) await dataMaterialization.cleanup().catch(() => {});
   }
   const assetManifest = await stat(path.join(resolvedOutputRoot, "index.html")).catch(() => null)
     ? await writePublicationAssetManifest({ clientRoot: resolvedOutputRoot, additionalPaths: contentManifest.mediaPaths || [] })
@@ -458,6 +535,12 @@ async function createContentSetSitePublication({ productClient, outputRoot, publ
     contentReleaseIds: [],
     contentSetId: contentSet.contentSetId,
     contentSetHash: contentSet.contentSetHash,
+    contentDataArtifactId: contentDataArtifact.contentDataArtifactId,
+    contentDataHash: contentDataArtifact.contentDataHash,
+    activeTupleHash: activeTuple.tupleHash,
+    activeTuple,
+    expectedPreviousTupleHash: intent?.expectedPreviousTupleHash ?? null,
+    ...(intent ? { contentPublicationIntentId: intent.intentId, contentPublicationIntentHash: intent.intentHash } : {}),
     siteSnapshotId: snapshot.siteSnapshotId,
     siteSnapshot: snapshot,
     snapshotHash: snapshot.snapshotHash,
@@ -483,16 +566,33 @@ async function createContentSetSitePublication({ productClient, outputRoot, publ
   return { ...persisted, client: resolvedOutputRoot, contentSet, activeContentReleases: contentSet.entries };
 }
 
-export async function createSitePublication({ productClient, releasesRoot, outputRoot, publicationRoot = null, additionalContentManifest = null, candidatePackageDirectory = null, candidateContentSetId = null, assemble = false, sourceRoot = process.cwd() } = {}) {
+export async function createSitePublication({ productClient, releasesRoot, outputRoot, publicationRoot = null, additionalContentManifest = null, candidatePackageDirectory = null, candidateContentSetId = null, contentSet = null, contentDataArtifact = null, activeTuple = null, contentPublicationIntent = null, assemble = false, sourceRoot = process.cwd() } = {}) {
   sourceRoot = resolveSourceRootForReleases(releasesRoot, sourceRoot);
   let productReleaseSchema = null;
-  try { productReleaseSchema = JSON.parse(await readFile(path.join(productClient, "release.json"), "utf8"))?.schemaVersion || null; } catch { /* strict reader below reports the missing input */ }
+  let productReleaseVersion = null;
+  try {
+    const release = JSON.parse(await readFile(path.join(productClient, "release.json"), "utf8"));
+    productReleaseSchema = release?.schemaVersion || null;
+    productReleaseVersion = release?.productVersion || release?.version || null;
+  } catch { /* strict reader below reports the missing input */ }
   const legacyProductInput = productReleaseSchema !== "product-artifact-release-v2";
   const authoritativeContentSet = await readAuthoritativeContentSet(sourceRoot);
-  if (!legacyProductInput && (authoritativeContentSet || candidateContentSetId)) {
-    return createContentSetSitePublication({ productClient, outputRoot, publicationRoot, sourceRoot, assemble, contentSetId: candidateContentSetId });
+  // ProductArtifact release-v2 is the stable canonical input contract.  The
+  // current version string must not choose a different publication path;
+  // only the explicitly legacy/audit release shape may use the adapter below.
+  // The content-data contract is an immutable release-schema marker.  Older
+  // ProductArtifact v2 roots remain read-only migration/audit inputs until a
+  // caller explicitly supplies the tuple-bound ContentSet refs; no product
+  // version string selects this path.
+  let releaseContract = null;
+  try { releaseContract = JSON.parse(await readFile(path.join(productClient, "release.json"), "utf8")); } catch { /* strict readers below report missing input */ }
+  const requiresDataPlane = productReleaseSchema === "product-artifact-release-v2"
+    && (releaseContract?.contentDataContractVersion === "content-data-publication-v1"
+      || Boolean(contentSet || contentDataArtifact || activeTuple || contentPublicationIntent || candidateContentSetId));
+  if (!legacyProductInput && requiresDataPlane) {
+    return createContentSetSitePublication({ productClient, outputRoot, publicationRoot, sourceRoot, assemble, contentSetId: candidateContentSetId, contentSet, contentDataArtifact, activeTuple, contentPublicationIntent });
   }
-  if (!legacyProductInput && !authoritativeContentSet && !candidateContentSetId && process.env.XINGBUILD_LEGACY_RUNTIME !== "1") {
+  if (!legacyProductInput && !authoritativeContentSet && !candidateContentSetId) {
     throw new Error("ContentSet active pointer is required for canonical ProductArtifact SitePublication; legacy receipts are migration/audit-only");
   }
   const productRelease = JSON.parse(await readFile(path.join(productClient, "release.json"), "utf8"));

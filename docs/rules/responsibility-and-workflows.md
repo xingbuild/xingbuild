@@ -18,6 +18,8 @@
 | Ops | 来源覆盖、可信证据候选、去重和运行记录 | 写公开正文、人工审核、发布、创建或复制 scheduler |
 | Xing | 产品方向、关键未决项、持续发布授权的暂停/撤销和其他不可逆外部决策 | 不替代执行 owner 的实现和验证 |
 
+v0.28.3 将内容意图收敛为唯一 `ContentPublicationIntent`。内容运营不进入产品 `v0.x` 版本闭环；Coordinator 只能在同一 intent 的 ProductArtifact、ContentSet、ContentDataArtifact、tuple 和 PublicationRun 通过公网 proof 后写入 `content-data-active.json`；legacy active pointer 仅由 Engineering baseline resolver 只读消费。
+
 每个文件、版本和发布动作只有一个执行 owner；其他 task 只提供事实、验收或有界检查点。
 
 ## 二、产品工程固定闭环

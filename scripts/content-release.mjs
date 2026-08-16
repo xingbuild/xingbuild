@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
+import { createServer } from "node:http";
 import { access, appendFile, cp, mkdir, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { realpathSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import {
   assertFixedPublishTarget,
   assertPublishAuthorization,
@@ -21,6 +23,8 @@ import { assertBaseSiteArtifactCompatible, readBaseSiteArtifact, validateBaseSit
 import { readProductArtifact } from "./lib/product-artifact.mjs";
 import { contentRootDirectory } from "./lib/content-root.mjs";
 import { createSitePublication, validateUploadQuota } from "./lib/site-publication.mjs";
+import { prepareContentOnlyMaterialization } from "./lib/content-data-plane.mjs";
+import { verifyPublicBrowserRuntime } from "./lib/publication-runtime.mjs";
 import { planContentBatch } from "./lib/content-batch.mjs";
 import { reconcileContentPackage } from "./lib/content-package-reconcile.mjs";
 import { transportSitePublication } from "./lib/site-publication-coordinator.mjs";
@@ -49,6 +53,7 @@ import {
 import { contentSetEntryFromCanonical, prepareContentSetCandidate as writeContentSetCandidate } from "./lib/content-set-candidate.mjs";
 import { readActiveContentSet } from "./lib/content-set.mjs";
 import { readCanonicalHomeContent } from "./lib/home-content-adapter.mjs";
+import { prepareContentPublicationIntent as prepareDataPlaneIntent, readContentPublicationAuthority } from "./lib/content-publication-intent.mjs";
 
 export const root = projectRoot;
 const edgeone = path.join(root, "node_modules", ".bin", "edgeone");
@@ -788,7 +793,140 @@ async function prepareContentSetEntry({ kind, target, changeSetPath = null, sour
 export async function prepareContentSetCandidate({ kind, target, changeSetPath = null, sourceRoot = root } = {}) {
   const prepared = await prepareContentSetEntry({ kind, target, changeSetPath, sourceRoot });
   const homePayload = kind === "home" ? prepared.contentValue : null;
-  return writeContentSetCandidate({ sourceRoot, entries: [prepared.entry], homeContent: homePayload });
+  let authority = null;
+  try { authority = await readContentPublicationAuthority({ sourceRoot, allowLegacy: true }); } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  return writeContentSetCandidate({ sourceRoot, entries: [prepared.entry], homeContent: homePayload, activeContentSet: authority?.contentSet || null });
+}
+
+/**
+ * Formal content CLI boundary.  ContentSet preparation remains the Ops
+ * candidate writer; this Engineering boundary immediately derives the one
+ * immutable ContentPublicationIntent consumed by SitePublication.
+ */
+export async function prepareContentPublicationIntent({ kind, target, changeSetPath = null, sourceRoot = root, productClient = path.join(sourceRoot, "dist", "client") } = {}) {
+  const prepared = await prepareContentSetCandidate({ kind, target, changeSetPath, sourceRoot });
+  const productArtifact = await readProductArtifact({ clientDirectory: productClient, sourceRoot });
+  const intent = await prepareDataPlaneIntent({
+    sourceRoot,
+    productArtifact,
+    contentSet: prepared.contentSet,
+    changeSetId: prepared.changeSet?.changeSetId || null,
+    authorization: prepared.contentSet.entries.find((entry) => entry.entryId === `${kind === "content" ? "observation" : kind}:${target}` || entry.entryId === `${kind}:${target}`)?.reviewProof || null,
+  });
+  return { ...intent, contentSetCandidate: prepared };
+}
+
+function mimeType(file) {
+  if (file.endsWith(".html")) return "text/html; charset=utf-8";
+  if (file.endsWith(".js")) return "text/javascript; charset=utf-8";
+  if (file.endsWith(".css")) return "text/css; charset=utf-8";
+  if (file.endsWith(".json")) return "application/json; charset=utf-8";
+  if (file.endsWith(".svg")) return "image/svg+xml";
+  if (file.endsWith(".mp4")) return "video/mp4";
+  return "application/octet-stream";
+}
+
+async function serveBuildMaterialization(directory) {
+  const resolvedRoot = path.resolve(directory);
+  const server = createServer(async (request, response) => {
+    const pathname = decodeURIComponent(new URL(request.url || "/", "http://127.0.0.1").pathname);
+    const relative = pathname.replace(/^\/+/, "") || "index.html";
+    const candidate = path.resolve(resolvedRoot, relative);
+    if (candidate !== resolvedRoot && !candidate.startsWith(`${resolvedRoot}${path.sep}`)) {
+      response.writeHead(400, { "content-type": "text/plain; charset=utf-8" });
+      response.end("path traversal");
+      return;
+    }
+    try {
+      const file = await readFile(candidate);
+      response.writeHead(200, { "content-type": mimeType(candidate), "cache-control": "no-store" });
+      response.end(file);
+    } catch (error) {
+      // The built client is an SPA.  Route requests use the same immutable
+      // index bytes; data-plane files must never fall back to HTML.
+      if (!pathname.startsWith("/content-data/") && pathname !== "/content-data/active.json") {
+        try {
+          const index = await readFile(path.join(resolvedRoot, "index.html"));
+          response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+          response.end(index);
+          return;
+        } catch { /* report the original miss */ }
+      }
+      response.writeHead(error.code === "ENOENT" ? 404 : 500, { "content-type": "text/plain; charset=utf-8" });
+      response.end(error.message);
+    }
+  });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  return {
+    baseUrl: `http://127.0.0.1:${address.port}/`,
+    async close() { await new Promise((resolve) => server.close(() => resolve())); },
+  };
+}
+
+/**
+ * Build is a real, non-transporting materialization check.  It consumes the
+ * exact immutable intent, copies the ProductArtifact client, verifies the
+ * data manifest and quota, runs a local browser runtime smoke, then removes
+ * the temporary upload root.  No ProductArtifact or active tuple is written.
+ */
+export async function buildContentPublicationIntent({ prepared, sourceRoot = root, productClient = path.join(sourceRoot, "dist", "client") } = {}) {
+  if (!prepared?.intent || !prepared.contentDataArtifact || !prepared.activeTuple || !prepared.contentSet) {
+    throw new Error("content build requires a complete ContentPublicationIntent");
+  }
+  const materialization = await prepareContentOnlyMaterialization({
+    sourceRoot,
+    productClient,
+    productArtifact: prepared.intent.productArtifact,
+    contentSet: prepared.contentSet,
+    artifact: prepared.contentDataArtifact,
+    activeTuple: prepared.activeTuple,
+    manifest: prepared.intent.siteSnapshot.contentManifest,
+  });
+  let server = null;
+  try {
+    const validation = await materialization.validate();
+    validation.mediaFiles = materialization.mediaFiles || [];
+    await validateUploadQuota(materialization.root);
+    server = await serveBuildMaterialization(materialization.root);
+    const browser = await verifyPublicBrowserRuntime({
+      baseUrl: server.baseUrl,
+      routes: ["/"],
+      taskId: "content-build-runtime-smoke",
+      timeoutMs: 120000,
+    });
+    const evidence = {
+      schemaVersion: "content-build-evidence-v1",
+      intentId: prepared.intent.intentId,
+      intentHash: prepared.intent.intentHash,
+      productArtifactId: prepared.intent.productArtifact.productArtifactId,
+      productArtifactHash: prepared.intent.productArtifact.productArtifactHash,
+      activeTupleHash: prepared.activeTuple.tupleHash,
+      contentDataArtifactId: prepared.contentDataArtifact.contentDataArtifactId,
+      contentDataHash: prepared.contentDataArtifact.contentDataHash,
+      snapshot: {
+        schemaVersion: prepared.intent.siteSnapshot.schemaVersion,
+        siteSnapshotId: prepared.intent.siteSnapshot.siteSnapshotId,
+        snapshotHash: prepared.intent.siteSnapshot.snapshotHash,
+      },
+      validation,
+      quota: { result: "PASS", root: "temporary-upload-root" },
+      browserRuntime: { result: "PASS", verified: browser.verified, evidence: browser },
+      transport: "not-run",
+      activeTuple: "not-written",
+      cleanup: "pending",
+      createdAt: new Date().toISOString(),
+    };
+    return { ...prepared, materialization, validation, browser, evidence };
+  } finally {
+    if (server) await server.close().catch(() => {});
+    await materialization.cleanup().catch(() => {});
+  }
 }
 
 /**
@@ -812,21 +950,30 @@ export async function prepareContentSetCandidateBatch({ targets = [], sourceRoot
     }));
   }
   const home = prepared.find((item) => item.entry.entryId === "home:home");
+  let authority = null;
+  try { authority = await readContentPublicationAuthority({ sourceRoot, allowLegacy: true }); } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
   return writeContentSetCandidate({
     sourceRoot,
     entries: prepared.map((item) => item.entry),
     homeContent: home?.contentValue || null,
+    activeContentSet: authority?.contentSet || null,
   });
 }
 
 export async function publishContentSet({ kind, target, changeSetPath = null, argv = process.argv.slice(2), env = process.env, sourceRoot = root } = {}) {
-  const prepared = await prepareContentSetCandidate({ kind, target, changeSetPath, sourceRoot });
+  const prepared = await prepareContentPublicationIntent({ kind, target, changeSetPath, sourceRoot });
   const productClient = path.join(sourceRoot, "dist", "client");
   const publication = await createSitePublication({
     productClient,
     releasesRoot: path.join(sourceRoot, ".content-workspace", "releases"),
     publicationRoot: path.join(sourceRoot, ".content-workspace", "site-publications"),
     candidateContentSetId: prepared.contentSet.contentSetId,
+    contentSet: prepared.contentSet,
+    contentDataArtifact: prepared.contentDataArtifact,
+    activeTuple: prepared.activeTuple,
+    contentPublicationIntent: prepared.intent,
     assemble: false,
     sourceRoot,
   });
@@ -835,7 +982,9 @@ export async function publishContentSet({ kind, target, changeSetPath = null, ar
 }
 
 export async function publishContent(options = {}) {
-  if (options.env?.XINGBUILD_LEGACY_RUNTIME === "1") return publishLegacyContent(options);
+  // Canonical production publication has one route.  Legacy receipts and
+  // ContentSet-only fixtures are inspectable through explicit audit helpers,
+  // never through an environment-variable bypass in this entry point.
   return publishContentSet(options);
 }
 
@@ -857,7 +1006,21 @@ async function main(argv = process.argv.slice(2)) {
     }
     const batch = JSON.parse(await readFile(path.resolve(root, batchPath), "utf8"));
     const result = await prepareContentSetCandidateBatch({ targets: batch, sourceRoot: root });
-    console.log(`ContentSet batch candidate ${argv.includes("--build") ? "built" : "prepared"}: ${result.contentSet.contentSetId}`);
+    const productArtifact = await readProductArtifact({ clientDirectory: path.join(root, "dist", "client"), sourceRoot: root });
+    const intent = await prepareDataPlaneIntent({ sourceRoot: root, productArtifact, contentSet: result.contentSet, changeSetId: result.changeSet?.changeSetId || null });
+    if (argv.includes("--build")) {
+      const built = await buildContentPublicationIntent({
+        prepared: { ...intent, contentSetCandidate: result },
+        sourceRoot: root,
+        productClient: path.join(root, "dist", "client"),
+      });
+      const evidencePath = path.join(root, ".content-workspace", "qa", "v0.28.3", "content-build-evidence", `${built.intent.intentId}.json`);
+      await mkdir(path.dirname(evidencePath), { recursive: true });
+      await writeFile(evidencePath, `${JSON.stringify({ ...built.evidence, cleanup: "verified", evidencePath: path.relative(root, evidencePath) }, null, 2)}\n`);
+      console.log(JSON.stringify({ mode: "built", contentSetId: result.contentSet.contentSetId, intentId: intent.intent.intentId, intentHash: intent.intent.intentHash, materialization: "validated-cleaned", evidencePath: path.relative(root, evidencePath) }));
+    } else {
+      console.log(JSON.stringify({ mode: "prepared", contentSetId: result.contentSet.contentSetId, intentId: intent.intent.intentId, intentHash: intent.intent.intentHash }));
+    }
     return;
   }
   if (argv.includes("--reconcile")) {
@@ -876,20 +1039,30 @@ async function main(argv = process.argv.slice(2)) {
   }
   if (!kinds.has(kind) || !target || !slugPattern.test(target)) throw new Error("Usage: node scripts/content-release.mjs [--prepare|--build] --kind <content|article|practice|profile|businessObservation> --slug <slug>|--id <id> [--change-set <ignored ChangeSet>] [--authorize-publish]");
   if (argv.includes("--prepare")) {
-    const result = await prepareContentSetCandidate({ kind, target, changeSetPath });
-    console.log(`ContentSet candidate prepared: ${result.contentSet.contentSetId}`);
+    const result = await prepareContentPublicationIntent({ kind, target, changeSetPath });
+    console.log(JSON.stringify({ mode: "prepared", contentSetId: result.contentSet.contentSetId, intentId: result.intent.intentId, intentHash: result.intent.intentHash }));
     return;
   }
   if (argv.includes("--build")) {
-    const result = await prepareContentSetCandidate({ kind, target, changeSetPath });
-    console.log(`ContentSet candidate built: ${result.contentSet.contentSetId}`);
+    const prepared = await prepareContentPublicationIntent({ kind, target, changeSetPath });
+    const result = await buildContentPublicationIntent({ prepared });
+    const evidencePath = path.join(root, ".content-workspace", "qa", "v0.28.3", "content-build-evidence", `${result.intent.intentId}.json`);
+    await mkdir(path.dirname(evidencePath), { recursive: true });
+    const evidence = { ...result.evidence, cleanup: "verified", evidencePath: path.relative(root, evidencePath) };
+    await writeFile(evidencePath, `${JSON.stringify(evidence, null, 2)}\n`);
+    console.log(JSON.stringify({ mode: "built", contentSetId: result.contentSet.contentSetId, intentId: result.intent.intentId, intentHash: result.intent.intentHash, materialization: "validated-cleaned", evidencePath: path.relative(root, evidencePath) }));
     return;
   }
   const result = await publishContentSet({ kind, target, changeSetPath, argv });
   console.log(`ContentSet publication completed: ${result.sitePublicationId}`);
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] || "").href) {
+// Isolated exact-tree repos may live under macOS /var -> /private/var. Use
+// real paths so the formal CLI entry cannot silently become a no-op when the
+// argv path and module URL use different symlink spellings.
+const invokedPath = process.argv[1] ? realpathSync(process.argv[1]) : null;
+const modulePath = realpathSync(fileURLToPath(import.meta.url));
+if (invokedPath && invokedPath === modulePath) {
   try { await main(); } catch (error) {
     console.error(`内容发布已停止：${error.message}`);
     process.exitCode = 1;

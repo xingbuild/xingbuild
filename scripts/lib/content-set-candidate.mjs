@@ -181,10 +181,12 @@ async function writeCandidateAndChangeSetAtomically({ sourceRoot, contentSet, ch
   return { candidateFile, changeSetFile, contentSet, changeSet, contentSetReused: false, changeSetReused: false };
 }
 
-export async function prepareContentSetCandidate({ sourceRoot = process.cwd(), entries = [], homeContent = null, previousContentSetId, createdAt, productArtifactId = null, failAfter = null } = {}) {
-  let activeContentSet = null;
-  try { activeContentSet = (await readActiveContentSet({ sourceRoot })).contentSet; } catch (error) {
-    if (error.code !== "ENOENT") throw error;
+export async function prepareContentSetCandidate({ sourceRoot = process.cwd(), entries = [], homeContent = null, previousContentSetId, createdAt, productArtifactId = null, failAfter = null, activeContentSet: suppliedActiveContentSet = undefined } = {}) {
+  let activeContentSet = suppliedActiveContentSet === undefined ? null : suppliedActiveContentSet;
+  if (suppliedActiveContentSet === undefined) {
+    try { activeContentSet = (await readActiveContentSet({ sourceRoot })).contentSet; } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
   }
   const homeEntry = entries.find((entry) => entry?.entryId === "home:home" || (entry?.kind === "home" && entry?.target === "home"));
   let resolvedHomeContent = homeContent;

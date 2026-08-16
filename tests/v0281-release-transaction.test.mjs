@@ -13,7 +13,7 @@ import { computeProductArtifactHash, resolveProductArtifactIdentity } from "../s
 import { buildContentRelease } from "../scripts/content-release.mjs";
 
 const root = path.resolve(new URL("..", import.meta.url).pathname); const version = "v0.28.1"; const packageJson = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
-const treeOid = stagedTreeOid(root); const legacyTreeOid = execFileSync("git", ["rev-parse", "HEAD^{tree}"], { cwd: root, encoding: "utf8" }).trim(); const baseline = captureProtectedFacts(root); const emptyHash = sha256Bytes(Buffer.alloc(0));
+const treeOid = stagedTreeOid(root); const legacyTreeOid = execFileSync("git", ["rev-parse", "v0.28.1^{tree}"], { cwd: root, encoding: "utf8" }).trim(); const baseline = captureProtectedFacts(root); const emptyHash = sha256Bytes(Buffer.alloc(0));
 const scope = JSON.parse(await readFile(path.join(root, "docs/iterations/scopes/v0.28.1.json"), "utf8"));
 const candidate = { schemaVersion: "release-candidate-identity-v1", version, baseHead: scope.baseHead, treeOid, scopeDigest: scope.scopeDigest, protectedBaselineHash: baseline.hash };
 candidate.candidateHash = computeCandidateIdentityHash(candidate);

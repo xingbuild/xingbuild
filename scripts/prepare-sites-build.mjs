@@ -28,7 +28,7 @@ if (process.env.XINGBUILD_FINAL_BUILD !== "1" || !/^[a-f0-9]{64}$/.test(transact
 const contentManifest = { schemaVersion: "content-manifest-v2", publishedSlugs: [], publishedArticleSlugs: [] };
 writeFileSync(path.join(distClient, "content-manifest.json"), `${JSON.stringify(contentManifest, null, 2)}\n`);
 /* release.json is written once after subordinate hashes are known; it is never self-hashed. */
-const provisionalRelease = { schemaVersion: "product-artifact-release-v2", productVersion, productCommit: commit, productArtifactId: baseSiteArtifactId, baseSiteArtifactId, contentManifestHash: "0".repeat(64), baseSiteArtifactManifestHash: "0".repeat(64), ...transactionIdentity, clientFiles: [] };
+const provisionalRelease = { schemaVersion: "product-artifact-release-v2", contentDataContractVersion: "content-data-publication-v1", productVersion, productCommit: commit, version: productVersion, commit, productArtifactId: baseSiteArtifactId, baseSiteArtifactId, contentManifestHash: "0".repeat(64), baseSiteArtifactManifestHash: "0".repeat(64), ...transactionIdentity, clientFiles: [] };
 writeFileSync(path.join(distClient, "release.json"), `${JSON.stringify(provisionalRelease, null, 2)}\n`);
 const baseSiteArtifact = await createBaseSiteArtifact({ sourceRoot: root, clientDirectory: distClient, productVersion, productCommit: commit, release: { productVersion, productCommit: commit, baseSiteArtifactId }, contentManifest });
 writeFileSync(path.join(distClient, "base-site-artifact.json"), `${JSON.stringify(baseSiteArtifact, null, 2)}\n`);

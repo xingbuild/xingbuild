@@ -2,6 +2,10 @@
 
 状态：生效。本文是 2.2 跨 task 协作唯一正文；职责和版本边界分别见 [`responsibility-and-workflows.md`](responsibility-and-workflows.md) 与 [`iteration-and-release.md`](iteration-and-release.md)。
 
+## v0.28.3 内容数据交接边界
+
+内容 task 回传的是已审核 Candidate 与 `ContentPublicationIntent` 引用，不回传可直接激活的 active pointer 或部署事实。Engineering 只实现 intent、tuple-aware SiteSnapshot/materializer/Coordinator/verifier 并交付一个未提交 Candidate；只有公网证据完成后 Coordinator 才能执行 active tuple CAS。产品、内容与 Engineering 的 identity 不能互相替代，legacy `active.json` 不得作为 cutover 后的第二 authority。
+
 ## 一、一次性交接模型
 
 ```mermaid

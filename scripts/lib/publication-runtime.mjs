@@ -102,6 +102,8 @@ async function verifyRoute({ browser, base, route, routeTimeoutMs, onEvidence, r
         rootTextLength: document.querySelector("#root")?.textContent?.trim().length || 0,
         main: document.querySelectorAll("main").length,
         h1: document.querySelectorAll("h1").length,
+        h1Text: document.querySelector("h1")?.textContent?.trim() || "",
+        bodyText: document.body?.textContent?.trim() || "",
         bodyTextLength: document.body?.textContent?.trim().length || 0,
         media,
       };

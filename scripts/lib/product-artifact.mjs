@@ -4,7 +4,8 @@ import path from "node:path";
 import { hashArtifactValue, readBaseSiteArtifact } from "./base-site-artifact.mjs";
 
 export const PRODUCT_ARTIFACT_CONTRACT_VERSION = "product-artifact-v2";
-export const PRODUCT_ARTIFACT_IDENTITY_FIELDS = Object.freeze(["artifactContractVersion", "productArtifactId", "productVersion", "productCommit", "baseSiteArtifactId", "productArtifactHash", "contentManifestHash", "baseSiteArtifactManifestHash", "approvalHash", "candidateHash", "approvedTreeOid", "clientHash"]);
+export const PRODUCT_CONTENT_DATA_CONTRACT_VERSION = "content-data-publication-v1";
+export const PRODUCT_ARTIFACT_IDENTITY_FIELDS = Object.freeze(["artifactContractVersion", "contentDataContractVersion", "productArtifactId", "productVersion", "productCommit", "baseSiteArtifactId", "productArtifactHash", "contentManifestHash", "baseSiteArtifactManifestHash", "approvalHash", "candidateHash", "approvedTreeOid", "clientHash"]);
 const SHA256 = /^[a-f0-9]{64}$/;
 const COMMIT = /^[a-f0-9]{40}$/;
 const VERSION = /^v\d+\.\d+\.\d+$/;
@@ -61,13 +62,15 @@ export function resolveProductArtifactIdentity({ release, contentManifest, baseS
     const expected = root.clientFiles.filter((entry) => entry.path !== "release.json"); const actual = clientFiles.filter((entry) => entry.path !== "release.json");
     if (JSON.stringify(expected) !== JSON.stringify(actual)) throw new Error("ProductArtifact client bytes drift");
   }
-  return Object.freeze({ artifactContractVersion: PRODUCT_ARTIFACT_CONTRACT_VERSION, productArtifactId: root.productArtifactId, productVersion: expectedVersion, productCommit: expectedCommit, baseSiteArtifactId: root.baseSiteArtifactId, productArtifactHash: root.productArtifactHash, contentManifestHash: root.contentManifestHash, baseSiteArtifactManifestHash: root.baseSiteArtifactManifestHash, approvalHash: root.approvalHash || null, candidateHash: root.candidateHash || null, approvedTreeOid: root.approvedTreeOid || null, documents: Object.freeze({ release, contentManifest, baseSiteArtifact }) });
+  if (root.contentDataContractVersion != null && root.contentDataContractVersion !== PRODUCT_CONTENT_DATA_CONTRACT_VERSION) throw new Error("ProductArtifact content data contract is incompatible");
+  return Object.freeze({ artifactContractVersion: PRODUCT_ARTIFACT_CONTRACT_VERSION, ...(root.contentDataContractVersion ? { contentDataContractVersion: root.contentDataContractVersion } : {}), productArtifactId: root.productArtifactId, productVersion: expectedVersion, productCommit: expectedCommit, baseSiteArtifactId: root.baseSiteArtifactId, productArtifactHash: root.productArtifactHash, contentManifestHash: root.contentManifestHash, baseSiteArtifactManifestHash: root.baseSiteArtifactManifestHash, approvalHash: root.approvalHash || null, candidateHash: root.candidateHash || null, approvedTreeOid: root.approvedTreeOid || null, documents: Object.freeze({ release, contentManifest, baseSiteArtifact }) });
 }
 export const productArtifactIdentity = resolveProductArtifactIdentity;
 export function productArtifactHash(artifact) { return artifact?.productArtifactHash || computeProductArtifactHash(artifact); }
 export function assertProductArtifactIdentityShape(identity = {}) {
   if (!identity || typeof identity !== "object") throw new Error("ProductArtifact identity is required");
   for (const field of ["productArtifactId", "productVersion", "productCommit", "baseSiteArtifactId"]) text(identity[field], `identity.${field}`);
+  if (identity.contentDataContractVersion != null && identity.contentDataContractVersion !== PRODUCT_CONTENT_DATA_CONTRACT_VERSION) throw new Error("ProductArtifact identity content data contract is incompatible");
   if (identity.productArtifactId !== expectedBaseId(identity.productVersion, identity.productCommit) || identity.baseSiteArtifactId !== identity.productArtifactId) throw new Error("ProductArtifact identity tuple mismatch");
   const productArtifactHash = identity.productArtifactHash || hashArtifactValue({ schemaVersion: "product-artifact-legacy-identity-v1", productArtifactId: identity.productArtifactId, productVersion: identity.productVersion, productCommit: identity.productCommit, baseSiteArtifactId: identity.baseSiteArtifactId });
   if (!SHA256.test(productArtifactHash)) throw new Error("ProductArtifact identity hash invalid");

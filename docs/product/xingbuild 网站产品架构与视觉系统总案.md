@@ -335,6 +335,8 @@ figure | callout | sources | link
 
 - 内容源当前由 canonical `.content-workspace/content` 与 `content-state/active` 承载；每个 `logicalContentId` 保留当前 revision 与前两次 revision。
 - 内容修改或增加生成新的 revision、`ContentSet` 和 `ContentDataArtifact`，不生成 `ProductArtifact`，不重新构建产品 JS/CSS。
+- v0.28.3 以唯一 `ContentPublicationIntent` 绑定 ProductArtifact、ContentSet、ContentDataArtifact、candidate active tuple、SiteSnapshot 与 PublicationRun；首次公网 proof 完成前不切换 active tuple。
+- `content-data-active.json` 是 cutover 后 ContentSet 与 ContentDataArtifact 的唯一 active authority；旧 `content-state/active.json` 只作为首次 baseline 的只读迁移输入，不双写、不双判定。
 - `ContentDataArtifact` 是规范化内容 manifest 与内容对象的可寻址数据产物；页面运行时读取 active data manifest，产品 client 只提供读取和投影能力。
 - ProductArtifact 只包含页面组合、组件、schema、renderer、样式和读取能力；组件或 schema 改变才进入产品版本。
 - schema 改变必须通过 adapter/可验证迁移生成新 revision，保留 predecessor、sourceHash、valueHash 和 schemaVersion；迁移失败不得改变 active 内容。

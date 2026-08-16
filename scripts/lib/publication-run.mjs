@@ -58,6 +58,7 @@ export function createPublicationRun({ siteSnapshot, previousRunId = null, creat
       contentDataArtifactId: siteSnapshot.contentDataArtifact.contentDataArtifactId,
       contentDataHash: siteSnapshot.contentDataArtifact.contentDataHash,
     } : {}),
+    ...(siteSnapshot.activeTupleHash ? { activeTupleHash: siteSnapshot.activeTupleHash } : {}),
     previousRunId: previousRunId || null,
     state: "assembled",
     deploymentId: null,
@@ -101,6 +102,7 @@ export function validatePublicationRun(run = {}) {
   } else if (run.contentDataHash != null) {
     throw new Error("PublicationRun contentDataArtifactId is required with contentDataHash");
   }
+  if (run.activeTupleHash != null && !/^[a-f0-9]{64}$/.test(run.activeTupleHash)) throw new Error("PublicationRun activeTupleHash must be SHA-256");
   if (!PUBLICATION_RUN_STATES.includes(run.state)) throw new Error(`PublicationRun state is invalid: ${run.state}`);
   if (!Number.isInteger(run.deploymentCount) || run.deploymentCount < 0 || run.deploymentCount > 1) throw new Error("PublicationRun deploymentCount must be 0 or 1");
   if (run.deploymentCount === 1 && !run.deploymentId) throw new Error("PublicationRun deploymentId is required after deployment");

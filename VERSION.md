@@ -1,3 +1,12 @@
+## v0.28.3 — 内容数据发布事务与首次 Active Tuple 切换
+
+父版本：`v0.28.2` / `3a615ce0ff712be339cef0c4fc8387ae0d0bd779`
+
+- 建立唯一 `ContentPublicationIntent`，将 ProductArtifact、ContentSet、ContentDataArtifact、active tuple、SiteSnapshot 与 PublicationRun 绑定到同一不可变输入。
+- 完成 legacy active ContentSet 的只读 baseline 重建；本次首页差异证明 1 changed / 37 reused，内容发布只复制既有 ProductArtifact client 并增加临时 ContentDataArtifact materialization。
+- 首次 joint publication 在公网证明后才以 CAS 原子写入 `content-data-active.json`；失败、CAS 冲突、恢复和重复执行保持旧 active authority，不双写 legacy `active.json`。
+- 本版本只形成未提交 Candidate 与隔离正向链/拒绝矩阵证据；Engineering 不生成 ApprovalRecord，不 commit/tag/final build/preflight/transport/content publish/EdgeOne。
+
 ## v0.28.2 — Canonical Final Build 提交前证明与阻断版本恢复
 
 父版本：`v0.28.1` / `0fb5c24cc9c8851fd5fe44add9bd0bb7f2999dab`

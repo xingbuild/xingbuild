@@ -1,6 +1,6 @@
 {
   "name": "xingbuild",
-  "version": "0.28.2",
+  "version": "0.28.3",
   "private": true,
   "type": "module",
   "scripts": {
@@ -36,6 +36,7 @@
     "content:storage:check": "node scripts/content-storage-governance.mjs inventory --dry-run --max-files 20000 --max-total-bytes 134217728 --max-file-bytes 8388608 --max-wall-ms 15000 --max-rss-mb 512 --max-output-bytes 8388608 --output .content-workspace/qa/v0279-storage-evidence.json",
     "qa:governance:v0279": "node scripts/qa-v0279-governance.mjs",
     "qa:content-data-plane:v0280": "node scripts/qa-v0280-content-data-plane.mjs",
+    "qa:content-publication:v0283": "node scripts/qa-v0283-content-publication.mjs",
     "content:storage:check:v0274": "node scripts/content-storage-governance-v0274.mjs",
     "content:lifecycle:evidence:v0275": "node scripts/content-lifecycle-evidence-v0275.mjs",
     "content:lifecycle:evidence": "node scripts/content-lifecycle-evidence.mjs",

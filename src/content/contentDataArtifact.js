@@ -51,6 +51,37 @@ function resolveUrl(value, baseUrl) {
   catch { throw new Error(`content data URL is invalid: ${value}`); }
 }
 
+function stable(value) {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stable).join(",")}]`;
+  const bytes = (key) => new TextEncoder().encode(key);
+  const compare = (left, right) => {
+    const a = bytes(left); const b = bytes(right);
+    for (let index = 0; index < Math.min(a.length, b.length); index += 1) if (a[index] !== b[index]) return a[index] - b[index];
+    return a.length - b.length;
+  };
+  return `{${Object.keys(value).sort(compare).map((key) => `${JSON.stringify(key)}:${stable(value[key])}`).join(",")}}`;
+}
+
+async function sha256Hex(value) {
+  if (!globalThis.crypto?.subtle) throw new Error("content data runtime requires Web Crypto for object verification");
+  const bytes = new TextEncoder().encode(value);
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function contentDataObjectHash(record) {
+  return sha256Hex(stable({
+    schemaVersion: "content-data-object-v1",
+    logicalContentId: record.logicalContentId,
+    entryId: record.entryId,
+    revisionId: record.revisionId,
+    sourceHash: record.sourceHash,
+    valueHash: record.valueHash,
+    value: record.value,
+  }));
+}
+
 function assertActivePayload(active) {
   if (!active || active.schemaVersion !== RUNTIME_SCHEMA) throw new Error("content data active tuple schemaVersion is invalid");
   required(active.contentDataArtifactId, "active.contentDataArtifactId");
@@ -78,6 +109,8 @@ async function loadRuntimeContentData({
   if (typeof fetchImpl !== "function") throw new Error("content data runtime requires fetch");
   const activeRequestUrl = resolveUrl(activeUrl, baseUrl);
   const active = assertActivePayload(await readJson(fetchImpl, activeRequestUrl));
+  const expectedManifestPath = `/content-data/${active.contentDataArtifactId}/content-data-manifest.json`;
+  if (active.manifestUrl !== expectedManifestPath) throw new Error("content data active tuple manifest URL is not immutable");
   const manifestUrl = resolveUrl(active.manifestUrl, activeRequestUrl);
   const manifest = assertManifest(await readJson(fetchImpl, manifestUrl), active);
   const records = new Map();
@@ -86,7 +119,7 @@ async function loadRuntimeContentData({
     requiredHash(manifestRecord.objectHash, "manifest.record.objectHash");
     const objectUrl = resolveUrl(`objects/${manifestRecord.objectHash}.json`, manifestUrl);
     const object = await readJson(fetchImpl, objectUrl, { cache: "force-cache" });
-    if (object.objectHash !== manifestRecord.objectHash || !object.record) throw new Error(`content data object identity mismatch: ${manifestRecord.logicalContentId}`);
+    if (object.objectHash !== manifestRecord.objectHash || !object.record || await contentDataObjectHash(object.record) !== manifestRecord.objectHash) throw new Error(`content data object identity mismatch: ${manifestRecord.logicalContentId}`);
     records.set(manifestRecord.logicalContentId, object.record);
     if (manifestRecord.entryId) records.set(`entry:${manifestRecord.entryId}`, object.record);
   }

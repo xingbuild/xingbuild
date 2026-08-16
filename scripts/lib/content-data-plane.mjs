@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { cp, mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { readActiveContentSet, validateContentSet } from "./content-set.mjs";
@@ -28,6 +28,11 @@ function stable(value) {
 function hash(value) {
   return createHash("sha256").update(typeof value === "string" || Buffer.isBuffer(value) ? value : stable(value)).digest("hex");
 }
+
+/** Stable value/byte hashing is part of the data-plane contract. */
+export function hashContentDataValue(value) { return hash(value); }
+export function hashContentDataBytes(value) { return hash(value); }
+export function contentDataManifestHash(manifest) { return hash(manifest); }
 
 function required(value, field) {
   if (typeof value !== "string" || value.trim() === "") throw new Error(`${field} is required`);
@@ -63,7 +68,7 @@ function sourceCandidates(root, sourcePath) {
   ];
 }
 
-async function readCanonicalValue(root, sourcePath) {
+export async function readCanonicalContentSource(root, sourcePath) {
   let last = null;
   for (const file of sourceCandidates(root, sourcePath)) {
     try {
@@ -80,6 +85,22 @@ async function readCanonicalValue(root, sourcePath) {
   error.cause = last;
   error.code = "CONTENT_DATA_SOURCE_MISSING";
   throw error;
+}
+
+const sourceOverrideValue = (sourceOverrides, entry) => {
+  if (!sourceOverrides) return undefined;
+  if (sourceOverrides instanceof Map) return sourceOverrides.get(entry.entryId) ?? sourceOverrides.get(entry.sourcePath);
+  if (Object.hasOwn(sourceOverrides, entry.entryId)) return sourceOverrides[entry.entryId];
+  if (Object.hasOwn(sourceOverrides, entry.sourcePath)) return sourceOverrides[entry.sourcePath];
+  return undefined;
+};
+
+async function readCanonicalValue(root, sourcePath, override = undefined) {
+  if (override !== undefined) {
+    const bytes = Buffer.from(JSON.stringify(override));
+    return { file: null, bytes, value: override, overridden: true };
+  }
+  return readCanonicalContentSource(root, sourcePath);
 }
 
 function logicalIdFor(entry) {
@@ -121,16 +142,21 @@ function objectFor({ entry, value, sourceHash, valueHash, predecessorRevisionId 
   // `current` is represented by the top-level fields; history contains only
   // prior revisions so the current revision is never duplicated.
   const revisions = history.filter((item) => item?.revisionId !== current.revisionId).slice(0, 2);
-  const objectHash = hash({
-    schemaVersion: CONTENT_DATA_OBJECT_SCHEMA_VERSION,
-    logicalContentId,
-    entryId: entry.entryId,
-    revisionId: current.revisionId,
-    sourceHash,
-    valueHash,
-    value,
-  });
+  const objectHash = contentDataObjectHash(current);
   return { ...current, objectHash, revisions, history: revisions };
+}
+
+/** The immutable CAS object identity is recomputable from the object record. */
+export function contentDataObjectHash(record = {}) {
+  return hash({
+    schemaVersion: CONTENT_DATA_OBJECT_SCHEMA_VERSION,
+    logicalContentId: record.logicalContentId,
+    entryId: record.entryId,
+    revisionId: record.revisionId,
+    sourceHash: record.sourceHash,
+    valueHash: record.valueHash,
+    value: record.value,
+  });
 }
 
 function normalizedRecord(record) {
@@ -178,7 +204,7 @@ export function contentDataArtifactHash(artifact) {
 function artifactIdFromHash(value) { return `content-data-artifact-${value.slice(0, 24)}`; }
 
 /** Build an immutable data artifact from a validated ContentSet and source bytes. */
-export async function createContentDataArtifact({ sourceRoot = process.cwd(), contentSet, previousArtifact = null, productArtifact = null } = {}) {
+export async function createContentDataArtifact({ sourceRoot = process.cwd(), contentSet, previousArtifact = null, productArtifact = null, sourceOverrides = null, provenanceSource = "canonical-content-set" } = {}) {
   validateContentSet(contentSet);
   if (previousArtifact) assertContentDataArtifact(previousArtifact);
   const root = path.resolve(sourceRoot);
@@ -186,7 +212,7 @@ export async function createContentDataArtifact({ sourceRoot = process.cwd(), co
   const records = [];
   for (const rawEntry of [...contentSet.entries].sort((a, b) => a.entryId.localeCompare(b.entryId))) {
     const entry = { ...rawEntry, logicalContentId: rawEntry.logicalContentId || `${rawEntry.kind}:${rawEntry.target}` };
-    const source = await readCanonicalValue(root, entry.sourcePath);
+    const source = await readCanonicalValue(root, entry.sourcePath, sourceOverrideValue(sourceOverrides, entry));
     const sourceHash = hash(source.bytes);
     const valueHash = hash(source.value);
     const previous = previousByLogicalId.get(entry.logicalContentId);
@@ -201,9 +227,8 @@ export async function createContentDataArtifact({ sourceRoot = process.cwd(), co
   }
   const objectRefs = [...new Set(records.map((record) => record.objectHash))].sort();
   const provenance = {
-    source: "canonical-content-set",
+    source: provenanceSource,
     sourceRoot: ".content-workspace/content",
-    ...(productArtifact?.productArtifactId ? { productArtifactId: productArtifact.productArtifactId } : {}),
   };
   const identity = contentDataArtifactIdentity({ contentSetId: contentSet.contentSetId, contentSetHash: contentSet.contentSetHash, records, objectRefs, provenance });
   const contentDataHash = hash(identity);
@@ -238,6 +263,7 @@ export function assertContentDataArtifact(artifact = {}) {
     ids.add(logical);
     for (const field of ["entryId", "revisionId", "sourcePath", "route", "kind", "target", "status", "objectHash"]) required(record[field], `record.${field}`);
     for (const field of ["sourceHash", "valueHash", "contentHash", "objectHash"]) sha(record[field], `record.${field}`);
+    if (contentDataObjectHash(record) !== record.objectHash) throw new Error(`ContentDataArtifact objectHash drift: ${logical}`);
     if (record.status !== "current") throw new Error(`ContentDataArtifact record status is invalid: ${logical}`);
     const history = record.history || record.revisions;
     if (!Array.isArray(history) || history.length > 2) throw new Error(`ContentDataArtifact history is invalid: ${logical}`);
@@ -357,6 +383,7 @@ export function createActiveContentDataTuple({ contentSet, artifact, productArti
       productArtifactHash: productArtifact?.productArtifactHash || null,
       manifestHash: manifest ? hash(manifest) : null,
     }),
+    manifestUrl: `/content-data/${artifact.contentDataArtifactId}/content-data-manifest.json`,
   };
   return { ...tuple, tupleHash: activeContentDataTupleHash(tuple), updatedAt: new Date().toISOString() };
 }
@@ -403,7 +430,7 @@ export async function readContentDataRuntime({ sourceRoot = process.cwd(), logic
   if (!record) return null;
   const objectFile = path.join(contentDataPaths(sourceRoot).objectsDirectory, `${record.objectHash}.json`);
   const object = JSON.parse(await readFile(objectFile, "utf8"));
-  if (object.objectHash !== record.objectHash) throw new Error("runtime ContentData object hash mismatch");
+  if (object.objectHash !== record.objectHash || !object.record || contentDataObjectHash(object.record) !== record.objectHash) throw new Error("runtime ContentData object hash mismatch");
   return { tuple, artifact, record, value: object.record.value };
 }
 
@@ -514,10 +541,66 @@ async function copyTree(source, destination) {
   await cp(source, destination, { recursive: true, errorOnExist: false, force: true });
 }
 
+async function clientFiles(root, current = "") {
+  const entries = [];
+  for (const entry of await readdir(path.join(root, current), { withFileTypes: true })) {
+    const relative = path.posix.join(current, entry.name);
+    if (entry.isDirectory()) entries.push(...await clientFiles(root, relative));
+    else if (entry.isFile() && relative !== "release.json") entries.push({ path: relative, sha256: hash(await readFile(path.join(root, current, entry.name))) });
+  }
+  return entries.sort((a, b) => a.path.localeCompare(b.path));
+}
+
+function productClientFiles(productArtifact) {
+  return productArtifact?.documents?.release?.clientFiles
+    || productArtifact?.clientFiles
+    || null;
+}
+
+async function assertExactProductClient({ productClient, root, productArtifact } = {}) {
+  const expected = productClientFiles(productArtifact);
+  if (!expected) return;
+  const actual = await clientFiles(root);
+  const normalizedExpected = expected.map((entry) => ({ path: entry.path, sha256: entry.sha256 })).sort((a, b) => a.path.localeCompare(b.path));
+  if (JSON.stringify(actual) !== JSON.stringify(normalizedExpected)) {
+    const error = new Error("ContentData materialization ProductArtifact client bytes drift");
+    error.code = "CONTENT_DATA_PRODUCT_CLIENT_DRIFT";
+    error.expected = normalizedExpected;
+    error.actual = actual;
+    throw error;
+  }
+  return { fileCount: actual.length, files: actual };
+}
+
 async function materializationFile(root, relativePath) {
   const file = path.join(root, relativePath);
   const bytes = await readFile(file);
   return { path: relativePath, bytes: bytes.byteLength, hash: hash(bytes) };
+}
+
+async function copyContentMedia({ sourceRoot, destinationRoot, contentSet, manifest }) {
+  const mediaPaths = [...new Set([
+    ...(manifest?.mediaPaths || []),
+    ...(contentSet?.entries || []).flatMap((entry) => entry.mediaProof || []),
+  ])].sort();
+  const files = [];
+  for (const mediaPath of mediaPaths) {
+    if (typeof mediaPath !== "string" || !mediaPath.startsWith("/") || mediaPath.includes("..")) {
+      throw new Error(`content media path is unsafe: ${mediaPath}`);
+    }
+    const relative = mediaPath.slice(1);
+    const source = path.join(sourceRoot, ".content-workspace", "content", relative);
+    const destination = path.join(destinationRoot, relative);
+    await mkdir(path.dirname(destination), { recursive: true });
+    try {
+      await copyTree(source, destination);
+    } catch (error) {
+      if (error.code === "ENOENT") throw new Error(`content media is missing from canonical source: ${mediaPath}`);
+      throw error;
+    }
+    files.push(await materializationFile(destinationRoot, relative));
+  }
+  return files;
 }
 
 /** Validate the immutable prepared data files before activation. */
@@ -576,7 +659,13 @@ export async function prepareContentOnlyMaterialization({ productClient, sourceR
   const root = await mkdtemp(path.join(os.tmpdir(), "xingbuild-content-data-upload-"));
   let cleaned = false;
   try {
-    if (productClient) await copyTree(productClient, root);
+    if (productClient) {
+      await copyTree(productClient, root);
+      await assertExactProductClient({ productClient, root, productArtifact });
+    }
+    // Media is content-owned and is added only to the temporary upload root;
+    // it is not part of the immutable ProductArtifact client identity.
+    const mediaFiles = await copyContentMedia({ sourceRoot, destinationRoot: root, contentSet, manifest });
     const dataRoot = path.join(root, "content-data", artifact.contentDataArtifactId);
     const objectRoot = path.join(dataRoot, "objects");
     await mkdir(objectRoot, { recursive: true });
@@ -597,13 +686,16 @@ export async function prepareContentOnlyMaterialization({ productClient, sourceR
         await writeFile(path.join(objectRoot, `${record.objectHash}.json`), `${JSON.stringify({ schemaVersion: CONTENT_DATA_OBJECT_SCHEMA_VERSION, objectHash: record.objectHash, record }, null, 2)}\n`);
       }
     }
+    const manifestIdentity = manifest || artifact.records.map(normalizedRecord);
+    const manifestHash = contentDataManifestHash(manifestIdentity);
+    if (activeTuple.manifestHash != null && activeTuple.manifestHash !== manifestHash) throw new Error("ContentData active tuple manifest hash drift");
     const dataManifest = {
       schemaVersion: CONTENT_DATA_MANIFEST_SCHEMA_VERSION,
       contentDataArtifactId: artifact.contentDataArtifactId,
       contentDataHash: artifact.contentDataHash,
       activePointerHash: activeTuple.tupleHash,
       records: artifact.records.map((record) => ({ logicalContentId: record.logicalContentId, entryId: record.entryId, objectHash: record.objectHash, route: record.route })),
-      manifestHash: hash(manifest || artifact.records.map(normalizedRecord)),
+      manifestHash,
       immutableDataUrl: `/content-data/${artifact.contentDataArtifactId}/content-data-manifest.json`,
       cacheControl: "public,max-age=31536000,immutable",
     };
@@ -624,6 +716,7 @@ export async function prepareContentOnlyMaterialization({ productClient, sourceR
       dataManifest,
       receipt,
       activePointer,
+      mediaFiles,
       state: prepared,
       validate,
       activate,
