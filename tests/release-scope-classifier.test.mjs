@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
+  LEGACY_SCOPE_SCHEMA_VERSION,
   classifyReleaseScope,
   computeScopeDigest,
   createScopeManifest,
@@ -41,7 +42,7 @@ test("scope classifier accepts declared implementation and record-only paths", a
     { path: "source.txt", classification: "implementation", owner: "elon engin", reason: "implementation", pathHash: hash("after\n"), state: "modified" },
     { path: manifestPath, classification: "record-only", owner: "elon engin", reason: "scope manifest", pathHash: "self-excluded", state: "added" },
   ];
-  const manifest = createScopeManifest({ version: "v0.27.6", baseHead, entries });
+  const manifest = createScopeManifest({ version: "v0.27.6", baseHead, entries, schemaVersion: LEGACY_SCOPE_SCHEMA_VERSION });
   await mkdir(path.join(root, "docs/iterations/scopes"), { recursive: true });
   await writeFile(path.join(root, manifestPath), `${JSON.stringify(manifest, null, 2)}\n`);
   const result = classifyReleaseScope({ root, version: "v0.27.6", requireStaged: false, allowManifestUntracked: true, allowDeclaredAddedUntracked: true });
@@ -60,7 +61,7 @@ test("undeclared and untracked paths hard-fail instead of directory allowlisting
   await writeFile(path.join(root, "unknown.txt"), "unknown\n");
   const manifestPath = "docs/iterations/scopes/v0.27.6.json";
   const entries = [{ path: "source.txt", classification: "implementation", owner: "elon engin", reason: "implementation", pathHash: hash("after\n"), state: "modified" }, { path: manifestPath, classification: "record-only", owner: "elon engin", reason: "scope manifest", pathHash: "self-excluded", state: "added" }];
-  const manifest = createScopeManifest({ version: "v0.27.6", baseHead, entries });
+  const manifest = createScopeManifest({ version: "v0.27.6", baseHead, entries, schemaVersion: LEGACY_SCOPE_SCHEMA_VERSION });
   await mkdir(path.join(root, "docs/iterations/scopes"), { recursive: true });
   await writeFile(path.join(root, manifestPath), `${JSON.stringify(manifest, null, 2)}\n`);
   git(root, ["add", "source.txt", manifestPath]);
@@ -73,7 +74,7 @@ test("scope digest drift is rejected", async () => {
   const { root, baseHead } = await fixture();
   const manifestPath = "docs/iterations/scopes/v0.27.6.json";
   const entries = [{ path: "source.txt", classification: "implementation", owner: "elon engin", reason: "implementation", pathHash: hash("before\n"), state: "modified" }, { path: manifestPath, classification: "record-only", owner: "elon engin", reason: "scope manifest", pathHash: "self-excluded", state: "added" }];
-  const manifest = createScopeManifest({ version: "v0.27.6", baseHead, entries });
+  const manifest = createScopeManifest({ version: "v0.27.6", baseHead, entries, schemaVersion: LEGACY_SCOPE_SCHEMA_VERSION });
   manifest.paths.find((entry) => entry.path === "source.txt").reason = "tampered";
   await mkdir(path.join(root, "docs/iterations/scopes"), { recursive: true });
   await writeFile(path.join(root, manifestPath), `${JSON.stringify(manifest, null, 2)}\n`);
@@ -90,7 +91,7 @@ test("rename state keeps before and after byte hashes", async () => {
     { path: "renamed.txt", from: "source.txt", classification: "implementation", owner: "elon engin", reason: "rename", pathHash: hash("after\n"), beforePathHash: hash("before\n"), state: "renamed" },
     { path: manifestPath, classification: "record-only", owner: "elon engin", reason: "scope manifest", pathHash: "self-excluded", state: "added" },
   ];
-  const manifest = createScopeManifest({ version: "v0.27.6", baseHead, entries });
+  const manifest = createScopeManifest({ version: "v0.27.6", baseHead, entries, schemaVersion: LEGACY_SCOPE_SCHEMA_VERSION });
   await mkdir(path.join(root, "docs/iterations/scopes"), { recursive: true });
   await writeFile(path.join(root, manifestPath), `${JSON.stringify(manifest, null, 2)}\n`);
   git(root, ["add", "-A"]);

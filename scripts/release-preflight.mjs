@@ -9,7 +9,7 @@ import { createReleaseClosureReport, readReleaseClosureReport, validateReleaseCl
 import { assertArtifactApproval, assertCommitIdentity, assertTagIdentity, readApprovalRecord } from "./lib/release-transaction.mjs";
 import { readQaBrowserInstallPolicyEvidence } from "./lib/qa-browser-install-policy.mjs";
 
-const root = process.cwd(); const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim(); const packageJson = JSON.parse(await readFile(path.join(root, "package.json"), "utf8")); const version = `v${packageJson.version}`; await readQaBrowserInstallPolicyEvidence({ root, version }); const approval = await readApprovalRecord(root, version, null, { requireCurrentIdentity: false, allowTagRecovery: true }); const head = git("rev-parse", "HEAD");
+const root = process.cwd(); const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim(); const packageJson = JSON.parse(await readFile(path.join(root, "package.json"), "utf8")); const version = `v${packageJson.version}`; const approval = await readApprovalRecord(root, version, null, { requireCurrentIdentity: false, allowTagRecovery: true }); await readQaBrowserInstallPolicyEvidence({ root, version }); const head = git("rev-parse", "HEAD");
 if (git("branch", "--show-current") !== "main" || git("describe", "--tags", "--exact-match", head) !== version) throw new Error("release preflight requires exact main/tag");
 assertCommitIdentity({ root, approval, commit: head }); assertTagIdentity({ root, approval, tag: version, commit: head });
 const artifact = await readProductArtifact({ clientDirectory: path.join(root, "dist", "client"), sourceRoot: root, version, commit: head }); assertArtifactApproval(artifact, approval);

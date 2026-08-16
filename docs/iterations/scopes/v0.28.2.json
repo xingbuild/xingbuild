@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "release-scope-v2",
+  "contractVersion": "classification-only-v1",
+  "phase": "pre-commit",
+  "version": "v0.28.2",
+  "baseHead": "0fb5c24cc9c8851fd5fe44add9bd0bb7f2999dab",
+  "scopeManifestPath": "docs/iterations/scopes/v0.28.2.json",
+  "paths": [
+    { "classification": "record-only", "owner": "elon/Xing", "path": "VERSION.md", "reason": "v0.28.2 version record", "state": "modified" },
+    { "classification": "record-only", "owner": "elon/Xing", "path": "docs/design/v0.28.2 Canonical Final Build 提交前证明与阻断版本恢复方案.md", "reason": "formal v0.28.2 design", "state": "added" },
+    { "classification": "record-only", "owner": "elon/Xing", "path": "docs/iterations/current.md", "reason": "formal current input", "state": "modified" },
+    { "classification": "record-only", "owner": "elon engin", "path": "docs/iterations/history/v0.28.2.md", "reason": "v0.28.2 history record", "state": "added" },
+    { "classification": "record-only", "owner": "elon engin", "path": "docs/iterations/scopes/v0.28.2.json", "reason": "v0.28.2 stable classification contract manifest; self excluded from digest", "state": "added" },
+    { "classification": "implementation", "owner": "elon engin", "path": "package-lock.json", "reason": "v0.28.2 package identity", "state": "modified" },
+    { "classification": "implementation", "owner": "elon engin", "path": "package.json", "reason": "stable transaction test route and version identity", "state": "modified" },
+    { "classification": "implementation", "owner": "elon engin", "path": "scripts/lib/release-invariants.mjs", "reason": "stable scope contract predicate routing", "state": "modified" },
+    { "classification": "implementation", "owner": "elon engin", "path": "scripts/lib/release-scope-classifier.mjs", "reason": "stable scope schema with legacy reader", "state": "modified" },
+    { "classification": "implementation", "owner": "elon engin", "path": "scripts/lib/release-transaction.mjs", "reason": "stable SideEffectBaseline policy with legacy durable reader", "state": "modified" },
+    { "classification": "implementation", "owner": "elon engin", "path": "scripts/prepare-sites-build.mjs", "reason": "canonical ProductArtifact identity propagation", "state": "modified" },
+    { "classification": "implementation", "owner": "elon engin", "path": "scripts/release-candidate-check.mjs", "reason": "stable release transaction self-test routing", "state": "modified" },
+    { "classification": "implementation", "owner": "elon engin", "path": "scripts/release-preflight.mjs", "reason": "ApprovalRecord gate ordering and closure preflight", "state": "modified" },
+    { "classification": "implementation", "owner": "elon engin", "path": "tests/release-transaction.test.mjs", "reason": "canonical exact staged-tree positive chain and stable contract tests", "state": "added" },
+    { "classification": "implementation", "owner": "elon engin", "path": "tests/release-scope-classifier.test.mjs", "reason": "explicit legacy scope schema regression contract", "state": "modified" },
+    { "classification": "implementation", "owner": "elon engin", "path": "tests/v0281-release-transaction.test.mjs", "reason": "v0.28.1 legacy fault-injection regression fixture compatibility", "state": "modified" }
+  ],
+  "scopeDigest": "7dd9df7a0cd6e7ae45029be43820792fea2fa496be5c8dcc41789456b9f43a83"
+}

@@ -13,6 +13,9 @@ export const CANDIDATE_ENVELOPE_SCHEMA_VERSION = CANDIDATE_IDENTITY_SCHEMA_VERSI
 export const APPROVAL_ENVELOPE_SCHEMA_VERSION = APPROVAL_RECORD_SCHEMA_VERSION;
 export const TASK_REGISTRY_PATH = "docs/rules/task-registry.md";
 export const TRANSACTION_EVIDENCE_ROOT = ".content-workspace/qa";
+export const SIDE_EFFECT_BASELINE_SCHEMA_VERSION = "side-effect-baseline-v1";
+export const SIDE_EFFECT_POLICY_VERSION = "release-side-effect-policy-v1";
+export const LEGACY_SIDE_EFFECT_POLICY_VERSION = "v0.28.1";
 const SHA256 = /^[a-f0-9]{64}$/;
 const COMMIT = /^[a-f0-9]{40}$/;
 const TREE = /^[a-f0-9]{40}$/;
@@ -99,7 +102,7 @@ const ALLOWED_ROOT = ".content-workspace/base-site-artifacts";
 export function captureProtectedFacts(root) {
   const roots = IMMUTABLE_ROOTS.map((relativeRoot) => ({ root: relativeRoot, records: walk(root, relativeRoot) }));
   const allowed = { root: ALLOWED_ROOT, records: walk(root, ALLOWED_ROOT) };
-  const payload = { schemaVersion: "side-effect-baseline-v1", policyVersion: "v0.28.1", roots, allowedRoot: allowed, git: { head: gitText(root, "rev-parse", "HEAD"), indexTree: stagedTreeOid(root) } };
+  const payload = { schemaVersion: SIDE_EFFECT_BASELINE_SCHEMA_VERSION, policyVersion: SIDE_EFFECT_POLICY_VERSION, roots, allowedRoot: allowed, git: { head: gitText(root, "rev-parse", "HEAD"), indexTree: stagedTreeOid(root) } };
   return finalizeProtectedFacts(payload);
 }
 function protectedPathSetHash(payload) { return sha256(canonicalJson((payload.roots || []).map((entry) => ({ root: entry.root, paths: (entry.records || []).map((record) => record.path) })))); }
@@ -107,8 +110,9 @@ function protectedBytes(payload) { return (payload.roots || []).reduce((total, e
 function protectedPayload(facts) { const { hash: _hash, pathSetHash: _pathSetHash, bytes: _bytes, ...payload } = facts || {}; return payload; }
 function finalizeProtectedFacts(payload) { return { ...payload, hash: sha256(canonicalJson(payload)), pathSetHash: protectedPathSetHash(payload), bytes: protectedBytes(payload) }; }
 export function computeProtectedFactsHash(facts) { return sha256(canonicalJson(protectedPayload(facts))); }
-export function validateProtectedFacts(facts) {
-  if (!facts || facts.schemaVersion !== "side-effect-baseline-v1" || facts.policyVersion !== "v0.28.1") throw new Error("SideEffectBaseline schema/policy mismatch");
+export function validateProtectedFacts(facts, { allowLegacy = false } = {}) {
+  const policyAccepted = facts?.policyVersion === SIDE_EFFECT_POLICY_VERSION || (allowLegacy && facts?.policyVersion === LEGACY_SIDE_EFFECT_POLICY_VERSION);
+  if (!facts || facts.schemaVersion !== SIDE_EFFECT_BASELINE_SCHEMA_VERSION || !policyAccepted) throw new Error("SideEffectBaseline schema/policy mismatch");
   if (facts.hash !== computeProtectedFactsHash(facts)) throw new Error("SideEffectBaseline hash mismatch");
   const payload = protectedPayload(facts);
   if (facts.pathSetHash !== protectedPathSetHash(payload) || facts.bytes !== protectedBytes(payload)) throw new Error("SideEffectBaseline summary mismatch");
@@ -271,7 +275,7 @@ export function readDurableApprovalRecord(root, version, tag = version) {
   if (!approval || !parsed.candidate) throw new Error("durable tag CandidateIdentity/ApprovalRecord missing");
   validateCandidateIdentity(parsed.candidate, { version, requireCurrentIdentity: false });
   validateApprovalRecord(approval, { version, candidate: parsed.candidate, root });
-  const baseline = validateProtectedFacts(parsed.sideEffectBaseline);
+  const baseline = validateProtectedFacts(parsed.sideEffectBaseline, { allowLegacy: version === "v0.28.1" });
   if (baseline.hash !== parsed.candidate.protectedBaselineHash) throw new Error("durable tag SideEffectBaseline does not match CandidateIdentity");
   const commit = gitText(root, "rev-parse", `${tag}^{commit}`);
   if (gitText(root, "rev-parse", `${commit}^{tree}`) !== approval.approvedTreeOid || gitText(root, "rev-parse", `${commit}^`) !== approval.baseHead) throw new Error("durable tag commit identity drift");

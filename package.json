@@ -1,6 +1,6 @@
 {
   "name": "xingbuild",
-  "version": "0.28.1",
+  "version": "0.28.2",
   "private": true,
   "type": "module",
   "scripts": {
@@ -15,6 +15,7 @@
     "build": "vite build && node scripts/prepare-sites-build.mjs",
     "preview": "vite preview",
     "test:sites": "node --test tests/*.test.mjs",
+    "test:release-transaction": "node --test tests/release-transaction.test.mjs",
     "check": "node scripts/check-project.mjs",
     "preinstall": "node scripts/qa-browser-install-check.mjs --install-guard",
     "release:prepare": "npm run check && npm run content:check && npm run article:check && npm run practice:check && npm run qa:browser:install-policy && npm run qa:browser:check",

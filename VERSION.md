@@ -1,3 +1,16 @@
+## v0.28.2 — Canonical Final Build 提交前证明与阻断版本恢复
+
+父版本：`v0.28.1` / `0fb5c24cc9c8851fd5fe44add9bd0bb7f2999dab`
+
+- 保持 v0.28.1 commit、annotated tag 与 ApprovalRecord 不可变，并将其状态固定为 `BlockedCommit`、未发布。
+- 修复 canonical ProductArtifact identity 传递；将 scope、SideEffectBaseline 与 Candidate 自测路由改为稳定 contract，v0.28.1 仅保留只读 legacy 兼容。
+- 以 canonical exact staged tree 的隔离 Git transaction 真实执行 release:build、prepare-sites-build、ProductArtifact adapter、release:preflight 与 tag recovery；不替换生产脚本。
+- 本版本不修改页面、内容事实、ContentSet、ContentDataArtifact 或 SitePublication，不执行 transport、content publish 或 EdgeOne。
+
+## 验证与发布边界
+
+- Candidate 阶段只生成 v0.28.2 CandidateIdentity 与稳定 policy 的 SideEffectBaseline；Engineering 不生成 ApprovalRecord。收到 exact `READY_FOR_COMMIT` 后才允许 v0.28.2 commit/tag/build/preflight；本版本不发布。
+
 ## v0.28.1 — Release Transaction 不可变批准与提交事务
 
 父版本：`v0.28.0` / `f7146bf654a9f6fd6467255746d6a07d9eec47c7`

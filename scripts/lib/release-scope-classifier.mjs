@@ -4,7 +4,9 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 /* Scope is classification only. Git's index tree is the byte authority. */
-export const SCOPE_SCHEMA_VERSION = "release-scope-v1";
+export const LEGACY_SCOPE_SCHEMA_VERSION = "release-scope-v1";
+export const SCOPE_SCHEMA_VERSION = "release-scope-v2";
+export const SCOPE_CONTRACT_VERSION = "classification-only-v1";
 export const SCOPE_CLASSIFICATIONS = new Set(["implementation", "record-only", "excludedExternal"]);
 export const SCOPE_MANIFEST_ROOT = "docs/iterations/scopes";
 const VERSION = /^v\d+\.\d+\.\d+$/;
@@ -81,27 +83,31 @@ export function readScopeManifest(root, version) {
   const relativePath = scopeManifestRelativePath(version); const absolutePath = path.join(root, relativePath);
   if (!existsSync(absolutePath)) throw new Error(`release scope manifest missing: ${relativePath}`);
   let manifest; try { manifest = JSON.parse(readFileSync(absolutePath, "utf8")); } catch (error) { throw new Error(`release scope manifest invalid JSON: ${error.message}`); }
-  if (manifest.schemaVersion !== SCOPE_SCHEMA_VERSION) throw new Error(`release scope manifest schema mismatch: ${manifest.schemaVersion || "missing"}`);
+  const legacySchema = manifest.schemaVersion === LEGACY_SCOPE_SCHEMA_VERSION;
+  const currentSchema = manifest.schemaVersion === SCOPE_SCHEMA_VERSION;
+  if (!legacySchema && !currentSchema) throw new Error(`release scope manifest schema mismatch: ${manifest.schemaVersion || "missing"}`);
+  if (currentSchema && manifest.contractVersion !== SCOPE_CONTRACT_VERSION) throw new Error(`release scope manifest contract mismatch: ${manifest.contractVersion || "missing"}`);
   if (manifest.version !== version) throw new Error(`release scope manifest version mismatch: ${manifest.version || "missing"}`);
   if (manifest.phase !== "pre-commit") throw new Error(`release scope manifest must be pre-commit phase, got ${manifest.phase || "missing"}`);
   if (!COMMIT.test(manifest.baseHead || "")) throw new Error("release scope manifest baseHead is invalid");
   if (manifest.scopeManifestPath !== relativePath) throw new Error("release scope manifest path identity mismatch");
-  const entries = Array.isArray(manifest.paths) ? manifest.paths : []; const seen = new Set(); const current = version === "v0.28.1";
+  const entries = Array.isArray(manifest.paths) ? manifest.paths : []; const seen = new Set(); const legacyClassificationOnly = legacySchema && version === "v0.28.1";
   for (const entry of entries) {
     if (!entry || !pathSafe(entry.path)) throw new Error("release scope manifest contains unsafe path");
     if (seen.has(entry.path)) throw new Error(`release scope manifest duplicate path: ${entry.path}`); seen.add(entry.path);
     if (!SCOPE_CLASSIFICATIONS.has(entry.classification)) throw new Error(`release scope manifest invalid classification: ${entry.path}`);
     if (typeof entry.owner !== "string" || !entry.owner.trim() || typeof entry.reason !== "string" || !entry.reason.trim()) throw new Error(`release scope manifest owner/reason missing: ${entry.path}`);
-    if (current && (Object.hasOwn(entry, "pathHash") || Object.hasOwn(entry, "beforePathHash"))) throw new Error(`release scope manifest v0.28.1 must not contain pathHash: ${entry.path}`);
+    if (currentSchema && (Object.hasOwn(entry, "pathHash") || Object.hasOwn(entry, "beforePathHash"))) throw new Error(`release scope manifest ${SCOPE_SCHEMA_VERSION} must not contain pathHash: ${entry.path}`);
+    if (legacyClassificationOnly && (Object.hasOwn(entry, "pathHash") || Object.hasOwn(entry, "beforePathHash"))) throw new Error(`legacy release scope manifest v0.28.1 must not contain pathHash: ${entry.path}`);
     if (!["added", "modified", "deleted", "renamed"].includes(entry.state)) throw new Error(`release scope manifest state invalid: ${entry.path}`);
     if (entry.state === "renamed" && !pathSafe(entry.from)) throw new Error(`release scope rename source invalid: ${entry.path}`);
-    if (!current && entry.path !== relativePath && !/^[a-f0-9]{64}$/.test(entry.pathHash || "")) throw new Error(`release scope manifest pathHash invalid: ${entry.path}`);
+    if (legacySchema && !legacyClassificationOnly && entry.path !== relativePath && !/^[a-f0-9]{64}$/.test(entry.pathHash || "")) throw new Error(`legacy release scope manifest pathHash invalid: ${entry.path}`);
     if (entry.path === relativePath && entry.classification !== "record-only") throw new Error("scope manifest must declare itself record-only");
   }
   if (!entries.some((entry) => entry.path === relativePath)) throw new Error("scope manifest must declare itself record-only");
   const digest = computeScopeDigest(entries, relativePath);
   if (!/^[a-f0-9]{64}$/.test(manifest.scopeDigest || "") || digest !== manifest.scopeDigest) throw new Error("release scope manifest scopeDigest mismatch");
-  return { ...manifest, relativePath, entries };
+  return { ...manifest, relativePath, entries, legacy: legacySchema };
 }
 
 export function classifyReleaseScope({ root, version, phase = "pre-commit", requireStaged = true, allowManifestUntracked = true, allowDeclaredAddedUntracked = false, approvalIdentity = null } = {}) {
@@ -146,13 +152,14 @@ export function validateCommittedScope({ root, version, committedHead = git(root
   return { ready: blockers.length === 0, blockers, manifest, committedHead, baseHead: manifest.baseHead, scopeDigest: manifest.scopeDigest };
 }
 
-export function createScopeManifest({ version, baseHead, entries }) {
+export function createScopeManifest({ version, baseHead, entries, schemaVersion = SCOPE_SCHEMA_VERSION, contractVersion = SCOPE_CONTRACT_VERSION }) {
   const relativePath = scopeManifestRelativePath(version);
+  if (![SCOPE_SCHEMA_VERSION, LEGACY_SCOPE_SCHEMA_VERSION].includes(schemaVersion)) throw new Error(`unsupported release scope schema: ${schemaVersion}`);
   const normalized = entries.map((entry) => {
     const copy = { ...entry };
-    if (version === "v0.28.1") { delete copy.pathHash; delete copy.beforePathHash; }
+    if (schemaVersion === SCOPE_SCHEMA_VERSION) { delete copy.pathHash; delete copy.beforePathHash; }
     return copy;
   }).sort((a, b) => byteCompare(a.path, b.path));
-  const manifest = { schemaVersion: SCOPE_SCHEMA_VERSION, phase: "pre-commit", version, baseHead, scopeManifestPath: relativePath, paths: normalized };
+  const manifest = { schemaVersion, ...(schemaVersion === SCOPE_SCHEMA_VERSION ? { contractVersion } : {}), phase: "pre-commit", version, baseHead, scopeManifestPath: relativePath, paths: normalized };
   manifest.scopeDigest = computeScopeDigest(normalized, relativePath); return manifest;
 }

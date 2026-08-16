@@ -11,9 +11,9 @@ const packageJson = JSON.parse(await readFile(path.join(root, "package.json"), "
 const version = `v${packageJson.version}`;
 const evidenceDir = path.join(root, ".content-workspace", "qa", version);
 
-function run(command, args) {
+function run(command, args, env = {}) {
   const startedAt = Date.now();
-  const result = spawnSync(command, args, { cwd: root, encoding: "utf8", maxBuffer: 8 * 1024 * 1024 });
+  const result = spawnSync(command, args, { cwd: root, encoding: "utf8", maxBuffer: 16 * 1024 * 1024, env: { ...process.env, ...env } });
   const stdout = result.stdout || "";
   const stderr = result.stderr || "";
   const exitCode = result.status == null ? 1 : result.status;
@@ -27,7 +27,7 @@ const baselineBefore = captureProtectedFacts(root);
 const commands = process.argv.includes("--run-checks")
   ? [
       run("npm", ["run", "check"]),
-      run(process.execPath, ["--test", "tests/v0281-release-transaction.test.mjs"]),
+      run("npm", ["run", "test:release-transaction"], { XINGBUILD_TRANSACTION_SELF_QA: "1" }),
       run("npm", ["run", "release:prepare"]),
     ]
   : [];

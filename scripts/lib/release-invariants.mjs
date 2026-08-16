@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { canonicalJson, sha256Bytes, readScopeManifest } from "./release-scope-classifier.mjs";
+import { LEGACY_SCOPE_SCHEMA_VERSION, SCOPE_SCHEMA_VERSION, canonicalJson, sha256Bytes, readScopeManifest } from "./release-scope-classifier.mjs";
 import { assertVersionIdentityFromStaged, captureProtectedFacts, resolveElonIdentity, stagedTreeOid, workingIdentity } from "./release-transaction.mjs";
 
 const SHA256 = /^[a-f0-9]{64}$/;
@@ -39,7 +39,9 @@ export function checkPlan(state = {}) {
   const { version, baseHead, scope, git: observed } = state;
   if (!VERSION.test(version || "") || !OID.test(baseHead || "")) return fail("I-01", "version/baseHead is invalid");
   if (!scope || scope.version !== version || scope.baseHead !== baseHead || !SHA256.test(scope.scopeDigest || "")) return fail("I-01", "classification-only scope identity mismatch");
-  for (const entry of scope.entries || scope.paths || []) if (Object.hasOwn(entry, "pathHash") || Object.hasOwn(entry, "beforePathHash")) return fail("I-01", "scope manifest carries competing path hash", { path: entry.path });
+  if (scope.schemaVersion === SCOPE_SCHEMA_VERSION || (scope.schemaVersion === LEGACY_SCOPE_SCHEMA_VERSION && version === "v0.28.1")) {
+    for (const entry of scope.entries || scope.paths || []) if (Object.hasOwn(entry, "pathHash") || Object.hasOwn(entry, "beforePathHash")) return fail("I-01", "scope manifest carries competing path hash", { path: entry.path });
+  }
   if (observed && observed.head !== baseHead) return fail("I-01", "baseHead is not current HEAD");
   if (state.root) {
     try { const staged = assertVersionIdentityFromStaged(state.root, version); return pass("I-01", { classificationOnly: true, scopeDigest: scope.scopeDigest, staged }); }
