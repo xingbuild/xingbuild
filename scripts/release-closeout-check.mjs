@@ -1,62 +1,20 @@
 #!/usr/bin/env node
-
-import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
-import process from "node:process";
-import { assertProductContentCompatibility } from "./lib/content-compatibility.mjs";
-import { assertNoVersionStateFields, evaluateCloseoutReadiness, parseCurrentIterationVersion } from "./lib/release-readiness.mjs";
-import { validateLifecycleEvidence } from "./lib/content-lifecycle-evidence.mjs";
-import { classifyReleaseScope } from "./lib/release-scope-classifier.mjs";
-import { readLifecycleEvidence } from "./lib/lifecycle-evidence-path.mjs";
+import path from "node:path";
+import { classifyReleaseScope, readScopeManifest } from "./lib/release-scope-classifier.mjs";
+import { captureProtectedFacts, readApprovalRecord, readCandidateIdentity, stagedTreeOid, workingIdentity } from "./lib/release-transaction.mjs";
+import { checkApproval, checkPlan, checkPrecommit } from "./lib/release-invariants.mjs";
 import { readQaBrowserInstallPolicyEvidence } from "./lib/qa-browser-install-policy.mjs";
 
-function git(...args) {
-  return execFileSync("git", args, { encoding: "utf8" }).trim();
-}
-
-const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
-const versionRecord = await readFile(new URL("../VERSION.md", import.meta.url), "utf8");
-const currentIteration = await readFile(
-  new URL("../docs/iterations/current.md", import.meta.url),
-  "utf8",
-);
-const installPolicyEvidence = await readQaBrowserInstallPolicyEvidence({ root: process.cwd(), version: `v${packageJson.version}` });
-assertProductContentCompatibility({ currentText: currentIteration });
-assertNoVersionStateFields(currentIteration);
-try {
-  const lifecycleEvidence = await readLifecycleEvidence({ root: process.cwd(), version: `v${packageJson.version}`, allowMissing: false });
-  validateLifecycleEvidence(lifecycleEvidence, { requirePostCommit: false, expectedVersion: `v${packageJson.version}` });
-} catch (error) {
-  throw new Error(`LIFECYCLE_EVIDENCE_CLOSEOUT: ${error.message}`);
-}
-let scopeResult;
-try {
-  scopeResult = classifyReleaseScope({
-    root: process.cwd(),
-    version: `v${packageJson.version}`,
-    phase: "pre-commit",
-    requireStaged: true,
-    allowManifestUntracked: false,
-  });
-} catch (error) {
-  scopeResult = { ready: false, blockers: [`release scope classifier: ${error.message}`] };
-}
-const result = evaluateCloseoutReadiness({
-  branch: git("branch", "--show-current"),
-  allowReleaseWorktree: process.env.XINGBUILD_RELEASE_WORKTREE === "1",
-  stagedEntries: git("diff", "--cached", "--name-only").split("\n"),
-  unstagedEntries: git("diff", "--name-only").split("\n"),
-  untrackedEntries: git("ls-files", "--others", "--exclude-standard").split("\n"),
-  packageVersion: packageJson.version,
-  versionRecord: versionRecord.match(/^##\s+(v\d+\.\d+\.\d+)\b/m)?.[1],
-  currentVersion: parseCurrentIterationVersion(currentIteration),
-  scopeResult,
-});
-if (!result.ready) {
-  console.error(`版本收口未就绪：${result.version}`);
-  for (const blocker of result.blockers) console.error(`- ${blocker}`);
-  process.exit(1);
-}
-
-console.log(`版本收口就绪：${result.version}，暂存范围完整且无遗留工作。`);
-console.log(JSON.stringify({ scope: scopeResult }, null, 2));
+const root = process.cwd(); const packageJson = JSON.parse(await readFile(path.join(root, "package.json"), "utf8")); const version = `v${packageJson.version}`;
+await readQaBrowserInstallPolicyEvidence({ root, version });
+const candidate = await readCandidateIdentity(root, version, { requireCurrentIdentity: true }); const approval = await readApprovalRecord(root, version, null, { requireCurrentIdentity: true });
+const scope = classifyReleaseScope({ root, version, phase: "pre-commit", requireStaged: true, allowManifestUntracked: false }); const before = captureProtectedFacts(root); const current = workingIdentity(root);
+if (!scope.ready) throw new Error(`release scope is not ready: ${scope.blockers.join("; ")}`);
+if (stagedTreeOid(root) !== approval.approvedTreeOid || candidate.candidateHash !== approval.candidateHash) throw new Error("ApprovalRecord does not bind current staged tree/candidate");
+if (before.hash !== candidate.protectedBaselineHash) throw new Error("approved SideEffectBaseline is not current");
+if (current.worktreeDiffHash !== requireEmptyHash()) throw new Error("approved tree has unstaged drift");
+const results = [checkPlan({ root, version, baseHead: candidate.baseHead, scope: readScopeManifest(root, version), git: { head: candidate.baseHead } }), checkApproval({ root, approval, candidate }), checkPrecommit({ approval, candidate, git: { treeOid: stagedTreeOid(root), working: current }, protectedBefore: before, protectedAfter: before })];
+const failed = results.filter((entry) => entry.result !== "PASS"); if (failed.length) throw new Error(`release closeout invariant failure: ${JSON.stringify(failed)}`);
+console.log(`版本收口就绪：${version}，ApprovalRecord、staged tree、scope 与 protected baseline exact`); console.log(JSON.stringify({ version, treeOid: candidate.treeOid, candidateHash: candidate.candidateHash, approvalHash: approval.approvalHash, scopeDigest: candidate.scopeDigest, invariants: results }, null, 2));
+function requireEmptyHash() { return "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"; }

@@ -1,3 +1,15 @@
+## v0.28.1 — Release Transaction 不可变批准与提交事务
+
+父版本：`v0.28.0` / `f7146bf654a9f6fd6467255746d6a07d9eec47c7`
+
+- 以 Git staged tree OID 冻结最小 `CandidateIdentity`，由 `elon` 对精确候选生成唯一 `ApprovalRecord`。
+- 三类 observer 与八条封闭 invariant 复用同一权威；commit、annotated tag、ProductArtifact 和 closure 均绑定同一 tree/approval。
+- 本版本不修改页面、内容事实、ContentSet、ContentDataArtifact 或 SitePublication，不执行 transport、content publish 或 EdgeOne。
+
+## 验证与发布边界
+
+- Candidate 阶段只生成 `CandidateIdentity` 与一个 `SideEffectBaseline`，交 `elon` 对精确 staged tree 生成 `ApprovalRecord`；Engineering 收到批准前不 commit/tag/build/preflight/transport/content publish。commit 后由 Git/tag、`release.json` 与现场 protected diff 分别完成 closure。
+
 ## v0.28.0 — 内容数据平面与内容增量发布架构
 
 父版本：`v0.27.9` / `7374b75a7a611217cfa0199e2d81ec7964dc3386`

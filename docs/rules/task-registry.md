@@ -11,7 +11,8 @@
 | 历史归档 | 原产品总负责人（上下文污染后停止） | `01a0061d-a36c-79a2-a128-67e94035eab4` | `local` | `01a00637-f0b0-79c3-aa1e-6dd463dd37d1` | archived | 2026-08-16 |
 | 历史归档 | 原产品/视觉主线（旧 elon） | `019fc260-e14e-7211-97f1-44e075d0cc0f` | `local` | `01a0061d-a36c-79a2-a128-67e94035eab4` | archived | 2026-08-15 |
 | 历史归档 | 原 Engineering 主线（旧） | `019fc263-abf9-7732-84ef-73914e6a0a85` | `local` | `019fc260-e14e-7211-97f1-44e075d0cc0f` | archived | 2026-08-04 |
-| `elon engin` | 原 Engineering 主线 | `019fcbf2-20e3-7d51-a4de-87ad7c94b190` | `local` | `01a00637-f0b0-79c3-aa1e-6dd463dd37d1` | active | 2026-08-16 |
+| `elon engin` | Engineering 总负责人 | `01a00966-ed2c-73e0-8983-ed4ac685d6e8` | `local` | `01a00637-f0b0-79c3-aa1e-6dd463dd37d1` | active | 2026-08-16 |
+| 历史归档 | 原 Engineering 主线（上下文污染后停止） | `019fcbf2-20e3-7d51-a4de-87ad7c94b190` | `local` | `01a00637-f0b0-79c3-aa1e-6dd463dd37d1` | archived | 2026-08-16 |
 | `elon ui`（slug：`elon-ui`） | 原 `design-ui` 视觉方向 | `019fd068-cd5d-7f30-9642-32d0589a4953` | `local` | `01a00637-f0b0-79c3-aa1e-6dd463dd37d1` | active | 2026-08-16 |
 | `elon ops` | 原内容及发布主线；兼容标识 `ops-content` | `019fa166-9645-7532-87f6-99ae4cf9508a` | `local` | `01a00637-f0b0-79c3-aa1e-6dd463dd37d1` | active | 2026-08-16 |
 | 历史归档 | 原 Ops 采集主线（旧） | `019fb57b-e90e-75a3-8898-ce380d6dc1fa` | `local` | `unverified` | archived | 2026-08-05 |

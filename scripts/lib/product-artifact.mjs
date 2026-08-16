@@ -1,164 +1,93 @@
-import { readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { hashArtifactValue, readBaseSiteArtifact } from "./base-site-artifact.mjs";
 
-export const PRODUCT_ARTIFACT_CONTRACT_VERSION = "product-artifact-v1";
-export const PRODUCT_ARTIFACT_IDENTITY_FIELDS = Object.freeze([
-  "artifactContractVersion",
-  "productArtifactId",
-  "productVersion",
-  "productCommit",
-  "baseSiteArtifactId",
-  "productArtifactHash",
-  "releaseManifestHash",
-  "contentManifestHash",
-  "artifactContentHash",
-  "sourceBundleHash",
-]);
-
-function text(value, field) {
-  if (typeof value !== "string" || value.trim() === "") throw new Error(`ProductArtifact ${field} is missing`);
-  return value;
+export const PRODUCT_ARTIFACT_CONTRACT_VERSION = "product-artifact-v2";
+export const PRODUCT_ARTIFACT_IDENTITY_FIELDS = Object.freeze(["artifactContractVersion", "productArtifactId", "productVersion", "productCommit", "baseSiteArtifactId", "productArtifactHash", "contentManifestHash", "baseSiteArtifactManifestHash", "approvalHash", "candidateHash", "approvedTreeOid", "clientHash"]);
+const SHA256 = /^[a-f0-9]{64}$/;
+const COMMIT = /^[a-f0-9]{40}$/;
+const VERSION = /^v\d+\.\d+\.\d+$/;
+const TREE = /^[a-f0-9]{40}$/;
+function text(value, field) { if (typeof value !== "string" || !value.trim()) throw new Error(`ProductArtifact ${field} is missing`); return value; }
+function expectedBaseId(version, commit) { return `${version}-${commit.slice(0, 12)}`; }
+function assertObject(value, label) { if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`ProductArtifact ${label} is missing`); return value; }
+function canonical(value) { return JSON.stringify(value); }
+function artifactHashPayload(root) {
+  const { productArtifactHash: _ignored, ...identity } = root;
+  return { ...identity, clientFiles: [...(root.clientFiles || [])].filter((entry) => entry.path !== "release.json").sort((a, b) => a.path.localeCompare(b.path)) };
 }
-function expectedBaseSiteArtifactId(version, commit) {
-  return `${version}-${commit.slice(0, 12)}`;
+export function computeProductArtifactHash(root) { return createHash("sha256").update(canonical(artifactHashPayload(root))).digest("hex"); }
+function subordinateForbidden(document, label) {
+  for (const field of ["productArtifactId", "productArtifactHash", "productVersion", "productCommit", "baseSiteArtifactId", "approvalHash", "candidateHash", "approvedTreeOid", "approvalEnvelopeHash", "candidateEnvelopeHash"]) if (Object.hasOwn(document, field)) throw new Error(`${label} must not duplicate ProductArtifact authority field ${field}`);
 }
-
-function assertDocumentObject(value, label) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(`ProductArtifact ${label} is missing`);
+function validateRoot(root, { version, commit } = {}) {
+  assertObject(root, "release.json");
+  if (root.schemaVersion !== "product-artifact-release-v2") throw new Error("ProductArtifact release root schema mismatch");
+  const expectedVersion = text(version || root.productVersion, "version"); const expectedCommit = text(commit || root.productCommit, "commit");
+  if (!VERSION.test(expectedVersion) || !COMMIT.test(expectedCommit)) throw new Error("ProductArtifact root version/commit invalid");
+  for (const field of ["productArtifactId", "baseSiteArtifactId", "contentManifestHash", "baseSiteArtifactManifestHash", "productArtifactHash"]) text(root[field], field);
+  if (root.productVersion !== expectedVersion || root.productCommit !== expectedCommit) throw new Error("ProductArtifact root version/commit drift");
+  if (root.productArtifactId !== expectedBaseId(expectedVersion, expectedCommit) || root.baseSiteArtifactId !== root.productArtifactId) throw new Error("ProductArtifact root id mismatch");
+  if (!SHA256.test(root.productArtifactHash) || !SHA256.test(root.contentManifestHash) || !SHA256.test(root.baseSiteArtifactManifestHash)) throw new Error("ProductArtifact root hash invalid");
+  for (const field of ["approvalHash", "candidateHash"]) if (!SHA256.test(root[field] || "")) throw new Error(`ProductArtifact ${field} is required for v2`);
+  if (!TREE.test(root.approvedTreeOid || "")) throw new Error("ProductArtifact approvedTreeOid is required for v2");
+  if (!Array.isArray(root.clientFiles) || root.clientFiles.some((entry) => !entry || typeof entry.path !== "string" || !SHA256.test(entry.sha256))) throw new Error("ProductArtifact clientFiles invalid");
+  if (root.productArtifactHash !== computeProductArtifactHash(root)) throw new Error("ProductArtifact root hash mismatch");
+  return root;
+}
+export function resolveProductArtifactIdentity({ release, contentManifest, baseSiteArtifact, clientFiles = null } = {}, { version, commit } = {}) {
+  /* Read-only adapter for pre-v2 in-memory fixtures.  It is deliberately not
+     reachable from readProductArtifact or any publish path; production
+     artifacts must use the release.json v2 root below. */
+  if (release && release.schemaVersion == null && release.version && release.commit && release.baseSiteArtifactId) {
+    const legacyVersion = version || release.version; const legacyCommit = commit || release.commit;
+    if (legacyVersion !== release.version || legacyCommit !== release.commit) throw new Error("legacy ProductArtifact fixture version/commit drift");
+    if (contentManifest && (contentManifest.version != null && contentManifest.version !== legacyVersion || contentManifest.commit != null && contentManifest.commit !== legacyCommit || contentManifest.baseSiteArtifactId != null && contentManifest.baseSiteArtifactId !== release.baseSiteArtifactId)) throw new Error("legacy ProductArtifact fixture content identity/commit drift");
+    if (baseSiteArtifact && (baseSiteArtifact.productVersion != null && baseSiteArtifact.productVersion !== legacyVersion || baseSiteArtifact.productCommit != null && baseSiteArtifact.productCommit !== legacyCommit || baseSiteArtifact.baseSiteArtifactId != null && baseSiteArtifact.baseSiteArtifactId !== release.baseSiteArtifactId)) throw new Error("legacy ProductArtifact fixture base identity drift");
+    if (baseSiteArtifact?.releaseManifestHash && baseSiteArtifact.releaseManifestHash !== hashArtifactValue(release)) throw new Error("legacy ProductArtifact fixture release manifest hash drift");
+    if (baseSiteArtifact?.artifactContentHash && baseSiteArtifact.artifactContentHash !== hashArtifactValue({ release, contentManifest })) throw new Error("legacy ProductArtifact fixture artifactContentHash drift");
+    const legacyHash = hashArtifactValue({ schemaVersion: "product-artifact-legacy-fixture-v1", productVersion: legacyVersion, productCommit: legacyCommit, productArtifactId: release.baseSiteArtifactId, baseSiteArtifactId: release.baseSiteArtifactId, contentManifestHash: hashArtifactValue(contentManifest || {}), baseSiteArtifactManifestHash: hashArtifactValue(baseSiteArtifact || {}) });
+    return Object.freeze({ artifactContractVersion: "product-artifact-legacy-fixture-v1", productArtifactId: release.baseSiteArtifactId, productVersion: legacyVersion, productCommit: legacyCommit, baseSiteArtifactId: release.baseSiteArtifactId, productArtifactHash: legacyHash, contentManifestHash: hashArtifactValue(contentManifest || {}), baseSiteArtifactManifestHash: hashArtifactValue(baseSiteArtifact || {}), approvalHash: null, candidateHash: null, approvedTreeOid: null, documents: Object.freeze({ release: Object.freeze(release), contentManifest: Object.freeze(contentManifest || {}), baseSiteArtifact: Object.freeze(baseSiteArtifact || {}) }) });
   }
-  return value;
-}
-
-function identityValue({ release, contentManifest, baseSiteArtifact } = {}) {
-  return {
-    artifactContractVersion: PRODUCT_ARTIFACT_CONTRACT_VERSION,
-    productVersion: release.version,
-    productCommit: release.commit,
-    productArtifactId: baseSiteArtifact.baseSiteArtifactId,
-    baseSiteArtifactId: baseSiteArtifact.baseSiteArtifactId,
-    releaseManifestHash: hashArtifactValue(release),
-    contentManifestHash: hashArtifactValue(contentManifest),
-    artifactContentHash: hashArtifactValue({ release, contentManifest }),
-    sourceBundleHash: baseSiteArtifact.sourceBundleHash,
-  };
-}
-
-function deepFreeze(value, seen = new Set()) {
-  if (!value || typeof value !== "object" || seen.has(value)) return value;
-  seen.add(value);
-  for (const child of Object.values(value)) deepFreeze(child, seen);
-  return Object.freeze(value);
-}
-
-/**
- * The only boundary adapter from the three immutable ProductArtifact
- * manifests to the runtime identity consumed by snapshots and publication.
- * Raw documents deliberately remain behind the adapter; callers receive
- * them only under the read-only `documents` field.
- */
-export function resolveProductArtifactIdentity({ release, contentManifest, baseSiteArtifact } = {}, { version, commit } = {}) {
-  assertDocumentObject(release, "release.json");
-  assertDocumentObject(contentManifest, "content-manifest.json");
-  assertDocumentObject(baseSiteArtifact, "base-site-artifact.json");
-  const expectedVersion = text(version || release.version, "version");
-  const expectedCommit = text(commit || release.commit, "commit");
-  const expectedBaseId = expectedBaseSiteArtifactId(expectedVersion, expectedCommit);
-  for (const [actual, expected, field] of [
-    [release.version, expectedVersion, "release.json version"],
-    [release.commit, expectedCommit, "release.json commit"],
-    [contentManifest.version, expectedVersion, "content-manifest.json version"],
-    [contentManifest.commit, expectedCommit, "content-manifest.json commit"],
-    [baseSiteArtifact.productVersion, expectedVersion, "base-site-artifact productVersion"],
-    [baseSiteArtifact.productCommit, expectedCommit, "base-site-artifact productCommit"],
-    [baseSiteArtifact.baseSiteArtifactId, expectedBaseId, "base-site-artifact baseSiteArtifactId"],
-    [release.baseSiteArtifactId, expectedBaseId, "release.json baseSiteArtifactId"],
-    [contentManifest.baseSiteArtifactId, expectedBaseId, "content-manifest.json baseSiteArtifactId"],
-  ]) {
-    if (actual !== expected) throw new Error(`ProductArtifact ${field} mismatch: expected ${expected}, got ${actual ?? "missing"}`);
+  const root = validateRoot(release, { version, commit }); assertObject(contentManifest, "content-manifest.json"); assertObject(baseSiteArtifact, "base-site-artifact.json"); subordinateForbidden(contentManifest, "content-manifest.json"); subordinateForbidden(baseSiteArtifact, "base-site-artifact.json");
+  const expectedVersion = root.productVersion; const expectedCommit = root.productCommit;
+  if (hashArtifactValue(contentManifest) !== root.contentManifestHash) throw new Error("ProductArtifact content manifest hash drift");
+  if (hashArtifactValue(baseSiteArtifact) !== root.baseSiteArtifactManifestHash) throw new Error("ProductArtifact base-site-artifact manifest hash drift");
+  if (baseSiteArtifact.materializationKind !== "client") throw new Error("ProductArtifact base-site-artifact must be immutable client materialization");
+  const expectedClientPath = `.content-workspace/base-site-artifacts/${root.baseSiteArtifactId}/client`;
+  if (baseSiteArtifact.clientPath !== expectedClientPath) throw new Error("ProductArtifact subordinate client path drift");
+  if (clientFiles) {
+    const expected = root.clientFiles.filter((entry) => entry.path !== "release.json"); const actual = clientFiles.filter((entry) => entry.path !== "release.json");
+    if (JSON.stringify(expected) !== JSON.stringify(actual)) throw new Error("ProductArtifact client bytes drift");
   }
-  if (baseSiteArtifact.productArtifactContractVersion && baseSiteArtifact.productArtifactContractVersion !== PRODUCT_ARTIFACT_CONTRACT_VERSION) {
-    throw new Error("ProductArtifact contract version mismatch");
-  }
-  const expectedReleaseManifestHash = hashArtifactValue(release);
-  if (baseSiteArtifact.releaseManifestHash !== expectedReleaseManifestHash) throw new Error("ProductArtifact releaseManifestHash drift");
-  const expectedArtifactContentHash = hashArtifactValue({ release, contentManifest });
-  if (baseSiteArtifact.artifactContentHash !== expectedArtifactContentHash) throw new Error("ProductArtifact artifactContentHash drift");
-  const identity = identityValue({ release, contentManifest, baseSiteArtifact });
-  identity.productArtifactId = expectedBaseId;
-  return Object.freeze({
-    ...identity,
-    productArtifactHash: hashArtifactValue(identity),
-    documents: deepFreeze({ release, contentManifest, baseSiteArtifact }),
-  });
+  return Object.freeze({ artifactContractVersion: PRODUCT_ARTIFACT_CONTRACT_VERSION, productArtifactId: root.productArtifactId, productVersion: expectedVersion, productCommit: expectedCommit, baseSiteArtifactId: root.baseSiteArtifactId, productArtifactHash: root.productArtifactHash, contentManifestHash: root.contentManifestHash, baseSiteArtifactManifestHash: root.baseSiteArtifactManifestHash, approvalHash: root.approvalHash || null, candidateHash: root.candidateHash || null, approvedTreeOid: root.approvedTreeOid || null, documents: Object.freeze({ release, contentManifest, baseSiteArtifact }) });
 }
-
-// Kept as a named export for existing adapter callers. It always returns the
-// normalized flat identity; it never returns a second nested identity shape.
 export const productArtifactIdentity = resolveProductArtifactIdentity;
-
-export function productArtifactHash(artifact) {
-  if (artifact?.productArtifactHash) return artifact.productArtifactHash;
-  if (artifact?.documents) {
-    const { release, contentManifest, baseSiteArtifact } = artifact.documents;
-    return hashArtifactValue(identityValue({ release, contentManifest, baseSiteArtifact }));
-  }
-  return hashArtifactValue(identityValue(artifact));
-}
-
-/**
- * Validate a runtime identity without consulting or deriving from nested
- * manifest documents. SiteSnapshot and downstream publication objects use
- * this shape check at their boundaries.
- */
+export function productArtifactHash(artifact) { return artifact?.productArtifactHash || computeProductArtifactHash(artifact); }
 export function assertProductArtifactIdentityShape(identity = {}) {
-  if (!identity || typeof identity !== "object" || Array.isArray(identity)) {
-    throw new Error("ProductArtifact identity is required");
-  }
-  for (const field of ["productArtifactId", "productVersion", "productCommit", "baseSiteArtifactId"]) {
-    text(identity[field], `identity.${field}`);
-  }
-  const expectedBaseId = expectedBaseSiteArtifactId(identity.productVersion, identity.productCommit);
-  if (identity.productArtifactId !== expectedBaseId || identity.baseSiteArtifactId !== expectedBaseId) {
-    throw new Error("ProductArtifact identity tuple mismatch");
-  }
-  for (const field of ["productArtifactHash", "releaseManifestHash", "contentManifestHash", "artifactContentHash", "sourceBundleHash"]) {
-    if (identity[field] != null && !/^[a-f0-9]{64}$/.test(identity[field])) {
-      throw new Error(`ProductArtifact identity ${field} is invalid`);
-    }
-  }
-  if (identity.documents) {
-    const resolved = resolveProductArtifactIdentity(identity.documents);
-    for (const field of ["productArtifactId", "productVersion", "productCommit", "baseSiteArtifactId", "productArtifactHash", "releaseManifestHash", "contentManifestHash", "artifactContentHash", "sourceBundleHash"]) {
-      if (identity[field] != null && identity[field] !== resolved[field]) {
-        throw new Error(`ProductArtifact identity ${field} drift`);
-      }
-    }
-  }
-  return Object.fromEntries(PRODUCT_ARTIFACT_IDENTITY_FIELDS
-    .filter((field) => identity[field] != null)
-    .map((field) => [field, identity[field]]));
+  if (!identity || typeof identity !== "object") throw new Error("ProductArtifact identity is required");
+  for (const field of ["productArtifactId", "productVersion", "productCommit", "baseSiteArtifactId"]) text(identity[field], `identity.${field}`);
+  if (identity.productArtifactId !== expectedBaseId(identity.productVersion, identity.productCommit) || identity.baseSiteArtifactId !== identity.productArtifactId) throw new Error("ProductArtifact identity tuple mismatch");
+  const productArtifactHash = identity.productArtifactHash || hashArtifactValue({ schemaVersion: "product-artifact-legacy-identity-v1", productArtifactId: identity.productArtifactId, productVersion: identity.productVersion, productCommit: identity.productCommit, baseSiteArtifactId: identity.baseSiteArtifactId });
+  if (!SHA256.test(productArtifactHash)) throw new Error("ProductArtifact identity hash invalid");
+  if (identity.approvalHash != null && !SHA256.test(identity.approvalHash)) throw new Error("ProductArtifact identity approvalHash invalid");
+  return Object.fromEntries(PRODUCT_ARTIFACT_IDENTITY_FIELDS.filter((field) => identity[field] != null || field === "productArtifactHash").map((field) => [field, field === "productArtifactHash" ? productArtifactHash : identity[field]]));
 }
-
-export function assertProductArtifactIdentity({ release, contentManifest, baseSiteArtifact } = {}, options = {}) {
-  return resolveProductArtifactIdentity({ release, contentManifest, baseSiteArtifact }, options);
-}
-
-async function readJson(file, label) {
-  try {
-    return JSON.parse(await readFile(file, "utf8"));
-  } catch (error) {
-    throw new Error(`ProductArtifact ${label} is missing or unreadable: ${error.message}`);
+export function assertProductArtifactIdentity(documents, options = {}) { return resolveProductArtifactIdentity(documents, options); }
+async function readJson(file, label) { try { return JSON.parse(await readFile(file, "utf8")); } catch (error) { throw new Error(`ProductArtifact ${label} is missing or unreadable: ${error.message}`); } }
+async function clientEntries(rootDirectory, current = "") {
+  const entries = [];
+  for (const entry of await readdir(path.join(rootDirectory, current), { withFileTypes: true })) {
+    const relative = path.posix.join(current, entry.name); const absolute = path.join(rootDirectory, current, entry.name);
+    if (entry.isDirectory()) entries.push(...await clientEntries(rootDirectory, relative));
+    else if (entry.isFile()) entries.push({ path: relative, sha256: createHash("sha256").update(await readFile(absolute)).digest("hex") });
   }
+  return entries.sort((a, b) => a.path.localeCompare(b.path));
 }
-
-export async function readProductArtifact({ clientDirectory, sourceRoot, version, commit } = {}) {
-  const root = sourceRoot || process.cwd();
-  if (typeof clientDirectory !== "string" || clientDirectory.trim() === "") throw new Error("ProductArtifact client directory is required");
-  const release = await readJson(path.join(clientDirectory, "release.json"), "release.json");
-  const contentManifest = await readJson(path.join(clientDirectory, "content-manifest.json"), "content-manifest.json");
-  const baseSiteArtifact = await readJson(path.join(clientDirectory, "base-site-artifact.json"), "base-site-artifact.json");
-  await readBaseSiteArtifact({ sourceRoot: root, baseSiteArtifact });
-  return assertProductArtifactIdentity({ release, contentManifest, baseSiteArtifact }, { version, commit });
+export async function readProductArtifact({ clientDirectory, sourceRoot = process.cwd(), version, commit } = {}) {
+  if (typeof clientDirectory !== "string" || !clientDirectory.trim()) throw new Error("ProductArtifact client directory is required");
+  const release = await readJson(path.join(clientDirectory, "release.json"), "release.json"); const contentManifest = await readJson(path.join(clientDirectory, "content-manifest.json"), "content-manifest.json"); const baseSiteArtifact = await readJson(path.join(clientDirectory, "base-site-artifact.json"), "base-site-artifact.json");
+  if (release.schemaVersion !== "product-artifact-release-v2") throw new Error("ProductArtifact release root schema mismatch");
+  await readBaseSiteArtifact({ sourceRoot, baseSiteArtifact, expectedIdentity: release }); const entries = await clientEntries(clientDirectory); return resolveProductArtifactIdentity({ release, contentManifest, baseSiteArtifact, clientFiles: entries }, { version, commit });
 }

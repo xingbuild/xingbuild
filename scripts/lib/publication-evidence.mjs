@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { assertProductArtifactIdentityShape } from "./product-artifact.mjs";
 
 export const PUBLICATION_RUNTIME_EVIDENCE_V3 = "publication-runtime-evidence-v3";
 export const PUBLICATION_RUNTIME_EVIDENCE_V4 = "publication-runtime-evidence-v4";
@@ -25,6 +26,31 @@ function stable(value) {
 }
 
 function same(left, right) { return stable(left) === stable(right); }
+
+/*
+ * Older v4 fixtures carried the publication tuple but predated the explicit
+ * productArtifactHash field.  Normalize that one legacy representation at the
+ * evidence boundary so a phase can still be compared against the canonical
+ * identity; production artifacts always provide the field in release.json.
+ * The derived value is the same tuple hash used by ProductArtifactIdentity,
+ * never an arbitrary fallback.
+ */
+function normalizePublicationIdentity(input) {
+  if (!input || typeof input !== "object") return input;
+  if (input.productArtifactHash == null
+    && input.productArtifactId
+    && input.productVersion
+    && input.productCommit
+    && input.baseSiteArtifactId) {
+    try {
+      const normalized = assertProductArtifactIdentityShape(input);
+      return { ...input, productArtifactHash: normalized.productArtifactHash };
+    } catch {
+      // Let the normal identity validator report the precise malformed tuple.
+    }
+  }
+  return input;
+}
 
 function text(value, field) {
   if (typeof value !== "string" || value.trim() === "") throw new Error(`Publication evidence ${field} is required`);
@@ -55,16 +81,18 @@ function assertFailure(failure, { required = false } = {}) {
 
 function assertIdentity(input, expectedIdentity = null) {
   if (!input || typeof input !== "object") throw new Error("Publication evidence publicationIdentity is required");
-  text(input.sitePublicationId, "publicationIdentity.sitePublicationId");
-  text(input.snapshotHash, "publicationIdentity.snapshotHash");
-  if (expectedIdentity && !same(input, expectedIdentity)) {
+  const normalized = normalizePublicationIdentity(input);
+  text(normalized.sitePublicationId, "publicationIdentity.sitePublicationId");
+  text(normalized.snapshotHash, "publicationIdentity.snapshotHash");
+  const expected = normalizePublicationIdentity(expectedIdentity);
+  if (expected && !same(normalized, expected)) {
     const error = new Error("Publication evidence identity drift");
     error.code = "PUBLICATION_EVIDENCE_IDENTITY_DRIFT";
-    error.expectedIdentity = expectedIdentity;
-    error.observedIdentity = input;
+    error.expectedIdentity = expected;
+    error.observedIdentity = normalized;
     throw error;
   }
-  return input;
+  return normalized;
 }
 
 function phasePayloadForRole(evidence, role) {
@@ -125,7 +153,7 @@ export function createPublicationPhaseEvidence({
 } = {}) {
   const role = roleForPhase(phase);
   if (!role && !["verified", "recoverable", "failed"].includes(phase)) throw new Error(`Publication evidence phase is invalid: ${phase}`);
-  const payload = { ...extra, schemaVersion: PUBLICATION_RUNTIME_EVIDENCE_V4, publicationIdentity, attemptId, phase, startedAt, finishedAt, result, verified, lastEvidence };
+  const payload = { ...extra, schemaVersion: PUBLICATION_RUNTIME_EVIDENCE_V4, publicationIdentity: normalizePublicationIdentity(publicationIdentity), attemptId, phase, startedAt, finishedAt, result, verified, lastEvidence };
   if (assets !== undefined) payload.assets = assets;
   if (routes !== undefined) payload.routes = routes;
   if (media !== undefined) payload.media = media;

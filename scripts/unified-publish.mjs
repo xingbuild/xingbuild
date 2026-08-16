@@ -20,6 +20,7 @@ import { createSitePublication } from "./lib/site-publication.mjs";
 import { transportSitePublication } from "./lib/site-publication-coordinator.mjs";
 import { readProductArtifact } from "./lib/product-artifact.mjs";
 import { classifyReleaseScope } from "./lib/release-scope-classifier.mjs";
+import { assertArtifactApproval, readApprovalRecord } from "./lib/release-transaction.mjs";
 
 export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const expectedOrigin = "https://github.com/Chizheng4/xingbuild.git";
@@ -83,9 +84,10 @@ export async function collectPublishContext(sourceCwd = root) {
   if (resolved !== root) throw new Error(`publish source cwd must be canonical direct-local: ${root}`);
   if (git(["symbolic-ref", "--short", "HEAD"], resolved) !== "main") throw new Error("publish source must be on main");
   const identity = await readAcceptedVersion(resolved);
+  const approval = await readApprovalRecord(resolved, identity.version, null, { requireCurrentIdentity: false, allowTagRecovery: true });
   let scope;
   try {
-    scope = classifyReleaseScope({ root: resolved, version: identity.version, phase: "post-commit", requireStaged: false, allowManifestUntracked: false });
+    scope = classifyReleaseScope({ root: resolved, version: identity.version, phase: "post-commit", requireStaged: false, allowManifestUntracked: false, approvalIdentity: approval });
   } catch (error) {
     throw new Error(`publish source scope classifier failed: ${error.message}`);
   }
@@ -95,21 +97,22 @@ export async function collectPublishContext(sourceCwd = root) {
   if (git(["cat-file", "-t", tag], resolved) !== "tag") throw new Error(`${tag} is not an annotated tag`);
   const taggedCommit = git(["rev-parse", `${tag}^{commit}`], resolved);
   if (taggedCommit !== head) throw new Error(`${tag} points to ${taggedCommit}; expected HEAD ${head}`);
-  return { sourceCwd: resolved, head, tag, version: identity.version, historyFile: identity.historyFile, dirtyPaths: [], scope };
+  return { sourceCwd: resolved, head, tag, version: identity.version, historyFile: identity.historyFile, dirtyPaths: [], scope, approval };
 }
 
-export async function readPreparedDist({ sourceCwd = root, version, head } = {}) {
+export async function readPreparedDist({ sourceCwd = root, version, head, approval = null } = {}) {
   const client = path.join(sourceCwd, "dist", "client");
   const releasePath = path.join(client, "release.json");
   const manifestPath = path.join(client, "content-manifest.json");
   const artifactPath = path.join(client, "base-site-artifact.json");
   if (!(await exists(releasePath))) throw new Error("prepared dist/client/release.json is required; publish will not build");
   const release = JSON.parse(await readFile(releasePath, "utf8"));
-  if (release.version !== version || release.commit !== head) throw new Error(`prepared release.json does not match ${version}/${head}`);
+  if ((release.productVersion || release.version) !== version || (release.productCommit || release.commit) !== head) throw new Error(`prepared release.json does not match ${version}/${head}`);
   const manifest = await exists(manifestPath) ? JSON.parse(await readFile(manifestPath, "utf8")) : null;
   const artifact = await exists(artifactPath)
     ? await readProductArtifact({ clientDirectory: client, sourceRoot: sourceCwd, version, commit: head })
     : null;
+  if (approval && artifact) assertArtifactApproval(artifact, approval);
   return { client, release, manifest, artifact };
 }
 
@@ -135,9 +138,9 @@ export async function publish({ kind, target, argv = process.argv.slice(2), env 
     assertFixedPublishTarget(env);
     source = await collectPublishContext(root);
     phase = "prepared-dist";
-    prepared = await readPreparedDist({ sourceCwd: root, version: source.version, head: source.head });
+    prepared = await readPreparedDist({ sourceCwd: root, version: source.version, head: source.head, approval: source.approval });
     phase = "preflight";
-    run("npm", ["run", "release:preflight"], root, { env: { ...env, XINGBUILD_RELEASE_WORKTREE: "1" } });
+    run("npm", ["run", "release:preflight", "--", "--approval", path.relative(root, path.join(root, ".content-workspace", "qa", source.version, "approval-record.json"))], root, { env: { ...env, XINGBUILD_RELEASE_WORKTREE: "1" } });
     if (!prepared.artifact) throw new Error("ProductArtifact is required before product transport");
     phase = "authorization";
     assertPublishAuthorization({ argv, env });
@@ -148,7 +151,7 @@ export async function publish({ kind, target, argv = process.argv.slice(2), env 
       productClient: prepared.client,
       releasesRoot: path.join(root, ".content-workspace", "releases"),
       outputRoot: path.join(root, ".content-workspace", "site-publications", `${source.version}-${source.head}`),
-      assemble: true,
+      assemble: false,
       sourceRoot: root,
     });
     prepared = { ...prepared, client: publication.client, publication };

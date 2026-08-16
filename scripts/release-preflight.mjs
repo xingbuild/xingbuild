@@ -1,87 +1,23 @@
 #!/usr/bin/env node
-
 import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
-import process from "node:process";
-import { assertProductContentCompatibility } from "./lib/content-compatibility.mjs";
-import { assertNoVersionStateFields, evaluateProductReleaseReadiness, parseCurrentIterationVersion } from "./lib/release-readiness.mjs";
+import path from "node:path";
 import { readProductArtifact } from "./lib/product-artifact.mjs";
-import { validateLifecycleEvidence } from "./lib/content-lifecycle-evidence.mjs";
 import { classifyReleaseScope } from "./lib/release-scope-classifier.mjs";
-import { readLifecycleEvidence } from "./lib/lifecycle-evidence-path.mjs";
+import { createReleaseClosureReport, readReleaseClosureReport, validateReleaseClosureReport, writeReleaseClosureReport } from "./lib/release-closure-evidence.mjs";
+import { assertArtifactApproval, assertCommitIdentity, assertTagIdentity, readApprovalRecord } from "./lib/release-transaction.mjs";
 import { readQaBrowserInstallPolicyEvidence } from "./lib/qa-browser-install-policy.mjs";
 
-function git(...args) {
-  try {
-    return execFileSync("git", args, { encoding: "utf8" }).trim();
-  } catch {
-    return "";
-  }
+const root = process.cwd(); const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim(); const packageJson = JSON.parse(await readFile(path.join(root, "package.json"), "utf8")); const version = `v${packageJson.version}`; await readQaBrowserInstallPolicyEvidence({ root, version }); const approval = await readApprovalRecord(root, version, null, { requireCurrentIdentity: false, allowTagRecovery: true }); const head = git("rev-parse", "HEAD");
+if (git("branch", "--show-current") !== "main" || git("describe", "--tags", "--exact-match", head) !== version) throw new Error("release preflight requires exact main/tag");
+assertCommitIdentity({ root, approval, commit: head }); assertTagIdentity({ root, approval, tag: version, commit: head });
+const artifact = await readProductArtifact({ clientDirectory: path.join(root, "dist", "client"), sourceRoot: root, version, commit: head }); assertArtifactApproval(artifact, approval);
+const scope = classifyReleaseScope({ root, version, phase: "post-commit", requireStaged: false, allowManifestUntracked: false, approvalIdentity: approval }); if (!scope.ready) throw new Error(`release scope is not clean: ${scope.blockers.join("; ")}`);
+const existingClosurePath = path.join(root, ".content-workspace", "qa", version, "closure-report.json");
+if (existsSync(existingClosurePath)) {
+  const existing = await readReleaseClosureReport(root, version);
+  validateReleaseClosureReport(existing, { root, version, approval, artifact, commit: head, tag: version });
 }
-
-const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
-const versionRecord = await readFile(new URL("../VERSION.md", import.meta.url), "utf8");
-const currentIteration = await readFile(
-  new URL("../docs/iterations/current.md", import.meta.url),
-  "utf8",
-);
-const installPolicyEvidence = await readQaBrowserInstallPolicyEvidence({ root: process.cwd(), version: `v${packageJson.version}` });
-assertProductContentCompatibility({ currentText: currentIteration });
-assertNoVersionStateFields(currentIteration);
-try {
-  const lifecycleEvidence = await readLifecycleEvidence({ root: process.cwd(), version: `v${packageJson.version}`, allowMissing: false });
-  validateLifecycleEvidence(lifecycleEvidence, { requirePostCommit: true, expectedVersion: `v${packageJson.version}` });
-} catch (error) {
-  throw new Error(`LIFECYCLE_EVIDENCE_PREFLIGHT: ${error.message}`);
-}
-let scopeResult;
-try {
-  scopeResult = classifyReleaseScope({
-    root: process.cwd(),
-    version: `v${packageJson.version}`,
-    phase: "post-commit",
-    requireStaged: false,
-    allowManifestUntracked: false,
-  });
-} catch (error) {
-  scopeResult = { ready: false, blockers: [`release scope classifier: ${error.message}`] };
-}
-const result = evaluateProductReleaseReadiness({
-  branch: git("branch", "--show-current"),
-  allowReleaseWorktree: process.env.XINGBUILD_RELEASE_WORKTREE === "1",
-  statusEntries: git("status", "--porcelain").split("\n"),
-  packageVersion: packageJson.version,
-  versionRecord: versionRecord.match(/^##\s+(v\d+\.\d+\.\d+)\b/m)?.[1],
-  currentVersion: parseCurrentIterationVersion(currentIteration),
-  headTag: git("describe", "--tags", "--exact-match", "HEAD"),
-  origin: git("remote", "get-url", "origin"),
-  scopeResult,
-});
-let productArtifact = null;
-const artifactBlockers = [];
-const head = git("rev-parse", "HEAD");
-try {
-  productArtifact = await readProductArtifact({
-    clientDirectory: fileURLToPath(new URL("../dist/client", import.meta.url)),
-    sourceRoot: fileURLToPath(new URL("..", import.meta.url)),
-    version: `v${packageJson.version}`,
-    commit: head,
-  });
-} catch (error) {
-  artifactBlockers.push(`ProductArtifact：${error.message}`);
-}
-if (artifactBlockers.length) result.blockers.push(...artifactBlockers);
-if (!result.ready) {
-  console.error(`发布未就绪：${result.version}`);
-  for (const blocker of result.blockers) console.error(`- ${blocker}`);
-  process.exit(1);
-}
-
-console.log(`发布就绪：${result.version}，main、版本记录、标签、工作区与 ProductArtifact 身份一致。`);
-console.log(JSON.stringify({
-  productArtifactId: productArtifact.productArtifactId,
-  productArtifactHash: productArtifact.productArtifactHash,
-  baseSiteArtifactId: productArtifact.baseSiteArtifactId,
-}, null, 2));
-console.log(JSON.stringify({ scope: scopeResult }, null, 2));
+const closure = createReleaseClosureReport({ root, version, approval, artifact, tag: version, scopeEvidencePath: path.join(root, ".content-workspace", "qa", version, "release-scope-postcommit.json") }); validateReleaseClosureReport(closure, { root, version, approval, artifact, commit: head, tag: version }); const closurePath = await writeReleaseClosureReport(root, version, closure);
+console.log(`发布前置检查通过：${version}`); console.log(JSON.stringify({ version, commit: head, tag: version, approvalHash: approval.approvalHash, productArtifactId: artifact.productArtifactId, productArtifactHash: artifact.productArtifactHash, closurePath, invariants: closure.invariants }, null, 2));

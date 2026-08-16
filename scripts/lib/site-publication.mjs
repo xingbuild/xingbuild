@@ -24,7 +24,7 @@ import {
 } from "./content-set.mjs";
 import { createSiteSnapshot, productArtifactIdentity } from "./site-snapshot.mjs";
 import { createPublicationRun, publicationRunIdForSnapshot, readPublicationRun, writePublicationRun } from "./publication-run.mjs";
-import { readProductArtifact } from "./product-artifact.mjs";
+import { readProductArtifact, resolveProductArtifactIdentity } from "./product-artifact.mjs";
 import { writePublicationAssetManifest } from "./publication-assets.mjs";
 import { assertPublicationPhaseAggregate, PUBLICATION_RUNTIME_EVIDENCE_V4 } from "./publication-evidence.mjs";
 import { assertDurableSitePublicationRecord, sanitizeDurableSitePublicationRecord } from "./content-lifecycle-governance.mjs";
@@ -382,6 +382,7 @@ function contentSetPublicationOutput({ publicationRoot, outputRoot, productRelea
 }
 
 async function createContentSetSitePublication({ productClient, outputRoot, publicationRoot = null, sourceRoot, assemble = false, contentSetId = null } = {}) {
+  if (assemble) throw new Error("canonical ContentSet SitePublication is client-only; sourceDirectory assembly is legacy/audit-only");
   const productArtifact = await readProductArtifact({
     clientDirectory: productClient,
     sourceRoot,
@@ -484,12 +485,15 @@ async function createContentSetSitePublication({ productClient, outputRoot, publ
 
 export async function createSitePublication({ productClient, releasesRoot, outputRoot, publicationRoot = null, additionalContentManifest = null, candidatePackageDirectory = null, candidateContentSetId = null, assemble = false, sourceRoot = process.cwd() } = {}) {
   sourceRoot = resolveSourceRootForReleases(releasesRoot, sourceRoot);
+  let productReleaseSchema = null;
+  try { productReleaseSchema = JSON.parse(await readFile(path.join(productClient, "release.json"), "utf8"))?.schemaVersion || null; } catch { /* strict reader below reports the missing input */ }
+  const legacyProductInput = productReleaseSchema !== "product-artifact-release-v2";
   const authoritativeContentSet = await readAuthoritativeContentSet(sourceRoot);
-  if (authoritativeContentSet || candidateContentSetId) {
+  if (!legacyProductInput && (authoritativeContentSet || candidateContentSetId)) {
     return createContentSetSitePublication({ productClient, outputRoot, publicationRoot, sourceRoot, assemble, contentSetId: candidateContentSetId });
   }
-  if (path.resolve(sourceRoot) === path.resolve(process.cwd()) && !additionalContentManifest && process.env.XINGBUILD_LEGACY_RUNTIME !== "1") {
-    throw new Error("ContentSet active pointer is required for canonical SitePublication; legacy receipts are migration/audit-only");
+  if (!legacyProductInput && !authoritativeContentSet && !candidateContentSetId && process.env.XINGBUILD_LEGACY_RUNTIME !== "1") {
+    throw new Error("ContentSet active pointer is required for canonical ProductArtifact SitePublication; legacy receipts are migration/audit-only");
   }
   const productRelease = JSON.parse(await readFile(path.join(productClient, "release.json"), "utf8"));
   let productArtifact = null;
@@ -501,11 +505,30 @@ export async function createSitePublication({ productClient, releasesRoot, outpu
       commit: productRelease.commit,
     });
   } catch (error) {
-    // This branch is retained only for isolated legacy/audit fixtures.  The
-    // canonical ContentSet path above always fails before assembly when a
-    // ProductArtifact is incomplete; legacy records may still be inspected
-    // without inventing a product identity that cannot be proven.
-    if (!/base-site-artifact\.json is missing or unreadable/.test(error.message)) throw error;
+    // This branch is retained only for isolated legacy/audit fixtures. The
+    // canonical ContentSet path above always reads strict product-artifact-v2
+    // and never reaches this adapter. Legacy receipts may be inspected using
+    // their immutable source provenance, but they cannot enter the normal
+    // ProductArtifact/content-data publication path.
+    if (!/base-site-artifact\.json is missing or unreadable|release root schema mismatch/.test(error.message)) throw error;
+    try {
+      const legacyRelease = JSON.parse(await readFile(path.join(productClient, "release.json"), "utf8"));
+      const legacyManifest = JSON.parse(await readFile(path.join(productClient, "content-manifest.json"), "utf8"));
+      const legacyBase = JSON.parse(await readFile(path.join(productClient, "base-site-artifact.json"), "utf8"));
+      productArtifact = resolveProductArtifactIdentity({
+        release: { ...legacyRelease, baseSiteArtifactId: legacyRelease.baseSiteArtifactId || legacyBase.baseSiteArtifactId },
+        contentManifest: legacyManifest,
+        baseSiteArtifact: legacyBase,
+      }, { version: legacyRelease.version, commit: legacyRelease.commit });
+    } catch (legacyError) {
+      if (error.message.includes("base-site-artifact.json is missing or unreadable")) {
+        // The old receipt-only test/migration shape has no ProductArtifact
+        // descriptor.  It remains an audit adapter with no product authority.
+        productArtifact = null;
+      } else {
+        throw legacyError;
+      }
+    }
   }
   const productIdentity = productArtifact ? productArtifactIdentity(productArtifact) : null;
   const slotRegistry = await ensureContentSlotRegistry({ sourceRoot, releasesRoot });

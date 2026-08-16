@@ -45,14 +45,14 @@ flowchart LR
 
 Engineering 按以下顺序形成一个本地提交版本。`READY_FOR_COMMIT` 前禁止 commit/tag/build/preflight；最终 ProductArtifact 必须绑定提交后的精确 HEAD/tag：
 
-1. `npm run release:prepare` 与分层 QA：项目结构、页面能力、内容兼容性和相关业务检查；
-2. Engineering 按 current/design checklist 自 QA，生成未提交实现证据、scope digest 和真实运行结果；
-3. `elon` 按同一 checklist 独立复核。范围内问题回到 Engineering 修复；全部通过后回传 `READY_FOR_COMMIT`；
-4. 只有 `READY_FOR_COMMIT` 后，按 scope manifest 暂存全部已确认的 `implementation` 与 `record-only` 路径，并执行 `npm run release:closeout-check`；
-5. 创建本地 commit 和同名 annotated tag，确认 `HEAD == tag.peeledCommit` 且 tracked clean；
-6. 在该精确 HEAD/tag 上执行最终 `npm run release:build`，生成 ignored `dist/client` ProductArtifact；
-7. 执行 `npm run release:preflight`，同时校验 Git/版本和 ProductArtifact 三份 manifest 的身份、hash 与确定性；
-8. 只有 preflight 通过且必要分流验收通过的同一 ProductArtifact 才能 transport。
+1. Engineering 完成实现、记录、生成器、`VERSION.md`、current/history 和 scope manifest，按 manifest 完整暂存全部 `implementation` 与 `record-only` 路径；
+2. 运行 `npm run release:candidate-check` 与 `release:candidate-freeze`：覆盖 `release:prepare`、分层 QA、正式入口负向测试和 read-only identity 检查，以 staged tree OID 形成最小 CandidateIdentity 与唯一 SideEffectBaseline；
+3. `elon` 对精确 CandidateIdentity 独立复核。范围内问题回到 Engineering 同版本修复并重新 freeze；通过后由正式 approval 入口形成 `READY_FOR_COMMIT` ApprovalRecord。Candidate/Approval 阶段不得把尚未发生的 commit/tag/build/preflight 事实提前标为 PASS；
+4. 收到 ApprovalRecord 后只执行只读 `npm run release:closeout-check -- --approval <ApprovalRecord>`，不得再 materialize、修改、生成或 stage tracked 文件；
+5. 以无部分 refs 状态的 transaction 创建带 `Xingbuild-Approval` trailer 的 exact commit 和 annotated tag，确认 parent/tree、tag 中可恢复的 canonical ApprovalRecord/CandidateIdentity/SideEffectBaseline 与同一批准身份一致且 tracked clean；
+6. 在该精确 HEAD/tag 上执行最终 `npm run release:build -- --approval <ApprovalRecord>`，生成只含 immutable client 的 ignored ProductArtifact；post-commit gate 应能从 annotated tag 恢复 authority，不以 ignored 缓存为唯一依赖；
+7. 执行 `npm run release:preflight -- --approval <ApprovalRecord>`，同时校验 Git/版本、批准身份、单一 `release.json` 根 manifest、subordinate hash 与现场 protected diff，形成 I-01～I-08 ClosureReport；
+8. 只有 preflight、ReleaseClosureEvidence 和必要分流验收通过的同一 ProductArtifact 才能 transport。
 
 closeout 必须按版本 scope manifest、owner 和路径核对全部 tracked dirty，并形成三类清单：`implementation`（进入产品实现和 ProductArtifact 输入）、`record-only`（进入 Git/history 但不进入 ProductArtifact 运行输入）和 `unclassified`（未确认、未授权或其他 task 未完成）。tracked manifest 只保存 pre-commit baseHead；post-commit 的 committedHead 写入独立 machine evidence，并验证其 first parent 等于 baseHead，不能回写 manifest 或要求新 HEAD 仍等于旧 baseHead。manifest 可声明 `excludedExternal` 作为外部 owner 记录，但必须逐路径写 owner/reason；它不豁免 dirty，发生变化时必须由 owner 收口或归入本次 record-only，不能从目录或“external”自动推断。自 QA 可保留 manifest 已声明且 state=added 的未 tracked/staged 新路径；未知 untracked 一律阻断，READY 后 closeout 必须要求声明路径全部 staged。前两类必须在本次 commit 前全部收口，只有未声明或未收口路径阻断。内容 Ops 的 ignored `.content-workspace` 不纳入产品 commit。`git clean` 表示已确认变更全部已提交，不表示所有变更都必须属于 current/design；closeout、build、preflight 和 publish 必须使用同一 classifier。
 

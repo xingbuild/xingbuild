@@ -1,6 +1,6 @@
 {
   "name": "xingbuild",
-  "version": "0.28.0",
+  "version": "0.28.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -17,7 +17,11 @@
     "test:sites": "node --test tests/*.test.mjs",
     "check": "node scripts/check-project.mjs",
     "preinstall": "node scripts/qa-browser-install-check.mjs --install-guard",
-    "release:prepare": "npm run check && npm run content:check && npm run article:check && npm run practice:check && npm run qa:browser:install-policy && npm run qa:browser:check && node scripts/content-lifecycle-evidence.mjs --precommit",
+    "release:prepare": "npm run check && npm run content:check && npm run article:check && npm run practice:check && npm run qa:browser:install-policy && npm run qa:browser:check",
+    "release:candidate-check": "node scripts/release-candidate-check.mjs",
+    "release:candidate-freeze": "node scripts/release-candidate-freeze.mjs",
+    "release:approve": "node scripts/create-approval-envelope.mjs",
+    "release:commit": "node scripts/release-commit.mjs",
     "release:build": "node scripts/release-build.mjs",
     "release:qa": "npm run qa:browser:install-policy && npm run qa:browser:check && npm run test:sites",
     "qa:browser:install-policy": "node scripts/qa-browser-install-check.mjs",

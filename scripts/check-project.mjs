@@ -107,6 +107,12 @@ const requiredFiles = [
   "scripts/lib/publication-run.mjs",
   "scripts/lib/product-artifact.mjs",
   "scripts/release-build.mjs",
+  "scripts/release-candidate-check.mjs",
+  "scripts/release-candidate-freeze.mjs",
+  "scripts/create-approval-envelope.mjs",
+  "scripts/release-commit.mjs",
+  "scripts/lib/release-transaction.mjs",
+  "scripts/lib/release-closure-evidence.mjs",
   "scripts/content-set-migrate.mjs",
   "scripts/content-site-preview.mjs",
   "start-content-preview.command",
@@ -170,6 +176,10 @@ assert.equal(packageJson.scripts["content:publish"], "node scripts/content-relea
 assert.equal(packageJson.scripts["content:prepare"], "node scripts/content-release.mjs --prepare", "content prepare must stay explicit");
 assert.equal(packageJson.scripts["content:build"], "node scripts/content-release.mjs --build", "content build must stay explicit");
 assert.equal(packageJson.scripts["release:build"], "node scripts/release-build.mjs", "final release build must use the exact HEAD/tag builder");
+assert.equal(packageJson.scripts["release:candidate-check"], "node scripts/release-candidate-check.mjs", "candidate gate must use the staged release transaction entry point");
+assert.equal(packageJson.scripts["release:candidate-freeze"], "node scripts/release-candidate-freeze.mjs", "candidate freeze must use the immutable envelope entry point");
+assert.equal(packageJson.scripts["release:approve"], "node scripts/create-approval-envelope.mjs", "approval creation must use the owner-scoped entry point");
+assert.equal(packageJson.scripts["release:commit"], "node scripts/release-commit.mjs", "release commit must use the approval-bound wrapper");
 assert.equal(packageJson.scripts["site-publication"], "node scripts/site-publication.mjs", "site publication must have one coordinator entry point");
 assert.equal(packageJson.scripts["content:preview:site"], "node scripts/content-site-preview.mjs", "content site preview must use the single dev-only entry point");
 assert.equal(packageJson.scripts["qa:resume-artifact"], "node scripts/lib/resume-artifact.mjs", "resume artifact verification must use the single registry check");
@@ -180,7 +190,7 @@ assert.match(packageJson.scripts["content:storage:check"], /^node scripts\/conte
 assert.equal(packageJson.scripts["content:storage:check:v0274"], "node scripts/content-storage-governance-v0274.mjs", "v0.27.4 storage evidence must use the sole reducer entry point");
 assert.equal(packageJson.scripts["content:lifecycle:evidence:v0275"], "node scripts/content-lifecycle-evidence-v0275.mjs", "v0.27.5 lifecycle evidence must use the sole stage-aware entry point");
 assert.equal(packageJson.scripts["content:lifecycle:evidence"], "node scripts/content-lifecycle-evidence.mjs", "current lifecycle evidence must use the version-aware entry point");
-assert.match(packageJson.scripts["release:prepare"], /node scripts\/content-lifecycle-evidence\.mjs --precommit$/, "release:prepare must use current version lifecycle evidence");
+assert(!packageJson.scripts["release:prepare"].includes("content-lifecycle-evidence"), "release:prepare must not depend on duplicated lifecycle evidence");
 const version = await readFile(new URL("../VERSION.md", import.meta.url), "utf8");
 const current = await readFile(
   new URL("../docs/iterations/current.md", import.meta.url),

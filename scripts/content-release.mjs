@@ -18,6 +18,7 @@ import {
 } from "./lib/observation-content.mjs";
 import { assertPracticeContent, validatePublishablePracticeBundle } from "./lib/practice-content.mjs";
 import { assertBaseSiteArtifactCompatible, readBaseSiteArtifact, validateBaseSiteArtifact } from "./lib/base-site-artifact.mjs";
+import { readProductArtifact } from "./lib/product-artifact.mjs";
 import { contentRootDirectory } from "./lib/content-root.mjs";
 import { createSitePublication, validateUploadQuota } from "./lib/site-publication.mjs";
 import { planContentBatch } from "./lib/content-batch.mjs";
@@ -471,6 +472,7 @@ async function appendContentReleaseLog({ sourceRoot, contentReleaseId, event, da
 }
 
 async function stageRepository({ packageInfo, sourceRoot }) {
+  if (packageInfo.baseSiteArtifact?.materializationKind === "client") throw new Error("canonical content-only publication does not assemble from sourceDirectory; use ContentSet/ContentDataArtifact materialization");
   const baseSource = packageInfo.baseSiteArtifact?.sourceDirectory;
   if (!baseSource || path.resolve(baseSource) === path.resolve(sourceRoot)) throw new Error("content staging requires an immutable baseSiteArtifact source bundle");
   if (!(await isFile(path.join(baseSource, "package.json")))) throw new Error("baseSiteArtifact source bundle is not buildable");
@@ -522,6 +524,31 @@ export async function buildContentRelease({ packageInfo, sourceRoot = root } = {
     await writeFile(path.join(packageClient, "content-manifest.json"), `${JSON.stringify(builtReceipt, null, 2)}\n`);
     await writeJsonAtomically(path.join(packageInfo.packageDirectory, "content-intent.json"), { ...builtReceipt, sourceDirectory: packageInfo.sourceDirectory, preparedAt: new Date().toISOString() });
     return { ...packageInfo, ...builtReceipt, client: packageClient, manifest: builtReceipt };
+  }
+  if (packageInfo.baseSiteArtifact.materializationKind === "client") {
+    /* Canonical content-only builds never reconstruct a ProductArtifact from
+       sourceDirectory.  The immutable client is the only product input; the
+       content receipt is layered in the package's temporary client copy and
+       the Coordinator later materializes ContentDataArtifact references. */
+    const immutableClient = path.resolve(sourceRoot, packageInfo.baseSiteArtifact.clientPath || "");
+    if (!(await isFile(path.join(immutableClient, "release.json")))) {
+      throw new Error("immutable ProductArtifact client materialization is missing release.json");
+    }
+    const targetCollections = receiptTargetCollections(packageInfo, { packageDirectory: packageInfo.packageDirectory });
+    const manifest = { ...existingManifest, ...targetCollections };
+    const builtReceipt = await updateReleaseState({ ...packageInfo, manifestPath: packageInfo.manifestPath }, "built", {
+      ...targetCollections,
+      attempts: (manifest.attempts || 0) + 1,
+      recoverable: false,
+      failure: null,
+    });
+    const packageClient = path.join(packageInfo.packageDirectory, "dist", "client");
+    await rm(packageClient, { recursive: true, force: true });
+    await mkdir(path.dirname(packageClient), { recursive: true });
+    await cp(immutableClient, packageClient, { recursive: true, force: false });
+    await writeFile(path.join(packageClient, "content-manifest.json"), `${JSON.stringify(builtReceipt, null, 2)}\n`);
+    await appendContentReleaseLog({ sourceRoot, contentReleaseId: packageInfo.contentReleaseId, event: "built", data: { baseSiteArtifactId: packageInfo.baseSiteArtifactId, materializationKind: "client" } });
+    return { ...packageInfo, ...builtReceipt, client: packageClient, manifest: builtReceipt, materializationKind: "client" };
   }
   const staging = await stageRepository({ packageInfo, sourceRoot });
   try {
@@ -634,10 +661,13 @@ export async function transportContentRelease({ packageInfo, argv = process.argv
     }
     const currentProductClient = path.join(root, "dist", "client");
     const currentRelease = JSON.parse(await readFile(path.join(currentProductClient, "release.json"), "utf8"));
-    const currentArtifact = JSON.parse(await readFile(path.join(currentProductClient, "base-site-artifact.json"), "utf8"));
+    const currentArtifactDocument = JSON.parse(await readFile(path.join(currentProductClient, "base-site-artifact.json"), "utf8"));
+    const currentArtifact = currentRelease.schemaVersion === "product-artifact-release-v2"
+      ? await readProductArtifact({ clientDirectory: currentProductClient, sourceRoot: root, version: currentRelease.productVersion, commit: currentRelease.productCommit })
+      : currentArtifactDocument;
     const immutableRevisionBaseProvenance = Boolean(
       manifest.packageRevisionId
-      && manifest.baseSiteArtifact?.baseSiteArtifactId === manifest.baseSiteArtifactId,
+      && (manifest.baseSiteArtifact?.baseSiteArtifactId || manifest.baseSiteArtifact?.clientPath?.split("/").at(-3)) === manifest.baseSiteArtifactId,
     );
     if (manifest.baseSiteArtifactId
       && manifest.baseSiteArtifactId !== currentArtifact.baseSiteArtifactId
@@ -650,7 +680,7 @@ export async function transportContentRelease({ packageInfo, argv = process.argv
       publicationRoot: path.join(root, ".content-workspace", "site-publications"),
       additionalContentManifest: manifest,
       candidatePackageDirectory: packageInfo.packageDirectory,
-      assemble: true,
+      assemble: false,
       sourceRoot: root,
     });
     await validateUploadQuota(publication.client);
@@ -671,8 +701,8 @@ export async function transportContentRelease({ packageInfo, argv = process.argv
       // resume must not rewrite the revision manifest's identity fields.
       ...(immutableRevisionBaseProvenance ? {} : {
         baseSiteArtifactId: completedPublication.contentManifest?.baseSiteArtifactId || manifest.baseSiteArtifactId || null,
-        baseProductVersion: currentRelease.version,
-        baseProductCommit: currentRelease.commit,
+        baseProductVersion: currentRelease.productVersion || currentRelease.version,
+        baseProductCommit: currentRelease.productCommit || currentRelease.commit,
       }),
       ...projectedLifecycleTimes,
       transportedAt: new Date().toISOString(),
@@ -797,7 +827,7 @@ export async function publishContentSet({ kind, target, changeSetPath = null, ar
     releasesRoot: path.join(sourceRoot, ".content-workspace", "releases"),
     publicationRoot: path.join(sourceRoot, ".content-workspace", "site-publications"),
     candidateContentSetId: prepared.contentSet.contentSetId,
-    assemble: true,
+    assemble: false,
     sourceRoot,
   });
   await validateUploadQuota(publication.client);

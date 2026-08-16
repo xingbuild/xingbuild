@@ -1,0 +1,220 @@
+{
+  "baseHead": "f7146bf654a9f6fd6467255746d6a07d9eec47c7",
+  "paths": [
+    {
+      "classification": "record-only",
+      "owner": "elon/Xing",
+      "path": "VERSION.md",
+      "reason": "version record",
+      "state": "modified"
+    },
+    {
+      "classification": "record-only",
+      "owner": "elon/Xing",
+      "path": "docs/design/v0.28.1 Release Transaction 不可变批准与提交事务方案.md",
+      "reason": "formal design",
+      "state": "added"
+    },
+    {
+      "classification": "record-only",
+      "owner": "elon/Xing",
+      "path": "docs/iterations/current.md",
+      "reason": "formal current",
+      "state": "modified"
+    },
+    {
+      "classification": "record-only",
+      "owner": "elon/Xing",
+      "path": "docs/iterations/history/v0.28.1.md",
+      "reason": "history record",
+      "state": "added"
+    },
+    {
+      "classification": "record-only",
+      "owner": "elon engin",
+      "path": "docs/iterations/scopes/v0.28.1.json",
+      "reason": "classification manifest",
+      "state": "added"
+    },
+    {
+      "classification": "record-only",
+      "owner": "elon/Xing",
+      "path": "docs/rules/engineering-architecture-and-principles.md",
+      "reason": "rule sync",
+      "state": "modified"
+    },
+    {
+      "classification": "record-only",
+      "owner": "elon/Xing",
+      "path": "docs/rules/iteration-and-release.md",
+      "reason": "workflow sync",
+      "state": "modified"
+    },
+    {
+      "classification": "record-only",
+      "owner": "elon",
+      "path": "docs/rules/task-registry.md",
+      "reason": "confirmed active elon engin identity",
+      "state": "modified"
+    },
+    {
+      "classification": "implementation",
+      "owner": "elon engin",
+      "path": "package-lock.json",
+      "reason": "v0.28.1 Release Transaction overall refactor",
+      "state": "modified"
+    },
+    {
+      "classification": "implementation",
+      "owner": "elon engin",
+      "path": "package.json",
+      "reason": "v0.28.1 Release Transaction overall refactor",
+      "state": "modified"
+    },
+    {
+      "classification": "implementation",
+      "owner": "elon engin",
+      "path": "scripts/check-project.mjs",
+      "reason": "v0.28.1 Release Transaction overall refactor",
+      "state": "modified"
+    },
+    {
+      "classification": "implementation",
+      "owner": "elon engin",
+      "path": "scripts/create-approval-envelope.mjs",
+      "reason": "v0.28.1 Release Transaction overall refactor",
+      "state": "added"
+    },
+    {
+      "classification": "implementation",
+      "owner": "elon engin",
+      "path": "scripts/lib/base-site-artifact.mjs",
+      "reason": "v0.28.1 Release Transaction overall refactor",
+      "state": "modified"
+    },
+    {
+      "classification": "implementation",
+      "owner": "elon engin",
+      "path": "scripts/lib/product-artifact.mjs",
+      "reason": "v0.28.1 Release Transaction overall refactor",
+      "state": "modified"
+    },
+    {
+      "classification": "implementation",
+      "owner": "elon engin",
+      "path": "scripts/lib/release-closure-evidence.mjs",
+      "reason": "v0.28.1 Release Transaction overall refactor",
+      "state": "added"
+    },
+    {
+      "classification": "implementation",
+      "owner": "elon engin",
+      "path": "scripts/lib/release-invariants.mjs",
+      "reason": "v0.28.1 Release Transaction overall refactor",
+      "state": "added"
+    },
+    {
+      "classification": "implementation",
+      "owner": "elon engin",
+      "path": "scripts/lib/release-scope-classifier.mjs",
+      "reason": "v0.28.1 Release Transaction overall refactor",
+      "state": "modified"
+    },
+    {
+      "classification": "implementation",
+      "owner": "elon engin",
+      "path": "scripts/lib/release-transaction.mjs",
+      "reason": "v0.28.1 Release Transaction overall refactor",
+      "state": "added"
+    },
+    {
+      "classification": "implementation",
+      "owner": "elon engin",
+      "path": "scripts/lib/publication-evidence.mjs",
+      "reason": "v0.28.1 publication identity compatibility and canonical evidence normalization",
+      "state": "modified"
+    },
+    {
+      "classification": "implementation",
+      "owner": "elon engin",
+      "path": "scripts/prepare-sites-build.mjs",
+      "reason": "v0.28.1 Release Transaction overall refactor",
+      "state": "modified"
+    },
+    {
+      "classification": "implementation",
+      "owner": "elon engin",
+      "path": "scripts/release-build.mjs",
+      "reason": "v0.28.1 Release Transaction overall refactor",
+      "state": "modified"
+    },
+    {
+      "classification": "implementation",
+      "owner": "elon engin",
+      "path": "scripts/release-candidate-check.mjs",
+      "reason": "v0.28.1 Release Transaction overall refactor",
+      "state": "added"
+    },
+    {
+      "classification": "implementation",
+      "owner": "elon engin",
+      "path": "scripts/release-candidate-freeze.mjs",
+      "reason": "v0.28.1 Release Transaction overall refactor",
+      "state": "added"
+    },
+    {
+      "classification": "implementation",
+      "owner": "elon engin",
+      "path": "scripts/release-closeout-check.mjs",
+      "reason": "v0.28.1 Release Transaction overall refactor",
+      "state": "modified"
+    },
+    {
+      "classification": "implementation",
+      "owner": "elon engin",
+      "path": "scripts/release-commit.mjs",
+      "reason": "v0.28.1 Release Transaction overall refactor",
+      "state": "added"
+    },
+    {
+      "classification": "implementation",
+      "owner": "elon engin",
+      "path": "scripts/release-preflight.mjs",
+      "reason": "v0.28.1 Release Transaction overall refactor",
+      "state": "modified"
+    },
+    {
+      "classification": "implementation",
+      "owner": "elon engin",
+      "path": "scripts/unified-publish.mjs",
+      "reason": "v0.28.1 Release Transaction overall refactor",
+      "state": "modified"
+    },
+    {
+      "classification": "implementation",
+      "owner": "elon engin",
+      "path": "scripts/content-release.mjs",
+      "reason": "v0.28.1 client-only canonical publication path",
+      "state": "modified"
+    },
+    {
+      "classification": "implementation",
+      "owner": "elon engin",
+      "path": "scripts/lib/site-publication.mjs",
+      "reason": "v0.28.1 client-only canonical publication path",
+      "state": "modified"
+    },
+    {
+      "classification": "implementation",
+      "owner": "elon engin",
+      "path": "tests/v0281-release-transaction.test.mjs",
+      "reason": "v0.28.1 Release Transaction overall refactor",
+      "state": "added"
+    }
+  ],
+  "phase": "pre-commit",
+  "schemaVersion": "release-scope-v1",
+  "scopeDigest": "83dc4742dfc01ea34fd54f4c0b3677d35a21ab5deb49bf9786b6f19f09864f4a",
+  "scopeManifestPath": "docs/iterations/scopes/v0.28.1.json",
+  "version": "v0.28.1"
+}
