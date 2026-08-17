@@ -1,39 +1,40 @@
 # 当前迭代
 
-## 当前唯一版本：`v0.28.6`
+## 当前唯一版本：`v0.28.7`
 
-父版本：v0.28.5 / `9bab2673a4425acad4815b17e40a87bf37fee38b`
+父版本：v0.28.6 / `79ac64ae4effcc5e67aa600811ef68afc1c8145f`
 
 parentStatus: local-closure-complete-product-publish-blocked-pre-transport
 contentImpact: compatible-metadata-correction
-contentImpactReason: ProductArtifact capability kinds omitted canonical home and observation kinds
+contentImpactReason: v1 tuple manifest hash was incorrectly recomputed with the v2 content-only authority shape
 affectedTargets: []
 affectedRoutes: []
-affectedFields: [ProductArtifact.capabilityContract.contentKinds]
-compatibilityEvidence: active-content-kind-set-exact-and-active-authority-bytes-unchanged
+affectedFields: [SitePublication.legacyProductProvenance, ContentDataManifest.manifestHash]
+compatibilityEvidence: v1-manifest-reconstructed-from-immutable-product-artifact-and-active-authority-bytes-unchanged
 
 ## 已确认事实
 
-v0.28.5 已完成 exact commit/tag/ProductArtifact/preflight，但正式 product publish 在任何 Git push 或 EdgeOne transport 前被 `baseSiteArtifact content slot kind contract is incompatible` 阻断。真实 active ContentSet kinds 为 `article`、`businessObservation`、`home`、`observation`、`practice`、`profile`；ProductArtifact contract 错误保留旧泛化 `content`，同时遗漏 `home` 与 `observation`。
+v0.28.6 已完成 exact commit/tag/ProductArtifact/preflight，并修复真实 active ContentSet 六类 capability。正式 product publish 仍在任何 Git push 或 EdgeOne transport 前被 `ContentData active tuple manifest hash drift` 阻断。
 
-本版本只修这个 exact 枚举。v0.28.5 已完成的 Authority 解耦、单 Chrome batch 与旧站页面可用性实现全部原样继承，不重复设计、不改内容事实。
+根因是当前 active tuple 为 `content-data-active-v1`：其 `manifestHash` 在激活时绑定 v0.28.3 ProductArtifact。发布器错误使用 v2 的 product-independent authority manifest 重算该 hash，因此合法 legacy tuple 必然不相等。现有 v0.28.3 ProductArtifact、ContentSet、CDA、tuple 与公网 ContentData manifest 可完整重建并 exact 证明原 hash。
 
 ## 正式方案
 
-[v0.28.6 旧站最终发布兼容收口方案](../design/v0.28.6%20%E6%97%A7%E7%AB%99%E6%9C%80%E7%BB%88%E5%8F%91%E5%B8%83%E5%85%BC%E5%AE%B9%E6%94%B6%E5%8F%A3%E6%96%B9%E6%A1%88.md)
+[v0.28.7 Legacy Active Tuple 最终只读发布适配方案](../design/v0.28.7%20Legacy%20Active%20Tuple%20%E6%9C%80%E7%BB%88%E5%8F%AA%E8%AF%BB%E5%8F%91%E5%B8%83%E9%80%82%E9%85%8D%E6%96%B9%E6%A1%88.md)
 
 ## 实施与验收
 
-- `CONTENT_SLOT_CAPABILITY_CONTRACT.contentKinds` 必须与真实 active ContentSet 六类 exact 相等，不使用泛化 alias。
-- 单元测试必须把六类同时传给 `assertContentSlotArtifactCompatible` 并通过；缺少任一类仍 hard fail。
+- v1 tuple 必须从其 `productArtifactId/productArtifactHash` 指向的不可变 ProductArtifact 重建历史 content manifest，并 exact 等于 tuple `manifestHash`；历史 artifact 缺失或任一 hash 漂移立即失败。
+- v1 历史 manifest 只用于物化既有 ContentData manifest；当前 SiteSnapshot 继续显式记录 current ProductArtifact 与 `legacyProductProvenance`，不得把旧产品冒充当前产品。
+- v2 tuple 继续使用 product-independent content authority manifest，不走 legacy adapter。
 - `check`、`release:prepare`、current transaction、exact Candidate/Approval/commit/tag/build/preflight 全部复用既有流程。
 - 正式 publish 必须在 transport 前成功组装当前 ProductArtifact + 既有 active ContentAuthority；active tuple bytes 不变。
-- 公网必须证明 v0.28.6 release identity、五个页面、33 条 observation 集合、已发布 slug、Robotaxi 媒体、简历、robots/sitemap；完成后旧站 frozen。
+- 公网必须证明 v0.28.7 release identity、五个页面、active observation 集合与 slug、Robotaxi 媒体、简历、robots/sitemap；完成后旧站 frozen。
 
 ## 明确不做
 
 - 不改页面组件、文案、内容、媒体、ContentSet、CDA、active tuple、SitePublication 历史或旧 tag。
-- 不增加兼容 bypass、kind 映射表或第二 capability authority。
+- 不修改或迁移 v1 tuple，不增加 hash bypass，不创建第二 content authority。
 - 不继续旧站功能迭代；只有真实宕机或安全事件可解除冻结。
 
 <!-- v0.28.5 archived implementation context below remains historical reference for the exact parent. -->

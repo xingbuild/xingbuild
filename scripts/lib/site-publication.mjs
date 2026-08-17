@@ -41,6 +41,27 @@ export function sitePublicationId({ productVersion, productCommit, contentReleas
   return [productVersion, productCommit, ...(contentSetId ? [contentSetId] : contentReleaseIds)].join("+");
 }
 
+/**
+ * A v1 active tuple bound its manifest hash to the ProductArtifact that was
+ * current when the tuple was activated.  Product publication may reuse that
+ * immutable content authority, but it must reconstruct and verify the exact
+ * historical manifest instead of pretending that it is a v2 content-only
+ * authority manifest.
+ */
+export async function resolveLegacyActiveTupleManifest({ sourceRoot = process.cwd(), contentSet, activeTuple } = {}) {
+  if (activeTuple?.schemaVersion !== "content-data-active-v1") throw new Error("legacy active tuple manifest requires content-data-active-v1");
+  if (!activeTuple.productArtifactId || !activeTuple.productArtifactHash || !activeTuple.manifestHash) throw new Error("legacy active tuple ProductArtifact and manifest provenance is incomplete");
+  const legacyClient = path.join(sourceRoot, ".content-workspace", "base-site-artifacts", activeTuple.productArtifactId, "client");
+  const legacyProductArtifact = await readProductArtifact({ clientDirectory: legacyClient, sourceRoot });
+  if (legacyProductArtifact.productArtifactId !== activeTuple.productArtifactId
+    || legacyProductArtifact.productArtifactHash !== activeTuple.productArtifactHash) {
+    throw new Error("legacy active tuple ProductArtifact provenance drift");
+  }
+  const legacyManifest = contentManifestFromContentSet(contentSet, { productArtifact: legacyProductArtifact });
+  if (contentDataManifestHash(legacyManifest) !== activeTuple.manifestHash) throw new Error("legacy active tuple manifest provenance drift");
+  return legacyManifest;
+}
+
 export function sitePublicationIdempotencyKey({ sitePublicationId: id, snapshotHash = null } = {}) {
   if (typeof id !== "string" || !id) throw new Error("sitePublicationId is required");
   return createHash("sha256").update(`${id}:${snapshotHash || "site-publication-v1"}`).digest("hex");
@@ -447,10 +468,14 @@ async function createContentSetSitePublication({
     ...activeTuple,
     manifestUrl: activeTuple.manifestUrl || `/content-data/${contentDataArtifact.contentDataArtifactId}/content-data-manifest.json`,
   };
+  const legacyTupleManifest = activeTuple.schemaVersion === "content-data-active-v1"
+    ? await resolveLegacyActiveTupleManifest({ sourceRoot, contentSet, activeTuple })
+    : null;
   const contentAuthorityManifest = authority?.contentAuthorityManifest
     || contentAuthorityManifestFromContentSet(contentSet, { contentDataArtifact });
-  const contentAuthorityManifestHash = authority?.contentAuthorityManifestHash
-    || contentDataManifestHash(contentAuthorityManifest);
+  const contentAuthorityManifestHash = legacyTupleManifest
+    ? activeTuple.manifestHash
+    : (authority?.contentAuthorityManifestHash || contentDataManifestHash(contentAuthorityManifest));
   const legacyProductProvenance = authority?.legacyProductProvenance || (activeTuple.schemaVersion === "content-data-active-v1" && activeTuple.productArtifactId
     ? { productArtifactId: activeTuple.productArtifactId, productArtifactHash: activeTuple.productArtifactHash || null, sourceTupleHash: activeTuple.tupleHash, manifestHash: activeTuple.manifestHash || null }
     : null);
@@ -539,7 +564,9 @@ async function createContentSetSitePublication({
       // The immutable data manifest binds the canonical ContentSet manifest;
       // sitePublicationId/snapshotHash are operational fields and must not
       // change the tuple's data identity.
-      contentAuthorityManifest,
+      ...(legacyTupleManifest
+        ? { manifest: legacyTupleManifest }
+        : { contentAuthorityManifest }),
     });
     await dataMaterialization.validate();
     await rm(resolvedOutputRoot, { recursive: true, force: true });

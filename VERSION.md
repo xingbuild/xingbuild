@@ -1,3 +1,11 @@
+## v0.28.7 — Legacy Active Tuple 最终只读发布适配
+
+父版本：`v0.28.6` / `79ac64ae4effcc5e67aa600811ef68afc1c8145f`
+
+- 对 `content-data-active-v1` 从其不可变历史 ProductArtifact 重建原 manifest，并与 tuple `manifestHash` exact 校验。
+- 当前 ProductArtifact 只组合既有 ContentSet/CDA；不改写 active tuple，不生成内容 candidate，不执行内容发布。
+- v2 content-only authority 仍走唯一新合同；公网验收完成后旧站冻结。
+
 ## v0.28.6 — 旧站最终发布兼容收口
 
 父版本：`v0.28.5` / `9bab2673a4425acad4815b17e40a87bf37fee38b`

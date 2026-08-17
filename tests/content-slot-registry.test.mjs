@@ -18,9 +18,20 @@ import {
 } from "../scripts/lib/content-slot-registry.mjs";
 import { assertContentSlotArtifactCompatible, CONTENT_SLOT_CAPABILITY_CONTRACT } from "../scripts/lib/base-site-artifact.mjs";
 import { finalizeSitePublication } from "../scripts/lib/site-publication-coordinator.mjs";
+import { resolveLegacyActiveTupleManifest } from "../scripts/lib/site-publication.mjs";
+import { contentDataManifestHash } from "../scripts/lib/content-data-plane.mjs";
 import { writeJsonAtomically } from "../scripts/lib/content-release-state.mjs";
 
 const projectRoot = path.resolve(new URL("..", import.meta.url).pathname);
+
+test("legacy active tuple manifest is reconstructed from its immutable ProductArtifact provenance", async () => {
+  const activeTuple = JSON.parse(await readFile(path.join(projectRoot, ".content-workspace/content-state/content-data-active.json"), "utf8"));
+  const contentSet = JSON.parse(await readFile(path.join(projectRoot, ".content-workspace/content-state/sets", activeTuple.contentSetId, "content-set.json"), "utf8"));
+  const manifest = await resolveLegacyActiveTupleManifest({ sourceRoot: projectRoot, contentSet, activeTuple });
+  assert.equal(contentDataManifestHash(manifest), activeTuple.manifestHash);
+  assert.equal(manifest.productArtifactId, activeTuple.productArtifactId);
+  assert.equal(manifest.productArtifactHash, activeTuple.productArtifactHash);
+});
 
 test("authoritative Registry remains the runtime source for the real historical corpus", async () => {
   const registry = await ensureContentSlotRegistry({ sourceRoot: projectRoot });

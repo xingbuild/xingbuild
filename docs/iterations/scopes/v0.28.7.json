@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "release-scope-v2",
+  "contractVersion": "classification-only-v1",
+  "phase": "pre-commit",
+  "version": "v0.28.7",
+  "baseHead": "79ac64ae4effcc5e67aa600811ef68afc1c8145f",
+  "scopeManifestPath": "docs/iterations/scopes/v0.28.7.json",
+  "paths": [
+    { "path": "VERSION.md", "classification": "record-only", "owner": "elon", "reason": "v0.28.7 final legacy adapter record", "state": "modified" },
+    { "path": "docs/design/v0.28.7 Legacy Active Tuple 最终只读发布适配方案.md", "classification": "record-only", "owner": "elon", "reason": "single-defect final release contract", "state": "added" },
+    { "path": "docs/iterations/current.md", "classification": "record-only", "owner": "elon", "reason": "current v0.28.7 contract", "state": "modified" },
+    { "path": "docs/iterations/history/v0.28.7.md", "classification": "record-only", "owner": "elon", "reason": "v0.28.7 implementation record", "state": "added" },
+    { "path": "docs/iterations/scopes/v0.28.7.json", "classification": "record-only", "owner": "elon", "reason": "v0.28.7 scope authority", "state": "added" },
+    { "path": "package-lock.json", "classification": "implementation", "owner": "elon", "reason": "v0.28.7 package lock identity", "state": "modified" },
+    { "path": "package.json", "classification": "implementation", "owner": "elon", "reason": "v0.28.7 product identity", "state": "modified" },
+    { "path": "scripts/lib/site-publication.mjs", "classification": "implementation", "owner": "elon", "reason": "legacy v1 tuple manifest reconstruction", "state": "modified" },
+    { "path": "tests/content-slot-registry.test.mjs", "classification": "implementation", "owner": "elon", "reason": "real active v1 provenance regression", "state": "modified" }
+  ],
+  "scopeDigest": "1b326ee8429235b2adbd6737f87ab0cd9176448a0e2ad82e3a077bcf9b5ca44d"
+}
