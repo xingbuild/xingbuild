@@ -336,9 +336,31 @@ async function finalizeDataPlanePublication({ current, publicationDirectory, pub
     || publicVerify.runtimeAcceptanceSpecHash !== runtimeAcceptanceSpec.specHash) {
     throw new Error("PublicationRun RuntimeAcceptanceSpec identity drift during finalize");
   }
+  const authorityMutation = current.contentAuthorityMutation === true || Boolean(current.contentPublicationIntentId);
   let previous = null;
   try { previous = await readActiveContentDataTuple({ sourceRoot }); } catch (error) {
     if (error.code !== "ENOENT") throw error;
+  }
+  if (!authorityMutation) {
+    // Product publication composes the current ProductArtifact with the
+    // already-active ContentAuthority. It is forbidden to rewrite the active
+    // pointer, even when the persisted tuple is a legacy v1 adapter.
+    if (!previous || previous.tupleHash !== current.activeTupleHash) {
+      const error = new Error("Product SitePublication must preserve the active ContentAuthority");
+      error.code = "CONTENT_AUTHORITY_PRODUCT_WRITE_FORBIDDEN";
+      throw error;
+    }
+    const releasedRun = run.state === "released" ? run : markPublicationReleased(run, publicVerify);
+    await writePublicationRun({ sourceRoot, run: releasedRun });
+    return writePublicationRecord(publicationDirectory, {
+      ...current,
+      publicationRun: releasedRun,
+      state: "released",
+      publicVerify,
+      releasedAt: current.releasedAt || new Date().toISOString(),
+      failure: null,
+      failureHistory: current.failure ? [...(current.failureHistory || []), { ...current.failure, preservedAt: new Date().toISOString(), recoveryAttemptId: publicVerify.attemptId || null }] : (current.failureHistory || []),
+    });
   }
   const expectedPrevious = current.expectedPreviousTupleHash ?? null;
   if ((previous?.tupleHash || null) !== expectedPrevious && previous?.tupleHash !== current.activeTupleHash) {
@@ -1148,9 +1170,7 @@ async function verifyPublicContentDataPlane({ publication, base, fetchImpl, sign
     || active.contentSetId !== publication.contentSetId
     || active.contentSetHash !== publication.contentSetHash
     || active.contentDataArtifactId !== publication.contentDataArtifactId
-    || active.contentDataHash !== publication.contentDataHash
-    || (publication.productArtifactId && active.productArtifactId !== publication.productArtifactId)
-    || (publication.productArtifactHash && active.productArtifactHash !== publication.productArtifactHash)) {
+    || active.contentDataHash !== publication.contentDataHash) {
     throw propagationError("public ContentData active tuple identity does not match SitePublication", {
       activeTupleHash: active.tupleHash || null,
       contentSetId: active.contentSetId || null,
@@ -1167,7 +1187,8 @@ async function verifyPublicContentDataPlane({ publication, base, fetchImpl, sign
     || manifest.contentDataArtifactId !== publication.contentDataArtifactId
     || manifest.contentDataHash !== publication.contentDataHash
     || manifest.activePointerHash !== publication.activeTupleHash
-    || (publication.activeTuple?.manifestHash && manifest.manifestHash !== publication.activeTuple.manifestHash)
+    || ((publication.contentAuthorityManifestHash || publication.contentManifest?.contentAuthorityManifestHash || publication.activeTuple?.contentAuthorityManifestHash || publication.activeTuple?.manifestHash)
+      && manifest.manifestHash !== (publication.contentAuthorityManifestHash || publication.contentManifest?.contentAuthorityManifestHash || publication.activeTuple?.contentAuthorityManifestHash || publication.activeTuple?.manifestHash))
     || manifest.immutableDataUrl !== manifestUrl
     || !SHA256.test(manifest.manifestHash || "")) {
     throw new Error("public ContentData manifest identity is incomplete or drifted");
@@ -1250,21 +1271,22 @@ export async function verifyPublicSitePublication({ publication, baseUrl = publi
         expectedProductArtifactHash: publication.productArtifactHash,
       });
     }
+    const expectedAuthorityManifestHash = publication.contentAuthorityManifestHash || publication.contentManifest?.contentAuthorityManifestHash || null;
     if (contentManifest.contentSetId !== publication.contentSetId
       || contentManifest.contentSetHash !== publication.contentSetHash
       || contentManifest.siteSnapshotId !== publication.siteSnapshotId
       || contentManifest.contentDataArtifactId !== publication.contentDataArtifactId
       || contentManifest.contentDataHash !== publication.contentDataHash
       || contentManifest.activeTupleHash !== publication.activeTupleHash
-      || contentManifest.productArtifactId !== publication.productArtifactId
-      || contentManifest.productArtifactHash !== publication.productArtifactHash) {
+      || (expectedAuthorityManifestHash && contentManifest.contentAuthorityManifestHash !== expectedAuthorityManifestHash)) {
       throw propagationError("public ContentData SiteSnapshot identity does not match SitePublication", {
         contentSetId: contentManifest.contentSetId || null,
         contentSetHash: contentManifest.contentSetHash || null,
         siteSnapshotId: contentManifest.siteSnapshotId || null,
         contentDataArtifactId: contentManifest.contentDataArtifactId || null,
-        contentDataHash: contentManifest.contentDataHash || null,
-        activeTupleHash: contentManifest.activeTupleHash || null,
+      contentDataHash: contentManifest.contentDataHash || null,
+      activeTupleHash: contentManifest.activeTupleHash || null,
+      contentAuthorityManifestHash: contentManifest.contentAuthorityManifestHash || null,
       });
     }
     if (contentManifest.runtimeAcceptanceSpecHash
@@ -1332,6 +1354,7 @@ export async function verifyPublicSitePublication({ publication, baseUrl = publi
       contentDataArtifactId: publication.contentDataArtifactId,
       contentDataHash: publication.contentDataHash,
       activeTupleHash: publication.activeTupleHash,
+      contentAuthorityManifestHash: publication.contentAuthorityManifestHash || contentManifest.contentAuthorityManifestHash || null,
       attemptId: resolvedAttemptId,
       baseSiteArtifactId: contentManifest.baseSiteArtifactId,
       productArtifactId: contentManifest.productArtifactId || publication.productArtifactId,

@@ -66,3 +66,10 @@ flowchart LR
 
 Engineering 自 QA 不能替代 `elon` 的方案验收；`READY_FOR_COMMIT` 前不得提交版本或生成最终 ProductArtifact。范围内问题必须在同一版本未提交阶段修复，不能因为提前提交而被迫拆成下一版本。
 内容运营和 Ops 不进入这条产品版本闭环；它们使用各自合同和独立身份。Engineering 的交接使用 [`collaboration-workflow.md`](collaboration-workflow.md) 的一次性模板。
+## v0.28.5 ContentAuthority 与 QA Browser 边界
+
+`ActiveContentDataTuple v2` 的 identity 只覆盖 ContentSet、ContentDataArtifact、immutable object refs 与 content-only authority manifest hash；不得写入 ProductArtifact identity。v0.28.3 的 v1 tuple 只允许在原始 tuple hash、持久化 approved manifest、ContentSet、CDA 与 objects 全部 exact 后只读适配，并保留 `legacyProductProvenance`，不得重写 active bytes。
+
+`SiteSnapshot v1` 是 ProductArtifact + ContentAuthority 的唯一组合对象。产品 publish 只读 active authority，成功 finalize 不得 CAS active tuple；content publish 只有在同一 deployment 的公网 release/content/data/runtime/media 证据全部 verified 后，才由 Coordinator 以 expected tuple 执行一次 CAS。capability、slot、schema 与 cross-object identity 仍是硬门禁。
+
+QA runtime batch 只允许一个 global browser lease 与一个受控 Chrome；场景串行、每场景新的 BrowserContext、`peakContextCount=1`，timeout/abort/signal 必须关闭 owned context/browser/profile 并释放 lease。未知 Chrome、profile 或 lease 不得被扫描或终止。

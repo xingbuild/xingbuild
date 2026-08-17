@@ -33,6 +33,7 @@ export const ALLOWED_CONTENT_IMPACTS = Object.freeze([
 // record value.  Keep the machine enum closed and normalize that approved
 // record wording to the existing compatible gate class.
 const V0284_COMPATIBLE_RECORD_VALUE = "compatible-public-runtime-readiness-and-same-deployment-recovery";
+const V0285_COMPATIBLE_RECORD_VALUE = "compatible-authority-boundary-correction";
 
 const V0280_VERSION = "v0.28.0";
 const V0280_REASON = "content-data-plane-runtime-and-content-only-publication";
@@ -175,7 +176,7 @@ function assertV0280BreakingContract({ currentText, impact, activeContentRelease
  */
 export function assertProductContentCompatibility({ currentText = "", activeContentReleaseIds = [], projectRoot = process.cwd() } = {}) {
   const impact = readContentImpact(currentText);
-  const machineImpact = impact.contentImpact === V0284_COMPATIBLE_RECORD_VALUE ? "compatible" : impact.contentImpact;
+  const machineImpact = [V0284_COMPATIBLE_RECORD_VALUE, V0285_COMPATIBLE_RECORD_VALUE].includes(impact.contentImpact) ? "compatible" : impact.contentImpact;
   const missingFields = [
     ["contentImpact", impact.contentImpact],
     ["contentImpactReason", impact.contentImpactReason],

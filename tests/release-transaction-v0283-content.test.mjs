@@ -349,7 +349,7 @@ test("FM-05 intent cross-mix rejects a ContentSet and CDA from different tuples"
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test("FM-06 ProductArtifact mismatch rejects a tuple-bound publication intent", async () => {
+test("CA-05 ProductArtifact changes do not rebind a content-only tuple", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "xingbuild-v0283-product-mismatch-"));
   try {
     const content = await writeContentFixture(root);
@@ -359,10 +359,9 @@ test("FM-06 ProductArtifact mismatch rejects a tuple-bound publication intent", 
     const tuple = createActiveContentDataTuple({ contentSet: content.contentSet, artifact, productArtifact: product });
     const wrongCommit = "d".repeat(40);
     const wrongProduct = { ...product, productCommit: wrongCommit, productArtifactId: `v0.28.3-${wrongCommit.slice(0, 12)}`, baseSiteArtifactId: `v0.28.3-${wrongCommit.slice(0, 12)}`, productArtifactHash: "e".repeat(64) };
-    await assert.rejects(
-      () => createContentPublicationIntent({ sourceRoot: root, productArtifact: wrongProduct, contentSet: content.contentSet, contentDataArtifact: artifact, activeTuple: tuple }),
-      /ProductArtifact identity mismatch/,
-    );
+    const prepared = await createContentPublicationIntent({ sourceRoot: root, productArtifact: wrongProduct, contentSet: content.contentSet, contentDataArtifact: artifact, activeTuple: tuple });
+    assert.equal(prepared.activeTuple.tupleHash, tuple.tupleHash);
+    assert.equal(prepared.siteSnapshot.productArtifact.productCommit, wrongCommit);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 

@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
-import { contentManifestFromContentSet, validateContentSet } from "./content-set.mjs";
+import { contentAuthorityManifestFromContentSet, contentManifestFromContentSet, validateContentSet } from "./content-set.mjs";
 import { assertProductArtifactIdentityShape, PRODUCT_ARTIFACT_IDENTITY_FIELDS } from "./product-artifact.mjs";
-import { assertActiveContentDataTuple } from "./content-data-plane.mjs";
+import { assertActiveContentDataTuple, contentDataManifestHash } from "./content-data-plane.mjs";
 
 export const SITE_SNAPSHOT_SCHEMA_VERSION = "site-snapshot-v1";
+const SHA256 = /^[a-f0-9]{64}$/;
 
 function canonical(value) {
   return JSON.stringify(value);
@@ -37,6 +38,7 @@ function contentDataIdentity(contentDataArtifact = null) {
     contentDataArtifactId: contentDataArtifact.contentDataArtifactId,
     contentDataHash: contentDataArtifact.contentDataHash,
     ...(contentDataArtifact.manifestHash ? { manifestHash: contentDataArtifact.manifestHash } : {}),
+    ...(contentDataArtifact.contentAuthorityManifestHash ? { contentAuthorityManifestHash: contentDataArtifact.contentAuthorityManifestHash } : {}),
   };
 }
 
@@ -50,13 +52,17 @@ function activeTupleIdentity(activeTuple = null) {
     contentSetHash: activeTuple.contentSetHash,
     contentDataArtifactId: activeTuple.contentDataArtifactId,
     contentDataHash: activeTuple.contentDataHash,
-    productArtifactId: activeTuple.productArtifactId || null,
-    productArtifactHash: activeTuple.productArtifactHash || null,
-    manifestHash: activeTuple.manifestHash || null,
+    ...(activeTuple.schemaVersion === "content-data-active-v2"
+      ? { contentAuthorityManifestHash: activeTuple.contentAuthorityManifestHash }
+      : {
+        productArtifactId: activeTuple.productArtifactId || null,
+        productArtifactHash: activeTuple.productArtifactHash || null,
+        manifestHash: activeTuple.manifestHash || null,
+      }),
   };
 }
 
-function snapshotIdentity({ schemaVersion = SITE_SNAPSHOT_SCHEMA_VERSION, productArtifact, contentSet, contentManifest, contentDataArtifact = null, activeTuple = null }) {
+function snapshotIdentity({ schemaVersion = SITE_SNAPSHOT_SCHEMA_VERSION, productArtifact, contentSet, contentManifest, contentDataArtifact = null, activeTuple = null, contentAuthorityManifestHash = null, sourceTupleHash = null, legacyProductProvenance = null }) {
   return {
     schemaVersion,
     productArtifact: productArtifactIdentity(productArtifact),
@@ -65,13 +71,18 @@ function snapshotIdentity({ schemaVersion = SITE_SNAPSHOT_SCHEMA_VERSION, produc
     contentManifest,
     ...(contentDataArtifact ? { contentDataArtifact: contentDataIdentity(contentDataArtifact) } : {}),
     ...(activeTuple ? { activeTuple: activeTupleIdentity(activeTuple), activeTupleHash: activeTuple.tupleHash } : {}),
+    ...(contentAuthorityManifestHash ? { contentAuthorityManifestHash } : {}),
+    ...(sourceTupleHash ? { sourceTupleHash } : {}),
+    ...(legacyProductProvenance ? { legacyProductProvenance } : {}),
   };
 }
 
-export function createSiteSnapshot({ productArtifact, contentSet, contentDataArtifact = null, activeTuple = null, requireContentData = false, previousSnapshotId = null, createdAt = new Date().toISOString() } = {}) {
+export function createSiteSnapshot({ productArtifact, contentSet, contentDataArtifact = null, activeTuple = null, legacyProductProvenance = null, contentAuthorityManifestHash = null, requireContentData = false, previousSnapshotId = null, createdAt = new Date().toISOString() } = {}) {
   validateContentSet(contentSet);
   const product = productArtifactIdentity(productArtifact);
   const contentManifest = contentManifestFromContentSet(contentSet, { productArtifact: product });
+  const authorityManifest = contentAuthorityManifestFromContentSet(contentSet, { contentDataArtifact });
+  const authorityHash = contentAuthorityManifestHash || activeTuple?.contentAuthorityManifestHash || (activeTuple?.schemaVersion === "content-data-active-v2" ? null : null);
   // The release/artifact schema is the stable contract boundary.  A pending
   // product version must never select the normal path by name; only an
   // explicit legacy fixture (without the v2 artifact contract) may remain on
@@ -86,7 +97,14 @@ export function createSiteSnapshot({ productArtifact, contentSet, contentDataArt
     assertActiveContentDataTuple(activeTuple);
     if (activeTuple.contentSetId !== contentSet.contentSetId || activeTuple.contentSetHash !== contentSet.contentSetHash) throw new Error("SiteSnapshot active tuple ContentSet identity mismatch");
     if (!contentDataArtifact || activeTuple.contentDataArtifactId !== contentDataArtifact.contentDataArtifactId || activeTuple.contentDataHash !== contentDataArtifact.contentDataHash) throw new Error("SiteSnapshot active tuple ContentDataArtifact identity mismatch");
-    if (activeTuple.productArtifactId !== product.productArtifactId || activeTuple.productArtifactHash !== product.productArtifactHash) throw new Error("SiteSnapshot active tuple ProductArtifact identity mismatch");
+    if (activeTuple.schemaVersion === "content-data-active-v2") {
+      const expectedAuthorityHash = contentDataArtifact.contentAuthorityManifestHash || activeTuple.contentAuthorityManifestHash;
+      if (!expectedAuthorityHash || expectedAuthorityHash !== contentDataManifestHash(authorityManifest)) throw new Error("SiteSnapshot active tuple content authority identity mismatch");
+    } else if (activeTuple.productArtifactId !== product.productArtifactId || activeTuple.productArtifactHash !== product.productArtifactHash) {
+      if (!legacyProductProvenance || legacyProductProvenance.productArtifactId !== activeTuple.productArtifactId || legacyProductProvenance.productArtifactHash !== activeTuple.productArtifactHash) {
+        throw new Error("SiteSnapshot legacy active tuple provenance is required for ProductArtifact mismatch");
+      }
+    }
   }
   // ContentData is an extension of the existing SiteSnapshot contract.  The
   // schema identity stays v1 so the first active-tuple cutover does not
@@ -94,11 +112,19 @@ export function createSiteSnapshot({ productArtifact, contentSet, contentDataArt
   // still require the data references above; only the immutable shape is
   // extended with those references.
   const schemaVersion = SITE_SNAPSHOT_SCHEMA_VERSION;
-  const identity = snapshotIdentity({ schemaVersion, productArtifact: product, contentSet, contentManifest, contentDataArtifact, activeTuple });
+  const resolvedAuthorityHash = authorityHash || (activeTuple?.schemaVersion === "content-data-active-v2" ? activeTuple.contentAuthorityManifestHash : contentDataManifestHash(authorityManifest));
+  if (!/^[a-f0-9]{64}$/.test(resolvedAuthorityHash || "")) throw new Error("SiteSnapshot content authority manifest hash is required");
+  const resolvedSourceTupleHash = activeTuple?.tupleHash || null;
+  const resolvedLegacy = legacyProductProvenance || (activeTuple?.schemaVersion === "content-data-active-v1" && activeTuple.productArtifactId
+    ? { productArtifactId: activeTuple.productArtifactId, productArtifactHash: activeTuple.productArtifactHash || null, sourceTupleHash: activeTuple.tupleHash, manifestHash: activeTuple.manifestHash || null }
+    : null);
+  const snapshotDataArtifact = contentDataArtifact ? { ...contentDataArtifact, contentAuthorityManifestHash: resolvedAuthorityHash } : contentDataArtifact;
+  const identity = snapshotIdentity({ schemaVersion, productArtifact: product, contentSet, contentManifest, contentDataArtifact: snapshotDataArtifact, activeTuple, contentAuthorityManifestHash: resolvedAuthorityHash, sourceTupleHash: resolvedSourceTupleHash, legacyProductProvenance: resolvedLegacy });
   const snapshotHash = hashSiteSnapshotValue(identity);
   const siteSnapshotId = `site-snapshot-${snapshotHash}`;
   const snapshot = {
     ...identity,
+    contentAuthorityManifest: authorityManifest,
     siteSnapshotId,
     snapshotHash,
     previousSnapshotId: previousSnapshotId || null,
@@ -142,7 +168,11 @@ export function assertSiteSnapshotIdentity(snapshot = {}) {
     assertActiveContentDataTuple(snapshot.activeTuple);
     if (snapshot.activeTuple.contentSetId !== snapshot.contentSetId || snapshot.activeTuple.contentSetHash !== snapshot.contentSetHash) throw new Error("SiteSnapshot active tuple ContentSet identity mismatch");
     if (snapshot.activeTuple.contentDataArtifactId !== snapshot.contentDataArtifact.contentDataArtifactId || snapshot.activeTuple.contentDataHash !== snapshot.contentDataArtifact.contentDataHash) throw new Error("SiteSnapshot active tuple ContentDataArtifact identity mismatch");
-    if (snapshot.activeTuple.productArtifactId !== product.productArtifactId || snapshot.activeTuple.productArtifactHash !== product.productArtifactHash) throw new Error("SiteSnapshot active tuple ProductArtifact identity mismatch");
+    const authorityHash = snapshot.contentAuthorityManifestHash || snapshot.activeTuple.contentAuthorityManifestHash || snapshot.contentDataArtifact.contentAuthorityManifestHash;
+    const legacySnapshot = snapshot.activeTuple.schemaVersion === "content-data-active-v1" && !snapshot.contentAuthorityManifestHash && !snapshot.contentDataArtifact.contentAuthorityManifestHash;
+    if (!legacySnapshot && !SHA256.test(authorityHash || "")) throw new Error("SiteSnapshot content authority manifest hash is required");
+    if (snapshot.activeTuple.schemaVersion === "content-data-active-v1" && snapshot.activeTuple.productArtifactId !== product.productArtifactId
+      && !snapshot.legacyProductProvenance) throw new Error("SiteSnapshot legacy active tuple provenance is required");
   }
   const identity = snapshotIdentity({
     schemaVersion: snapshot.schemaVersion,
@@ -151,6 +181,9 @@ export function assertSiteSnapshotIdentity(snapshot = {}) {
     contentManifest: snapshot.contentManifest,
     contentDataArtifact: snapshot.contentDataArtifact || null,
     activeTuple: snapshot.activeTuple || null,
+    contentAuthorityManifestHash: snapshot.contentAuthorityManifestHash || snapshot.activeTuple?.contentAuthorityManifestHash || snapshot.contentDataArtifact?.contentAuthorityManifestHash || null,
+    sourceTupleHash: snapshot.sourceTupleHash || null,
+    legacyProductProvenance: snapshot.legacyProductProvenance || null,
   });
   const expected = hashSiteSnapshotValue(identity);
   if (expected !== snapshot.snapshotHash || snapshot.siteSnapshotId !== `site-snapshot-${expected}`) throw new Error("SiteSnapshot identity hash drift");

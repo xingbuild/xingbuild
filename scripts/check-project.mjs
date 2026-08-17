@@ -126,6 +126,7 @@ const requiredFiles = [
   "scripts/qa-v0279-governance.mjs",
   "scripts/qa-v0280-content-data-plane.mjs",
   "scripts/qa-v0283-content-publication.mjs",
+  "scripts/qa-v0285-runtime.mjs",
   "scripts/content-lifecycle-governance.mjs",
   "tests/product-content-isolation.test.mjs",
   "scripts/verify-public-release.mjs",
@@ -191,6 +192,7 @@ assert.equal(packageJson.scripts["qa:content-data-plane:v0280"], "node scripts/q
 assert.equal(packageJson.scripts["qa:content-publication:v0283"], "node scripts/qa-v0283-content-publication.mjs", "v0.28.3 content publication QA must use the formal evidence entry point");
 assert.equal(packageJson.scripts["qa:runtime:v0284"], "node scripts/qa-v0284-runtime.mjs", "v0.28.4 runtime QA must use the formal evidence entry point");
 assert.equal(packageJson.scripts["qa:test-sites:v0284"], "node scripts/qa-v0284-test-sites.mjs", "v0.28.4 test-sites QA must use the fresh classification entry point");
+assert.equal(packageJson.scripts["qa:runtime:v0285"], "node scripts/qa-v0285-runtime.mjs", "v0.28.5 browser batch QA must use the single-session entry point");
 assert.match(packageJson.scripts["content:lifecycle"], /^node scripts\/content-lifecycle-governance\.mjs inventory --dry-run .*--output \.content-workspace\/qa\/v0279-lifecycle-evidence\.json$/, "content lifecycle governance must stay bounded and explicit");
 assert.match(packageJson.scripts["content:storage:check"], /^node scripts\/content-storage-governance\.mjs inventory --dry-run .*--output \.content-workspace\/qa\/v0279-storage-evidence\.json$/, "content storage governance must stay bounded and explicit");
 assert.equal(packageJson.scripts["content:storage:check:v0274"], "node scripts/content-storage-governance-v0274.mjs", "v0.27.4 storage evidence must use the sole reducer entry point");
@@ -225,7 +227,7 @@ assert(contentDataRuntime.includes("fetchRuntimeContentData"), "ContentDataArtif
 assert(contentDataRuntime.includes("/content-data/active.json"), "ContentDataArtifact runtime must read the active tuple URL");
 assert(!contentDataRuntime.includes("import.meta.glob"), "ContentDataArtifact runtime must not eagerly import workspace data");
 assert(pageContentResolver.includes("resolveRuntimeContentData"), "page content resolver must consume the ContentDataArtifact runtime adapter");
-assert(pageContentResolver.includes("contentDataRuntimeEnabled"), "page content resolver must keep product-only fallback behind the data-plane capability check");
+assert(pageContentResolver.includes("runtimeData"), "page content resolver must consume only explicitly loaded runtime data");
 const resumeModule = await readFile(new URL("../src/content/resumeArtifact.js", import.meta.url), "utf8");
 const resumeActions = await readFile(new URL("../src/components/profile/ResumeActions.jsx", import.meta.url), "utf8");
 assert(!resumeModule.includes("Kami") && !resumeModule.includes("htmlPath"), "public resume registry must not expose legacy HTML/template identity");
@@ -298,6 +300,8 @@ for (const composition of ["HomeComposition", "ShowcaseComposition", "Collection
 }
 assert(app.includes("findPageDefinitionByRoute"), "app routes must resolve through the page definition registry");
 assert(app.includes("PageCompositionRenderer"), "app routes must use the shared composition renderer");
+assert(app.includes("useContentDataRuntime"), "app must own the single runtime loading boundary for page and dynamic routes");
+assert(app.includes("resolveRuntimeObservation"), "published observation routes must resolve from the active ContentDataArtifact");
 const viteConfig = await readFile(new URL("../vite.config.mjs", import.meta.url), "utf8");
 const releaseBuild = await readFile(new URL("../scripts/release-build.mjs", import.meta.url), "utf8");
 assert(viteConfig.includes("__XINGBUILD_CONTENT_RUNTIME__"), "Vite must define the independent ContentDataArtifact runtime capability");

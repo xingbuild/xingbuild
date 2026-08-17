@@ -21,7 +21,6 @@ import {
 } from "../../lib/navigation";
 import { robotaxiProductConfiguration } from "../../content/productConfiguration.js";
 import { ResponsiveText } from "../content/ResponsiveText.jsx";
-import { useContentDataRuntime } from "../../content/contentDataRuntimeHook.js";
 
 function EmptyContentState() {
   return <section className="content-empty-state" aria-label="内容状态"><p>暂无已发布内容</p></section>;
@@ -138,12 +137,14 @@ const compositionRenderers = Object.freeze({
   ReadingComposition,
 });
 
-export function PageCompositionRenderer({ definition, location }) {
+export function PageCompositionRenderer({ definition, location, runtime = { status: "disabled", data: null } }) {
   if (!definition || !compositionRenderers[definition.composition]) {
     throw new Error(`Unknown PageComposition: ${definition?.composition ?? "undefined"}`);
   }
+  if (runtime.status === "loading") {
+    return <p className="route-loading" role="status">正在载入内容…</p>;
+  }
   const Renderer = compositionRenderers[definition.composition];
-  const runtime = useContentDataRuntime();
   return <Renderer definition={definition} content={resolvePageContent(definition, { runtimeData: runtime.data })} location={location} />;
 }
 

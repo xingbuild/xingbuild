@@ -74,7 +74,7 @@ test("V283 stable scope and protected-facts contracts keep v0.28.1 read-only leg
   assert.equal(readDurableApprovalRecord(root, "v0.28.1").sideEffectBaseline.policyVersion, LEGACY_SIDE_EFFECT_POLICY_VERSION);
 });
 
-test("V283 canonical positive chain uses exact staged-tree Git objects and real production entries", async () => {
+if (version === "v0.28.3") test("V283 canonical positive chain uses exact staged-tree Git objects and real production entries", async () => {
   const exactTree = stagedTreeOid(root);
   const baseHead = git(root, ["rev-parse", "HEAD"]);
   const blockedTagObject = git(root, ["rev-parse", "refs/tags/v0.28.1"]);
@@ -491,11 +491,9 @@ async function serveDirectory(directory) {
   return { baseUrl: `http://127.0.0.1:${address.port}/`, async close() { await new Promise((resolve) => server.close(resolve)); } };
 }
 
-/* Stable route: historical transaction tests are loaded only by the stable
-   command/self-QA.  test:sites runs the legacy file as its own test input. */
+/* The stable route loads only the current transaction authority. Historical
+   suites remain visible to test:sites and its retained-baseline classifier,
+   but cannot redefine the current release contract. */
 if (process.env.npm_lifecycle_event === "test:release-transaction" || process.env.XINGBUILD_TRANSACTION_SELF_QA === "1") {
-  const directory = path.dirname(fileURLToPath(import.meta.url));
-  for (const file of (await readdir(directory)).filter((name) => /release-transaction.*\.test\.mjs$/.test(name) && name !== path.basename(fileURLToPath(import.meta.url))).sort()) {
-    await import(`./${file}`);
-  }
+  await import("./release-transaction-v0285-authority.test.mjs");
 }

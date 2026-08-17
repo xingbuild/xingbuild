@@ -9,6 +9,8 @@ import {
   writeContentOnlyReceipt,
 } from "./content-data-plane.mjs";
 import { assertContentPublicationIntent, createContentPublicationIntent } from "./content-publication-intent.mjs";
+import { contentAuthorityManifestFromContentSet } from "./content-set.mjs";
+import { contentDataManifestHash } from "./content-data-plane.mjs";
 
 /**
  * Content-only publication intent.  The existing Coordinator remains the only
@@ -23,7 +25,8 @@ export async function createContentOnlyPublicationIntent({ sourceRoot = process.
   if (activeTuple.contentDataArtifactId !== contentDataArtifact.contentDataArtifactId || activeTuple.contentDataHash !== contentDataArtifact.contentDataHash) throw new Error("content-only tuple artifact drift");
   if (product.artifactContractVersion === "product-artifact-v2") {
     const canonical = await createContentPublicationIntent({ sourceRoot, productArtifact: product, contentSet, contentDataArtifact, activeTuple, manifest });
-    const materialization = await prepareContentOnlyMaterialization({ sourceRoot, productClient, productArtifact: product, contentSet, artifact: contentDataArtifact, activeTuple, manifest });
+    const contentAuthorityManifest = contentAuthorityManifestFromContentSet(contentSet, { contentDataArtifact });
+    const materialization = await prepareContentOnlyMaterialization({ sourceRoot, productClient, productArtifact: product, contentSet, artifact: contentDataArtifact, activeTuple, contentAuthorityManifest, manifest });
     const intent = {
       ...canonical.intent,
       materialization: {
@@ -35,19 +38,22 @@ export async function createContentOnlyPublicationIntent({ sourceRoot = process.
     assertContentPublicationIntent(canonical.intent);
     return { ...canonical, intent, materialization, deploymentCount: 0, transportOwner: "SitePublicationCoordinator" };
   }
+  const contentAuthorityManifest = contentAuthorityManifestFromContentSet(contentSet, { contentDataArtifact });
   const siteSnapshot = createSiteSnapshot({
     productArtifact: product,
     contentSet,
     contentDataArtifact: {
       contentDataArtifactId: contentDataArtifact.contentDataArtifactId,
       contentDataHash: contentDataArtifact.contentDataHash,
-      ...(manifest ? { manifestHash: manifest.manifestHash || null } : {}),
+      manifestHash: contentDataManifestHash(contentAuthorityManifest),
+      contentAuthorityManifestHash: contentDataManifestHash(contentAuthorityManifest),
+      objectRefs: contentDataArtifact.objectRefs,
     },
     createdAt: "1970-01-01T00:00:00.000Z",
   });
   assertSiteSnapshotIdentity(siteSnapshot);
   const publicationRun = createPublicationRun({ siteSnapshot, createdAt: "1970-01-01T00:00:00.000Z" });
-  const materialization = await prepareContentOnlyMaterialization({ sourceRoot, productClient, productArtifact: product, contentSet, artifact: contentDataArtifact, activeTuple, manifest });
+  const materialization = await prepareContentOnlyMaterialization({ sourceRoot, productClient, productArtifact: product, contentSet, artifact: contentDataArtifact, activeTuple, contentAuthorityManifest, manifest });
   const receipt = createContentOnlyReceipt({ productArtifact: product, contentSet, artifact: contentDataArtifact, activeTuple, siteSnapshotId: siteSnapshot.siteSnapshotId, publicationRunId: publicationRun.publicationRunId, manifestHash: materialization.dataManifest.manifestHash });
   return {
     schemaVersion: "content-only-publication-intent-v1",

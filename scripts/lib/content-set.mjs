@@ -239,6 +239,38 @@ export function contentManifestFromContentSet(contentSet, { productArtifact = {}
   return manifest;
 }
 
+/**
+ * The active content authority deliberately excludes ProductArtifact fields.
+ * Product-aware `content-manifest.json` remains a SiteSnapshot projection;
+ * this helper is the immutable input used by the active tuple/CAS identity.
+ */
+export function contentAuthorityManifestFromContentSet(contentSet, { contentDataArtifact = null } = {}) {
+  const manifest = contentManifestFromContentSet(contentSet);
+  const authority = {
+    schemaVersion: "content-authority-manifest-v1",
+    contentSetId: manifest.contentSetId,
+    contentSetHash: manifest.contentSetHash,
+    previousContentSetId: manifest.previousContentSetId || null,
+    migration: manifest.migration,
+    createdAt: manifest.createdAt,
+    ...(manifest.homeContent ? { homeContent: manifest.homeContent } : {}),
+    publishedSlugs: manifest.publishedSlugs,
+    publishedArticleSlugs: manifest.publishedArticleSlugs,
+    practiceIds: manifest.practiceIds,
+    profileIds: manifest.profileIds,
+    productIds: manifest.productIds,
+    businessObservationIds: manifest.businessObservationIds,
+    mediaPaths: manifest.mediaPaths,
+    contentEntries: manifest.contentEntries,
+    ...(contentDataArtifact ? {
+      contentDataArtifactId: contentDataArtifact.contentDataArtifactId,
+      contentDataHash: contentDataArtifact.contentDataHash,
+      objectRefs: [...(contentDataArtifact.objectRefs || [])].sort(),
+    } : {}),
+  };
+  return authority;
+}
+
 export function contentSetEntryFromLegacyReceipt(receipt = {}, { mediaPaths = [] } = {}) {
   const kind = mapKind(receipt.kind);
   const entry = normalizeContentSetEntry({
@@ -368,7 +400,7 @@ async function readActiveContentDataPointer(root) {
     if (error.code === "ENOENT") return null;
     throw error;
   }
-  if (pointer?.schemaVersion !== "content-data-active-v1") throw new Error("ContentData active tuple schemaVersion is invalid");
+  if (!["content-data-active-v1", "content-data-active-v2"].includes(pointer?.schemaVersion)) throw new Error("ContentData active tuple schemaVersion is invalid");
   const { assertActiveContentDataTuple } = await import("./content-data-plane.mjs");
   return assertActiveContentDataTuple(pointer);
 }

@@ -1,3 +1,11 @@
+## v0.28.5 — 内容 Authority 解耦、单会话 QA 与旧站最终稳定化
+
+父版本：`v0.28.4` / `b23d76a567645b222605a3944611825a7441db00`
+
+- 产品发布复用既有 active ContentSet/CDA，不再要求内容 authority 绑定当前 ProductArtifact；产品发布不改写内容 active tuple。
+- QA browser batch 只持有一个受控 Chrome，并用隔离 BrowserContext 串行验证场景和完成统一清理。
+- 修复 active observations 集合与 slug、Robotaxi approved media、诚实 loading、真实 `robots.txt`/`sitemap.xml`；公网验收完成后旧站冻结。
+
 ## v0.28.4 — 公网内容 Runtime Ready 与同一 Deployment 恢复
 
 父版本：`v0.28.3` / `85e8c3d080f998449a4fefb0c8429b1e27beb36e`

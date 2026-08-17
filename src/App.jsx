@@ -12,15 +12,21 @@ import { findObservation } from "./content/observationRepository";
 import { findPageDefinitionByRoute } from "./content/pageDefinitions";
 import { startVisitQualification } from "./lib/visitQualification";
 import { CapabilityFixturePage } from "./pages/CapabilityFixturePage";
+import { useContentDataRuntime } from "./content/contentDataRuntimeHook.js";
+import { resolveRuntimeObservation } from "./content/runtimeContentProjection.js";
 
 const BusinessObservationsPage = lazy(() => import("./pages/BusinessObservationsPage").then((module) => ({ default: module.BusinessObservationsPage })));
 const FRAMEWORK_BASE = "/enterprise-operating-framework";
 
-function resolvePage(location) {
+function RuntimeLoading() {
+  return <p className="route-loading" role="status">正在载入内容…</p>;
+}
+
+function resolvePage(location, runtime) {
   const { pathname } = location;
   if (pathname === "/__fixtures__/capability-stage") return <CapabilityFixturePage />;
   const definition = findPageDefinitionByRoute(pathname);
-  if (definition) return <PageCompositionRenderer definition={definition} location={location} />;
+  if (definition) return <PageCompositionRenderer definition={definition} location={location} runtime={runtime} />;
   if (pathname === FRAMEWORK_BASE) return <BusinessObservationsPage />;
 
   if (pathname.startsWith("/observations/")) {
@@ -28,7 +34,8 @@ function resolvePage(location) {
     if (new URLSearchParams(location.search).get("draft") === "1") {
       return <DraftObservationPage slug={slug} />;
     }
-    const observation = findObservation(slug);
+    if (runtime.status === "loading") return <RuntimeLoading />;
+    const observation = resolveRuntimeObservation(slug, runtime.data) || findObservation(slug);
     return observation ? (
       observation.presentation === "brief" ? <BriefRedirect /> : <ObservationPage observation={observation} location={location} />
     ) : (
@@ -54,6 +61,7 @@ function BriefRedirect() {
 export function App() {
   const location = useLocation();
   const { pathname } = location;
+  const runtime = useContentDataRuntime();
 
   useEffect(() => startVisitQualification(), []);
 
@@ -91,7 +99,7 @@ export function App() {
   return (
     <div className="site-shell">
       <SiteHeader pathname={pathname} />
-      <main id="main-content"><Suspense fallback={<p className="route-loading" role="status">正在载入页面…</p>}>{resolvePage(location)}</Suspense></main>
+      <main id="main-content"><Suspense fallback={<p className="route-loading" role="status">正在载入页面…</p>}>{resolvePage(location, runtime)}</Suspense></main>
       <SiteFooter />
     </div>
   );

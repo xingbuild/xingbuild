@@ -1,6 +1,6 @@
 {
   "name": "xingbuild",
-  "version": "0.28.4",
+  "version": "0.28.5",
   "private": true,
   "type": "module",
   "scripts": {
@@ -39,6 +39,7 @@
     "qa:content-publication:v0283": "node scripts/qa-v0283-content-publication.mjs",
     "qa:runtime:v0284": "node scripts/qa-v0284-runtime.mjs",
     "qa:test-sites:v0284": "node scripts/qa-v0284-test-sites.mjs",
+    "qa:runtime:v0285": "node scripts/qa-v0285-runtime.mjs",
     "content:storage:check:v0274": "node scripts/content-storage-governance-v0274.mjs",
     "content:lifecycle:evidence:v0275": "node scripts/content-lifecycle-evidence-v0275.mjs",
     "content:lifecycle:evidence": "node scripts/content-lifecycle-evidence.mjs",

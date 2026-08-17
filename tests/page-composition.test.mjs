@@ -12,6 +12,10 @@ import {
   validatePageDefinitions,
 } from "../src/content/pageDefinitions.js";
 import { resolvePageContent } from "../src/content/pageContentResolver.js";
+import {
+  projectRuntimePractice,
+  resolveRuntimeObservation,
+} from "../src/content/runtimeContentProjection.js";
 
 const renderer = await readFile(new URL("../src/components/page-compositions/PageCompositionRenderer.jsx", import.meta.url), "utf8");
 const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
@@ -83,4 +87,57 @@ test("all public page compositions opt into one shared visual structure", () => 
     "page-composition--reading",
   ]) assert.match(renderer, new RegExp(marker));
   assert.match(renderer, /content-empty-state/);
+});
+
+test("active runtime content projects observation collections, detail lookup, and approved Robotaxi media", async () => {
+  const observation = {
+    id: "observation-runtime-example",
+    slug: "runtime-example",
+    status: "published",
+    presentation: "brief",
+    eventAt: "2026-08-17",
+    publishedAt: "2026-08-17T00:00:00.000Z",
+    primaryDimension: "经营",
+    relatedWorks: ["robotaxi"],
+    sources: [{ id: "source-1", label: "来源", url: "https://example.com" }],
+    brief: {
+      subject: "运行时观察",
+      body: "这是一条用于验证最终旧站运行时集合投影的公开观察内容。",
+      sourceRefs: ["source-1"],
+      isOpinion: false,
+    },
+  };
+  const practice = {
+    id: "robotaxi",
+    modules: [{ id: "module-1", mediaId: "robotaxi-evidence-fleet-operations-console-v1" }],
+  };
+  const runtimeData = {
+    records: new Map([
+      ["observation:runtime-example", { value: observation }],
+      ["practice:robotaxi", { value: practice }],
+    ]),
+  };
+
+  assert.equal(resolveRuntimeObservation("runtime-example", runtimeData), observation);
+  const collection = resolvePageContent(getPageDefinition("observations"), { runtimeData });
+  assert.equal(collection.briefs.length, 1);
+  assert.equal(collection.briefs[0].slug, "runtime-example");
+  const products = resolvePageContent(getPageDefinition("products"), { runtimeData });
+  assert.equal(products.practice.modules[0].media.type, "video");
+  assert.equal(products.practice.modules[0].media.src, "/media/robotaxi/robotaxi-evidence-fleet-operations-console-v1.mp4");
+  assert.equal(projectRuntimePractice(practice).modules[0].media.state, "public");
+
+  const robots = await readFile(new URL("../public/robots.txt", import.meta.url), "utf8");
+  const sitemap = await readFile(new URL("../public/sitemap.xml", import.meta.url), "utf8");
+  assert.match(robots, /Sitemap: https:\/\/xingbuild\.top\/sitemap\.xml/);
+  for (const route of ["/products", "/business-observations", "/observations", "/about"]) {
+    assert.match(sitemap, new RegExp(`https://xingbuild\\.top${route.replace("/", "\\/")}`));
+  }
+});
+
+test("runtime loading is explicit and published observation routes wait for runtime identity", () => {
+  assert.match(renderer, /runtime\.status === "loading"/);
+  assert.match(renderer, /正在载入内容/);
+  assert.match(app, /resolveRuntimeObservation\(slug, runtime\.data\)/);
+  assert.match(app, /runtime\.status === "loading"/);
 });

@@ -140,3 +140,10 @@ owner：唯一执行责任人/task
 - 本地 commit/tag 不等于 push；push 不等于部署；部署不等于公网验收。产品 publish 不创建或移动 tag。
 - `xingbuild.top` 是正式主域名，`www.xingbuild.top` 只跳转到主域名，`robotaxi.xingbuild.top` 由 Robotaxi 独立发布；两个项目不共用构建产物、发布脚本或版本号。
 - 不删除稳定 tag/history。线上问题优先回退到上一个成功部署，并记录失败版本、现象、影响范围和修复条件；未完成公网验证前不宣称恢复。
+## v0.28.5 内容 Authority 与单会话 QA 门禁
+
+产品发布复用当前 active ContentAuthority，不因 ProductArtifact 变化重建或激活内容 tuple；SiteSnapshot v1 只保存一次 ProductArtifact + ContentAuthority 组合。内容 tuple 的 CAS 只能发生在 Coordinator 完成公网 exact verification 之后，产品 publish finalize 必须证明 active pointer bytes/hash unchanged。
+
+旧 v0.28.3 v1 tuple 只能按精确 incident/持久化 provenance 只读适配；未知 schema、hash、manifest、CDA、object 或 capability/slot/schema cross-mix 必须在 transport 前 hard fail。禁止版本白名单兼容、第二 authority、SiteSnapshot v2 或 fallback 自证。
+
+runtime QA 的正式入口是一个 batch/一个 global lease/一个 Chrome；场景使用新 BrowserContext 串行执行并记录机器计数。candidate 阶段禁止 canonical active tuple、ContentSet、CDA、SitePublication、ProductArtifact roots 与 EdgeOne 写入。

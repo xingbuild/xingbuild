@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { access, readFile, rm } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -9,6 +9,7 @@ import {
   createQaBrowserRun,
   resolveQaBrowserRuntime,
   withQaBrowser,
+  withQaBrowserSession,
   runQaBrowserCommand,
 } from "../scripts/lib/qa-browser-runtime.mjs";
 
@@ -65,6 +66,50 @@ test("Puppeteer entry uses resolver launch options and cleans after failure", as
     }),
     /fixture assertion/,
   );
+});
+
+test("bounded QA session reuses one browser and serializes isolated contexts", async () => {
+  const fixture = await mkdtemp(path.join(os.tmpdir(), "xingbuild-qa-browser-session-"));
+  const runtime = { runtimeVersion: "qa-browser-runtime-v1", executablePath: controlledChrome, browserFamily: "Google Chrome", version: "Google Chrome fixture", source: "fixture", policyVersion: "qa-browser-runtime-v1" };
+  let browserLaunchCount = 0;
+  let browserCloseCount = 0;
+  let contextCount = 0;
+  let contextCloseCount = 0;
+  const fakePuppeteer = {
+    launch: async () => {
+      browserLaunchCount += 1;
+      return {
+        process: () => ({ pid: null }),
+        createBrowserContext: async () => {
+          contextCount += 1;
+          return { newPage: async () => ({ contextId: contextCount }), close: async () => { contextCloseCount += 1; } };
+        },
+        close: async () => { browserCloseCount += 1; },
+      };
+    },
+  };
+  let manifestPath;
+  try {
+    const values = await withQaBrowserSession({ puppeteer: fakePuppeteer, runtime, root: fixture, taskId: "single-browser-five-contexts", timeoutMs: 2000 }, async ({ runtime: sessionRuntime }) => {
+      manifestPath = sessionRuntime.manifestPath;
+      return Promise.all(Array.from({ length: 5 }, (_, index) => withQaBrowser({ puppeteer: fakePuppeteer, timeoutMs: 500, taskId: `nested-${index}` }, async ({ browser }) => {
+        const page = await browser.newPage();
+        return { index, contextId: page.contextId };
+      })));
+    });
+    assert.deepEqual(values.map((entry) => entry.index), [0, 1, 2, 3, 4]);
+    assert.equal(browserLaunchCount, 1);
+    assert.equal(browserCloseCount, 1);
+    assert.equal(contextCount, 5);
+    assert.equal(contextCloseCount, 5);
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    assert.equal(manifest.resources.browserLaunchCount, 1);
+    assert.equal(manifest.resources.contextCount, 5);
+    assert.equal(manifest.resources.peakContextCount, 1);
+    assert.equal(manifest.resources.activeContextCount, 0);
+    assert.equal(manifest.cleanup.status, "verified");
+    await assert.rejects(access(path.join(fixture, ".content-workspace", "qa-browser-runtime", "browser-lease.json")));
+  } finally { await rm(fixture, { recursive: true, force: true }); }
 });
 
 test("command timeout is bounded and cleans its owned process group/profile", async () => {

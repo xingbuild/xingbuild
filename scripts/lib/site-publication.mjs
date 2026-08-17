@@ -18,6 +18,7 @@ import { compareAndSwapContentSlot, contentReceiptId, contentLogicalContentId, e
 import { assertContentSlotArtifactCompatible } from "./base-site-artifact.mjs";
 import { assertBindingCandidate, createOrReusePublicationLineageBinding } from "./publication-lineage-binding.mjs";
 import {
+  contentAuthorityManifestFromContentSet,
   contentManifestFromContentSet,
   readContentSet,
 } from "./content-set.mjs";
@@ -411,6 +412,7 @@ async function createContentSetSitePublication({
   let contentSet = suppliedContentSet;
   let contentDataArtifact = suppliedContentDataArtifact;
   let activeTuple = suppliedActiveTuple;
+  let authority = null;
   let intent = contentPublicationIntent;
   if (intent) {
     assertContentPublicationIntent(intent);
@@ -419,10 +421,15 @@ async function createContentSetSitePublication({
     contentSet = refs.contentSet;
     contentDataArtifact = refs.artifact;
     activeTuple = intent.activeTuple;
+    authority = {
+      contentAuthorityManifest: contentAuthorityManifestFromContentSet(contentSet, { contentDataArtifact }),
+      legacyProductProvenance: intent.siteSnapshot?.legacyProductProvenance || null,
+      sourceTupleHash: activeTuple.tupleHash,
+    };
   }
   if (contentSetId) contentSet = await readContentSet({ sourceRoot, contentSetId });
   if (!contentSet && !intent) {
-    const authority = await readContentPublicationAuthority({ sourceRoot, allowLegacy: false });
+    authority = await readContentPublicationAuthority({ sourceRoot, allowLegacy: false });
     contentSet = authority.contentSet;
     contentDataArtifact = authority.artifact;
     activeTuple = authority.tuple;
@@ -432,25 +439,40 @@ async function createContentSetSitePublication({
     error.code = "SITE_PUBLICATION_DATA_PLANE_REQUIRED";
     throw error;
   }
+  assertContentSlotArtifactCompatible(productArtifact.documents.baseSiteArtifact, {
+    registryMode: "legacy",
+    requiredKinds: [...new Set(contentSet.entries.map((entry) => entry.kind))],
+  });
   activeTuple = {
     ...activeTuple,
     manifestUrl: activeTuple.manifestUrl || `/content-data/${contentDataArtifact.contentDataArtifactId}/content-data-manifest.json`,
   };
+  const contentAuthorityManifest = authority?.contentAuthorityManifest
+    || contentAuthorityManifestFromContentSet(contentSet, { contentDataArtifact });
+  const contentAuthorityManifestHash = authority?.contentAuthorityManifestHash
+    || contentDataManifestHash(contentAuthorityManifest);
+  const legacyProductProvenance = authority?.legacyProductProvenance || (activeTuple.schemaVersion === "content-data-active-v1" && activeTuple.productArtifactId
+    ? { productArtifactId: activeTuple.productArtifactId, productArtifactHash: activeTuple.productArtifactHash || null, sourceTupleHash: activeTuple.tupleHash, manifestHash: activeTuple.manifestHash || null }
+    : null);
   const snapshot = createSiteSnapshot({
     productArtifact,
     contentSet,
     contentDataArtifact: {
       contentDataArtifactId: contentDataArtifact.contentDataArtifactId,
       contentDataHash: contentDataArtifact.contentDataHash,
-      manifestHash: activeTuple.manifestHash || null,
+      manifestHash: contentAuthorityManifestHash,
+      contentAuthorityManifestHash,
+      objectRefs: contentDataArtifact.objectRefs,
     },
     activeTuple,
+    legacyProductProvenance,
+    contentAuthorityManifestHash,
     requireContentData: true,
     previousSnapshotId: null,
   });
   if (productArtifact.artifactContractVersion === "product-artifact-v2") {
-    if (!activeTuple.manifestHash || activeTuple.manifestHash !== contentDataManifestHash(snapshot.contentManifest)) {
-      throw new Error("canonical ContentData active tuple manifest hash is required and must bind the public manifest");
+    if (activeTuple.schemaVersion === "content-data-active-v2" && activeTuple.contentAuthorityManifestHash !== contentAuthorityManifestHash) {
+      throw new Error("canonical ContentData active tuple content authority manifest hash is required and must bind the content authority");
     }
   }
   // The adapter may retain immutable source documents for assembly, but every
@@ -471,7 +493,10 @@ async function createContentSetSitePublication({
     contentDataArtifactId: contentDataArtifact.contentDataArtifactId,
     contentDataHash: contentDataArtifact.contentDataHash,
     activeTupleHash: activeTuple.tupleHash,
-    contentDataManifestHash: activeTuple.manifestHash || null,
+    contentDataManifestHash: contentAuthorityManifestHash,
+    contentAuthorityManifestHash,
+    sourceTupleHash: activeTuple.tupleHash,
+    ...(legacyProductProvenance ? { legacyProductProvenance } : {}),
   };
   const runtimeAcceptanceSpec = deriveRuntimeAcceptanceSpec({
     sitePublicationId: id,
@@ -514,7 +539,7 @@ async function createContentSetSitePublication({
       // The immutable data manifest binds the canonical ContentSet manifest;
       // sitePublicationId/snapshotHash are operational fields and must not
       // change the tuple's data identity.
-      manifest: snapshot.contentManifest,
+      contentAuthorityManifest,
     });
     await dataMaterialization.validate();
     await rm(resolvedOutputRoot, { recursive: true, force: true });
@@ -568,6 +593,7 @@ async function createContentSetSitePublication({
     contentDataHash: contentDataArtifact.contentDataHash,
     activeTupleHash: activeTuple.tupleHash,
     activeTuple,
+    contentAuthorityMutation: Boolean(intent),
     expectedPreviousTupleHash: intent?.expectedPreviousTupleHash ?? null,
     ...(intent ? { contentPublicationIntentId: intent.intentId, contentPublicationIntentHash: intent.intentHash } : {}),
     siteSnapshotId: snapshot.siteSnapshotId,

@@ -11,7 +11,7 @@
 // separate flags.  ProductArtifact builds keep content embedding disabled
 // while enabling the HTTP ContentDataArtifact reader.
 const contentRuntimeEnabledFlag = typeof __XINGBUILD_CONTENT_RUNTIME__ !== "undefined" && __XINGBUILD_CONTENT_RUNTIME__;
-const RUNTIME_SCHEMA = "content-data-active-v1";
+const RUNTIME_SCHEMAS = new Set(["content-data-active-v1", "content-data-active-v2"]);
 const MANIFEST_SCHEMA = "content-data-manifest-v1";
 const SHA256 = /^[a-f0-9]{64}$/;
 const runtimeCache = { promise: null, data: null, error: null };
@@ -83,10 +83,11 @@ async function contentDataObjectHash(record) {
 }
 
 function assertActivePayload(active) {
-  if (!active || active.schemaVersion !== RUNTIME_SCHEMA) throw new Error("content data active tuple schemaVersion is invalid");
+  if (!active || !RUNTIME_SCHEMAS.has(active.schemaVersion)) throw new Error("content data active tuple schemaVersion is invalid");
   required(active.contentDataArtifactId, "active.contentDataArtifactId");
   requiredHash(active.contentDataHash, "active.contentDataHash");
   requiredHash(active.tupleHash, "active.tupleHash");
+  if (active.schemaVersion === "content-data-active-v2") requiredHash(active.contentAuthorityManifestHash, "active.contentAuthorityManifestHash");
   required(active.manifestUrl, "active.manifestUrl");
   return active;
 }

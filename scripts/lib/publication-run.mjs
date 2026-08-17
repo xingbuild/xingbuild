@@ -60,6 +60,9 @@ export function createPublicationRun({ siteSnapshot, runtimeAcceptanceSpec = nul
       contentDataHash: siteSnapshot.contentDataArtifact.contentDataHash,
     } : {}),
     ...(siteSnapshot.activeTupleHash ? { activeTupleHash: siteSnapshot.activeTupleHash } : {}),
+    ...(siteSnapshot.contentAuthorityManifestHash ? { contentAuthorityManifestHash: siteSnapshot.contentAuthorityManifestHash } : {}),
+    ...(siteSnapshot.sourceTupleHash ? { sourceTupleHash: siteSnapshot.sourceTupleHash } : {}),
+    ...(siteSnapshot.legacyProductProvenance ? { legacyProductProvenance: siteSnapshot.legacyProductProvenance } : {}),
     ...(runtimeAcceptanceSpec ? {
       runtimeAcceptanceSpec: assertRuntimeAcceptanceSpec(runtimeAcceptanceSpec, {
         sitePublicationId: runtimeAcceptanceSpec.sitePublicationId,
@@ -114,6 +117,8 @@ export function validatePublicationRun(run = {}) {
     throw new Error("PublicationRun contentDataArtifactId is required with contentDataHash");
   }
   if (run.activeTupleHash != null && !/^[a-f0-9]{64}$/.test(run.activeTupleHash)) throw new Error("PublicationRun activeTupleHash must be SHA-256");
+  if (run.contentAuthorityManifestHash != null && !/^[a-f0-9]{64}$/.test(run.contentAuthorityManifestHash)) throw new Error("PublicationRun contentAuthorityManifestHash must be SHA-256");
+  if (run.sourceTupleHash != null && !/^[a-f0-9]{64}$/.test(run.sourceTupleHash)) throw new Error("PublicationRun sourceTupleHash must be SHA-256");
   if (run.runtimeAcceptanceSpec != null) {
     assertRuntimeAcceptanceSpecShape(run.runtimeAcceptanceSpec);
     if (run.runtimeAcceptanceSpec.snapshotHash !== run.snapshotHash || run.runtimeAcceptanceSpec.activeTupleHash !== run.activeTupleHash) throw new Error("PublicationRun RuntimeAcceptanceSpec identity mismatch");

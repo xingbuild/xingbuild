@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   assertActiveContentDataTuple,
   assertContentDataArtifact,
   changedContentDataObjects,
+  contentDataManifestHash,
   contentDataPaths,
   createActiveContentDataTuple,
   createContentDataArtifact,
@@ -14,7 +15,7 @@ import {
   readCanonicalContentSource,
   writeContentDataArtifact,
 } from "./content-data-plane.mjs";
-import { contentManifestFromContentSet, readActiveContentSet, readContentSet, validateContentSet } from "./content-set.mjs";
+import { contentAuthorityManifestFromContentSet, contentManifestFromContentSet, readActiveContentSet, readContentSet, validateContentSet } from "./content-set.mjs";
 import { assertProductArtifactIdentityShape } from "./product-artifact.mjs";
 import { assertSiteSnapshotIdentity, createSiteSnapshot } from "./site-snapshot.mjs";
 import { createPublicationRun } from "./publication-run.mjs";
@@ -76,6 +77,35 @@ async function readPersistedArtifact({ sourceRoot, contentDataArtifactId } = {})
   return assertContentDataArtifact(artifact);
 }
 
+async function readLegacyTupleProvenance({ sourceRoot, tuple, contentSet, artifact } = {}) {
+  const directory = intentDirectory(sourceRoot);
+  const names = await readdir(directory).catch((error) => error.code === "ENOENT" ? [] : (() => { throw error; })());
+  const matches = [];
+  for (const name of names.filter((entry) => entry.endsWith(".json"))) {
+    let candidate;
+    try { candidate = JSON.parse(await readFile(path.join(directory, name), "utf8")); } catch { continue; }
+    const ref = candidate.activeTuple;
+    if (!ref || ref.tupleHash !== tuple.tupleHash) continue;
+    if (ref.contentSetId !== contentSet.contentSetId || ref.contentSetHash !== contentSet.contentSetHash
+      || ref.contentDataArtifactId !== artifact.contentDataArtifactId || ref.contentDataHash !== artifact.contentDataHash) continue;
+    const manifest = candidate.siteSnapshot?.contentManifest;
+    if (!manifest || contentDataManifestHash(manifest) !== tuple.manifestHash) continue;
+    matches.push({
+      sourceIntentId: candidate.intentId || name.replace(/\.json$/, ""),
+      productArtifactId: ref.productArtifactId || candidate.productArtifact?.productArtifactId || null,
+      productArtifactHash: ref.productArtifactHash || candidate.productArtifact?.productArtifactHash || null,
+      manifestHash: tuple.manifestHash,
+    });
+  }
+  if (matches.length !== 1) {
+    const error = new Error("legacy active tuple approved manifest provenance is missing or ambiguous");
+    error.code = "CONTENT_DATA_LEGACY_PROVENANCE_REQUIRED";
+    error.matches = matches.length;
+    throw error;
+  }
+  return matches[0];
+}
+
 export function contentPublicationIntentIdentity(intent = {}) {
   const product = intent.productArtifact ? assertProductArtifactIdentityShape(intent.productArtifact) : null;
   return {
@@ -85,6 +115,8 @@ export function contentPublicationIntentIdentity(intent = {}) {
     contentSet: intent.contentSet ? { contentSetId: intent.contentSet.contentSetId, contentSetHash: intent.contentSet.contentSetHash } : null,
     contentDataArtifact: intent.contentDataArtifact ? artifactRef(intent.contentDataArtifact) : null,
     activeTuple: intent.activeTuple,
+    contentAuthorityManifestHash: intent.contentAuthorityManifestHash || intent.activeTuple?.contentAuthorityManifestHash || intent.activeTuple?.manifestHash || null,
+    legacyProductProvenance: intent.siteSnapshot?.legacyProductProvenance || null,
     expectedPreviousTupleHash: intent.expectedPreviousTupleHash || null,
     siteSnapshot: intent.siteSnapshot ? snapshotRef(intent.siteSnapshot) : null,
     publicationRun: intent.publicationRun,
@@ -117,9 +149,10 @@ function tupleRef(tuple) {
     contentSetHash: tuple.contentSetHash,
     contentDataArtifactId: tuple.contentDataArtifactId,
     contentDataHash: tuple.contentDataHash,
-    productArtifactId: tuple.productArtifactId || null,
-    productArtifactHash: tuple.productArtifactHash || null,
-    manifestHash: tuple.manifestHash || null,
+    ...(tuple.productArtifactId ? { productArtifactId: tuple.productArtifactId } : {}),
+    ...(tuple.productArtifactHash ? { productArtifactHash: tuple.productArtifactHash } : {}),
+    ...(tuple.manifestHash ? { manifestHash: tuple.manifestHash } : {}),
+    ...(tuple.contentAuthorityManifestHash ? { contentAuthorityManifestHash: tuple.contentAuthorityManifestHash } : {}),
     manifestUrl: tuple.manifestUrl || `/content-data/${tuple.contentDataArtifactId}/content-data-manifest.json`,
     tupleHash: tuple.tupleHash,
   };
@@ -171,9 +204,17 @@ export function assertContentPublicationIntent(intent = {}) {
   assertActiveContentDataTuple(intent.activeTuple);
   if (intent.activeTuple.contentSetId !== intent.contentSet.contentSetId || intent.activeTuple.contentSetHash !== intent.contentSet.contentSetHash) throw new Error("ContentPublicationIntent ContentSet tuple drift");
   if (intent.activeTuple.contentDataArtifactId !== intent.contentDataArtifact.contentDataArtifactId || intent.activeTuple.contentDataHash !== intent.contentDataArtifact.contentDataHash) throw new Error("ContentPublicationIntent ContentDataArtifact tuple drift");
-  if (intent.activeTuple.productArtifactId !== intent.productArtifact.productArtifactId || intent.activeTuple.productArtifactHash !== intent.productArtifact.productArtifactHash) throw new Error("ContentPublicationIntent ProductArtifact tuple drift");
+  if (intent.activeTuple.schemaVersion === "content-data-active-v2") {
+    if (!intent.activeTuple.contentAuthorityManifestHash) throw new Error("ContentPublicationIntent content authority manifest hash is required");
+  } else if (intent.activeTuple.productArtifactId && intent.activeTuple.productArtifactHash
+    && intent.siteSnapshot?.legacyProductProvenance == null
+    && (intent.activeTuple.productArtifactId !== intent.productArtifact.productArtifactId || intent.activeTuple.productArtifactHash !== intent.productArtifact.productArtifactHash)) {
+    throw new Error("ContentPublicationIntent legacy tuple provenance is required for ProductArtifact mismatch");
+  }
   assertSiteSnapshotIdentity(intent.siteSnapshot);
   if (intent.siteSnapshot.contentDataArtifact?.contentDataArtifactId !== intent.contentDataArtifact.contentDataArtifactId || intent.siteSnapshot.contentDataArtifact?.contentDataHash !== intent.contentDataArtifact.contentDataHash) throw new Error("ContentPublicationIntent SiteSnapshot data identity drift");
+  const declaredAuthorityHash = intent.contentAuthorityManifestHash || intent.siteSnapshot.contentAuthorityManifestHash || intent.siteSnapshot.contentDataArtifact?.contentAuthorityManifestHash || null;
+  if (declaredAuthorityHash && declaredAuthorityHash !== (intent.activeTuple.contentAuthorityManifestHash || intent.activeTuple.manifestHash || null)) throw new Error("ContentPublicationIntent content authority manifest identity drift");
   if ((intent.siteSnapshot.activeTupleHash || intent.siteSnapshot.activeTuple?.tupleHash) !== intent.activeTuple.tupleHash) throw new Error("ContentPublicationIntent SiteSnapshot tuple identity drift");
   if (intent.publicationRun?.publicationRunId !== intent.siteSnapshot.siteSnapshotId.replace(/^site-snapshot-/, "publication-run-site-snapshot-")) throw new Error("ContentPublicationIntent PublicationRun identity drift");
   const expectedHash = contentPublicationIntentHash(intent);
@@ -206,7 +247,24 @@ export async function readContentPublicationAuthority({ sourceRoot = process.cwd
   if (contentSet.contentSetHash !== tuple.contentSetHash) throw new Error("ContentData active tuple ContentSet hash drift");
   const artifact = await readPersistedArtifact({ sourceRoot, contentDataArtifactId: tuple.contentDataArtifactId });
   if (artifact.contentDataHash !== tuple.contentDataHash || artifact.contentSetId !== contentSet.contentSetId || artifact.contentSetHash !== contentSet.contentSetHash) throw new Error("ContentData active tuple artifact identity drift");
-  return { mode: "tuple", tuple, pointer: tuple, contentSet, artifact };
+  const contentAuthorityManifest = contentAuthorityManifestFromContentSet(contentSet, { contentDataArtifact: artifact });
+  const contentAuthorityManifestHash = contentDataManifestHash(contentAuthorityManifest);
+  if (tuple.schemaVersion === "content-data-active-v2") {
+    if (tuple.contentAuthorityManifestHash !== contentAuthorityManifestHash) throw new Error("ContentData active tuple content authority manifest drift");
+    return { mode: "tuple", tuple, pointer: tuple, contentSet, artifact, contentAuthorityManifest, contentAuthorityManifestHash, sourceTupleHash: tuple.tupleHash, legacyProductProvenance: null };
+  }
+  const legacyProductProvenance = await readLegacyTupleProvenance({ sourceRoot, tuple, contentSet, artifact });
+  return {
+    mode: "legacy-tuple",
+    tuple,
+    pointer: tuple,
+    contentSet,
+    artifact,
+    contentAuthorityManifest,
+    contentAuthorityManifestHash,
+    sourceTupleHash: tuple.tupleHash,
+    legacyProductProvenance,
+  };
 }
 
 function expectedLegacyContentHashes(entry, source, media = null) {
@@ -234,7 +292,7 @@ async function readPracticeMedia(sourceRoot, entry) {
  */
 export async function resolveLegacyContentDataBaseline({ sourceRoot = process.cwd(), persist = false } = {}) {
   const active = await readContentPublicationAuthority({ sourceRoot, allowLegacy: true });
-  if (active.mode === "tuple") return { ...active, baseline: false, persisted: true };
+  if (active.mode === "tuple" || active.mode === "legacy-tuple") return { ...active, baseline: false, persisted: true };
   const { contentSet } = active;
   validateContentSet(contentSet);
   assertApprovedContentSet(contentSet);
@@ -296,14 +354,17 @@ export async function createContentPublicationIntent({
   // SitePublication adds operational fields such as siteSnapshotId.  Keeping
   // this input stable lets the tuple bind the immutable public manifest
   // without a circular snapshot/tuple dependency.
+  const authorityManifest = manifest?.schemaVersion === "content-authority-manifest-v1"
+    ? manifest
+    : contentAuthorityManifestFromContentSet(contentSet, { contentDataArtifact: contentDataArtifact });
   const manifestIdentity = manifest || contentManifestFromContentSet(contentSet, { productArtifact: normalizedProductArtifact });
   const expectedManifestUrl = `/content-data/${contentDataArtifact.contentDataArtifactId}/content-data-manifest.json`;
   const tuple = activeTuple
     ? { ...activeTuple, manifestUrl: activeTuple.manifestUrl || expectedManifestUrl }
-    : createActiveContentDataTuple({ contentSet, artifact: contentDataArtifact, productArtifact: normalizedProductArtifact, manifest: manifestIdentity });
+    : createActiveContentDataTuple({ contentSet, artifact: contentDataArtifact, productArtifact: normalizedProductArtifact, manifest: manifestIdentity, contentAuthorityManifest: authorityManifest });
   assertActiveContentDataTuple(tuple);
   if (tuple.manifestUrl !== expectedManifestUrl) throw new Error("ContentPublicationIntent active tuple manifest URL drift");
-  if (tuple.productArtifactId !== normalizedProductArtifact.productArtifactId || tuple.productArtifactHash !== normalizedProductArtifact.productArtifactHash) throw new Error("ContentPublicationIntent ProductArtifact identity mismatch");
+  const authorityHash = tuple.contentAuthorityManifestHash || tuple.manifestHash || contentDataManifestHash(authorityManifest);
   let expected = expectedPreviousTupleHash;
   if (expected === undefined) expected = previousTuple?.tupleHash;
   if (expected === undefined) {
@@ -318,9 +379,15 @@ export async function createContentPublicationIntent({
     contentDataArtifact: {
       contentDataArtifactId: contentDataArtifact.contentDataArtifactId,
       contentDataHash: contentDataArtifact.contentDataHash,
-      manifestHash: tuple.manifestHash,
+      manifestHash: authorityHash,
+      contentAuthorityManifestHash: authorityHash,
+      objectRefs: contentDataArtifact.objectRefs,
     },
     activeTuple: tuple,
+    contentAuthorityManifestHash: authorityHash,
+    legacyProductProvenance: tuple.schemaVersion === "content-data-active-v1" && tuple.productArtifactId
+      ? { productArtifactId: tuple.productArtifactId, productArtifactHash: tuple.productArtifactHash || null, sourceTupleHash: tuple.tupleHash, manifestHash: tuple.manifestHash || null }
+      : null,
     requireContentData: true,
     createdAt,
   });
@@ -332,6 +399,7 @@ export async function createContentPublicationIntent({
     contentSet: contentSetRef(contentSet),
     contentDataArtifact: { ...artifactRef(contentDataArtifact), records: contentDataArtifact.records, objectRefs: contentDataArtifact.objectRefs, provenance: contentDataArtifact.provenance },
     activeTuple: tupleRef(tuple),
+    contentAuthorityManifestHash: authorityHash,
     expectedPreviousTupleHash: expected || null,
     siteSnapshot: snapshot,
     publicationRun: runRef({ ...publicationRun, activeTupleHash: tuple.tupleHash }),

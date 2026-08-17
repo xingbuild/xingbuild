@@ -6,7 +6,8 @@ import { profile } from "./profileRepository.js";
 import { site } from "./siteContent.js";
 import { home } from "./homeContentAdapter.js";
 import { normalizeLongFormDocument } from "./longFormDocument.js";
-import { contentDataRuntimeEnabled, resolveRuntimeContentData } from "./contentDataArtifact.js";
+import { resolveRuntimeContentData } from "./contentDataArtifact.js";
+import { projectRuntimePractice, resolveRuntimeObservationBriefs } from "./runtimeContentProjection.js";
 
 const contentResolvers = Object.freeze({
   home: (reference) => reference.id === "home" ? home : null,
@@ -31,7 +32,13 @@ function runtimeLogicalContentId(reference) {
 }
 
 function resolveRuntimeReference(reference, runtimeData = null) {
-  if (!contentDataRuntimeEnabled()) return { enabled: false, value: null };
+  if (!runtimeData) return { enabled: false, value: null };
+  if (reference?.type === "observationBriefs") {
+    return {
+      enabled: true,
+      value: resolveRuntimeObservationBriefs({ data: runtimeData, scope: reference.scope }),
+    };
+  }
   const logicalContentId = runtimeLogicalContentId(reference);
   if (!logicalContentId) return { enabled: true, value: null };
   const resolved = resolveRuntimeContentData({ logicalContentId, data: runtimeData });
@@ -44,8 +51,11 @@ export function resolvePageContent(definition, { runtimeData = null } = {}) {
   for (const [key, reference] of Object.entries(definition.contentRefs)) {
     const resolver = contentResolvers[reference.type];
     const runtime = resolveRuntimeReference(reference, runtimeData);
-    const value = runtime.enabled && runtimeLogicalContentId(reference)
-      ? runtime.value
+    const runtimeValue = reference.type === "practice"
+      ? projectRuntimePractice(runtime.value)
+      : runtime.value;
+    const value = runtime.enabled && (runtimeLogicalContentId(reference) || reference.type === "observationBriefs")
+      ? runtimeValue
       : resolver?.(reference);
     const resolved = reference.type === "observationBriefs" && !Array.isArray(value) ? [] : value ?? null;
     content[key] = ["profile", "evergreenArticle"].includes(reference.type) && resolved

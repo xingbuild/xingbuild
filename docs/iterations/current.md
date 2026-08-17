@@ -1,77 +1,83 @@
 # 当前迭代
 
-## 当前唯一版本：`v0.28.4`
+## 当前唯一版本：`v0.28.5`
 
-父版本：v0.28.3 / `85e8c3d080f998449a4fefb0c8429b1e27beb36e`
+父版本：v0.28.4 / `b23d76a567645b222605a3944611825a7441db00`
 
-parentStatus: local-closure-complete-deployment-success-publication-unfinalized
-contentImpact: compatible-public-runtime-readiness-and-same-deployment-recovery
-contentImpactReason: prevent-fallback-shell-from-being-captured-as-final-runtime-and-recover-existing-v0283-publication-without-redeploy
-affectedTargets: [home:home]
-affectedRoutes: [/]
-affectedFields: [runtimeAcceptanceSpec, publicRuntimeVerification, publicationRecovery]
-compatibilityEvidence: public-release-content-data-identities-exact-runtime-eventually-converges-existing-deployment-count-one-active-tuple-unchanged
+parentStatus: local-closure-complete-product-publish-blocked-pre-transport
+contentImpact: compatible-authority-boundary-correction
+contentImpactReason: product-upgrade-must-reuse-active-content-without-rebinding-or-mutating-content-authority
+affectedTargets: []
+affectedRoutes: [/, /products, /business-observations, /observations, /observations/:slug, /about, /robots.txt, /sitemap.xml]
+affectedFields: [activeContentDataTuple, contentAuthorityManifest, siteSnapshotComposition, qaBrowserSession, runtimeObservationCollection, runtimePracticeMedia, runtimeLoadingState, publicCrawlerFiles]
+compatibilityEvidence: active-content-bytes-unchanged-current-product-exact-public-snapshot-one-browser-per-qa-batch
 
 ## 已确认事实
 
-v0.28.3 已完成 local commit/tag/build/preflight，随后 `elon ops` 通过唯一 Site Publication Coordinator 提交了首页内容差异。部署 `dpgr0trnxfcv` 的平台状态为 success；公网 `release.json`、`content-manifest.json`、`content-data/active.json`、immutable ContentDataArtifact 和最终首页文案均与同一 `SitePublication` 一致。
+v0.28.4 已完成 exact Candidate、ApprovalRecord、commit/tag、ProductArtifact 与 preflight；随后 v0.28.3 既有内容事故使用同一 deployment `dpgr0trnxfcv`、`transportCalls=0` 完成公网验证和 active tuple CAS。v0.28.4 产品 publish 在 transport 前被 Coordinator 正确阻断，没有创建 deployment。
 
-正式 `publicVerify` 仍失败，原因不是 EdgeOne 目标、ProductArtifact、ContentSet、ContentDataArtifact 或 transport 身份错误，而是浏览器验收时序错误：
+阻断不是内容不兼容，而是对象边界错误：当前 `content-data-active.json` 的 tuple 同时保存 `ContentSet + ContentDataArtifact + ProductArtifact`，其 `manifestHash` 也来自带 ProductArtifact 字段的 content manifest。`SiteSnapshot` 又要求 tuple 的 ProductArtifact 与当前产品 exact 相等。因此任何产品升级都会被迫重建或改写内容 active authority，违反既有“产品更新复用 active ContentSet/CDA、产品发布不写内容 active”的正式架构。
 
-- `publication-runtime.mjs` 只等待 `#root/main/h1` 存在便立即取样；
-- 页面先同步渲染 repository fallback，再异步读取 active pointer、artifact manifest 和 38 个 immutable object；
-- 实测 0～750ms 仍是 fallback 首页，约 1750ms 后才切换为 approved runtime 首页；
-- 因此正式 verifier 把“应用壳已出现”误当成“发布内容已就绪”，并以旧 H1 形成失败证据。
-
-当前 `SitePublication`、`PublicationRun` 和唯一 deployment 必须原样保留；旧 active ContentSet 保持不变，`content-data-active.json` 尚未在本地激活。v0.28.4 只修复验收和恢复能力，不重新发布内容。
-
-既有 v0.28.3 事故记录早于 `RuntimeAcceptanceSpec`：当前持久化事实为 `SitePublication.state=failed`、`failure.phase=verified`、`runtimeAcceptanceSpec=null`，而 `PublicationRun.state=failed`、`deploymentCount=1`、`publicVerify=null`。v0.28.4 的恢复合同必须直接消费这组真实字节；只支持由 v0.28.4 新建的 `recoverable + runtimeAcceptanceSpec` 测试记录不算完成。
+独立 QA 资源诊断同时确认：runtime/fault matrix 以多个子进程逐场景启动系统 Google Chrome；清理可以成功，但一次候选会高频创建多个 Dock Chrome 实例。隔离 worktree 原型已证明一个 Chrome 进程可串行服务多个独立 BrowserContext，并在结束后清理 owned profile/process；该原型尚未进入 canonical，也不是可直接合并的实现事实。
 
 ## 正式方案
 
-[v0.28.4 公网内容 Runtime Ready 与同一 Deployment 恢复方案](../design/v0.28.4%20%E5%85%AC%E7%BD%91%E5%86%85%E5%AE%B9%20Runtime%20Ready%20%E4%B8%8E%E5%90%8C%E4%B8%80%20Deployment%20%E6%81%A2%E5%A4%8D%E6%96%B9%E6%A1%88.md)
+[v0.28.5 内容 Authority 与产品 SiteSnapshot 解耦及 QA Browser 单会话方案](../design/v0.28.5%20%E5%86%85%E5%AE%B9%20Authority%20%E4%B8%8E%E4%BA%A7%E5%93%81%20SiteSnapshot%20%E8%A7%A3%E8%80%A6%E5%8F%8A%20QA%20Browser%20%E5%8D%95%E4%BC%9A%E8%AF%9D%E6%96%B9%E6%A1%88.md)
 
 ```mermaid
 flowchart LR
-    A["应用壳可见\nShell Ready"] --> B["继续等待发布声明的\nRuntimeAcceptanceSpec"]
-    B --> C{"目标路由与目标字段\n是否 exact match?"}
-    C -->|否且仍在时限内| B
-    C -->|超时或读取失败| D["同一 Publication 可恢复\n旧 active 不变"]
-    C -->|是| E["生成最终 browser evidence"]
-    E --> F["复用 dpgr0trnxfcv\n零新 deployment"]
-    F --> G["Coordinator finalize\nactive tuple CAS"]
+    CS["ContentSet"] --> CA["Content Authority\nContentSet + CDA + content-only tuple"]
+    CDA["ContentDataArtifact"] --> CA
+    PA["Current ProductArtifact"] --> SS["SiteSnapshot\nphysical composition"]
+    CA --> SS
+    SS --> CO["Coordinator\none deployment + public verify"]
+    CO -->|"product publish"| KEEP["active content bytes unchanged"]
+    CO -->|"content publish verified"| CAS["content-only tuple CAS"]
 ```
 
 ## 实施范围
 
-- 新增单一 `RuntimeAcceptanceSpec`，由既有 `ContentPublicationIntent`/`SiteSnapshot` 的 approved 内容值确定性派生；它只声明浏览器最终必须观察到的 route、target、selector、normalized value hash，不成为第二套内容事实。
-- 浏览器 verifier 明确区分 `shellReady` 与 `runtimeReady`。只有全部声明 expectation exact match 后，才允许记录 route 的最终 DOM 证据并进入 finalize。
-- readiness 必须采用有界条件等待与明确 timeout/abort；不得使用固定 sleep、单纯 `networkidle`、cache-buster 或“任意 H1 非空”作为成功条件。
-- release/content/data/immutable object/ProductArtifact 等公网身份继续独立 exact 校验；DOM readiness 不能替代身份验证，身份验证也不能替代最终 DOM 验收。
-- 为已经存在的 v0.28.3 SitePublication 增加正式 recovery：读取同一 publication/run/deployment，确认平台 deployment success 和全部 immutable identity 后，跳过 transport，只生成新的 verification attempt；成功后仍由 Coordinator 执行唯一 active tuple CAS。恢复分类以成功 deployment、唯一 deployment count、缺失 publicVerify、失败 evidence 和未激活 tuple 的组合事实为准，不以 `failure.phase` 字符串前缀代替状态判断。
-- 新 publication 必须持久化 `RuntimeAcceptanceSpec`；仅对上述 exact v0.28.3 事故身份允许兼容适配：从其已持久化且 identity exact 的 `contentManifest` 确定性派生 spec，禁止 CLI/测试传入 expected 文本，并在 recovery attempt 中记录派生 spec/hash。其他缺失 spec 的 data-plane publication 一律 hard fail。
-- recovery 必须证明 `deploymentId=dpgr0trnxfcv`、deployment count=1、transport calls=0；禁止新建 SitePublication、PublicationRun、SiteSnapshot、ContentSet、ContentDataArtifact 或第二 deployment。
-- 增加真实慢速数据面测试：fallback H1 先出现，38 个 object 延迟超过 1 秒后 runtime 才收敛；正式 verifier 必须等待并取到 approved H1。另覆盖永不收敛、错误文本、object 失败、expectation identity 混用、timeout/abort、证据篡改和 cache recovery。
-- v0.28.4 先完成正常 Candidate → Approval → local commit/tag/build/preflight。local closure 后先恢复并 finalize 既有 v0.28.3 publication，再允许 v0.28.4 ProductArtifact 进入独立产品发布；两个物理发布事实不得混写。
+- 将 active content authority 固定为 `ContentSet + ContentDataArtifact + content-only manifest/tuple`；ProductArtifact 只属于 ContentPublicationIntent 的兼容输入和 SiteSnapshot 的物理组合身份，不属于 active tuple。
+- 新 canonical tuple 不再写 `productArtifactId/productArtifactHash`；`manifestHash` 只计算 product-independent content authority manifest。未来产品升级不得改变 tupleHash 或 active pointer。
+- 既有 v0.28.3 active tuple 保持字节不可变。只读 legacy adapter 必须先验证原 tuple hash、ContentSet、CDA、objects 和旧 manifest provenance，再投影 content authority 供新 SiteSnapshot 组合；旧 ProductArtifact 字段只作 provenance，不再作为当前产品相等条件。
+- `SiteSnapshot` 继续使用 `site-snapshot-v1`，独立保存当前 ProductArtifact identity 与 active content references；不得创建第二个 snapshot authority 或 `site-snapshot-v2`。
+- 产品 publish 读取当前 ProductArtifact 和 active content authority，做 capability/slot/schema 兼容检查后组装 SiteSnapshot；公网验证成功不写 `content-data-active.json`。内容 publish 才能在同一 PublicationRun 公网验证后 CAS 新 content-only tuple。
+- ProductArtifact 不兼容、ContentSet/CDA/object/hash 漂移、legacy provenance 不可复算、active CAS 冲突仍 hard fail；禁止以忽略 identity 的方式放宽门禁。
+- QA browser 建立单一 batch session：一个 owning Node process、一个系统 Chrome、一个全局 filesystem lease；每个场景使用新的隔离 BrowserContext并串行执行。
+- browser session 统一处理 timeout、AbortSignal、SIGINT/SIGTERM/SIGHUP、context close、browser/process-group close、profile cleanup 和 lease release；machine receipt 记录 launch/context/peak/cleanup 计数。
+- runtime QA runner 不再为每个 browser 场景启动新的 `node --test`/Chrome。每个设计场景仍有独立 machine row、正式生产入口和 outputHash；非 browser fault 可以保持定向子进程，但不得隐式启动 Chrome。
+- canonical Candidate 正向链必须从 exact staged tree 和当前 v0.28.3 active content bytes 构造隔离发布，证明新 ProductArtifact 可复用旧 active 内容且 active bytes before/after exact；Candidate 阶段不 transport、不写 canonical content authority。
+- 旧站只做最后一次可用性稳定化：运行时 observation records 必须投影到首页、经营观察侧栏和 `/observations` 集合；已发布 observation slug 必须从同一 CDA 解析；Robotaxi 模块必须投影当前已批准且公网存在的唯一媒体；runtime 尚未 ready 时只显示加载状态，不得先显示“暂无已发布内容”。
+- `robots.txt` 与 `sitemap.xml` 必须作为真实静态文件进入 ProductArtifact，禁止继续由 SPA HTML fallback 冒充成功响应。
 
 ## 明确不做
 
-- 不修改首页正文、媒体、ContentSet Candidate、ContentDataArtifact、ContentPublicationIntent 或 Xing 已确认的内容差异。
-- 不修改、amend、移动或重打 v0.28.3 commit/tag/ApprovalRecord/ProductArtifact。
-- 不重试 v0.28.3 transport，不创建第二 deployment，不手工写 active pointer，不手工 finalize。
-- 不通过固定等待时长、无限轮询、全局 network idle、浏览器缓存规避或重复部署掩盖 readiness 缺陷。
-- 不优化或重构 38 个 object 的读取性能；本版本只纠正“何时可判定发布完成”的责任边界。
-- 不发布其他 pending 内容，不清理历史 SitePublication、PublicationRun、receipts 或 artifacts。
+- 不修改首页正文、媒体、ContentSet、ContentDataArtifact、现有 active tuple、SitePublication、PublicationRun 或任何线上内容事实。
+- 不 amend、移动或重打 v0.28.4 及更早 commit/tag/ApprovalRecord/ProductArtifact。
+- 不把 legacy ProductArtifact binding 静默删除或回写 active pointer；兼容只读、可复算、可拒绝。
+- 不创建第二套 ContentAuthority 数据库、registry、event bus、SiteSnapshot schema 或发布器。
+- 不以关闭 Chrome、隐藏 Dock 图标、固定 sleep 或放宽 cleanup 断言代替 browser lifecycle 修复。
+- 不直接 merge `/private/tmp/xingbuild-qa-browser-session-v0285`；只允许 Engineering 对照正式方案审阅后移植必要实现。
+- 不新增页面、栏目、内容、媒体或视觉功能；本次公网逐页通过后，旧站进入冻结状态，不再继续产品迭代。
+- Candidate/Approval 前不 commit/tag/build/preflight/transport/content publish/EdgeOne；不发布其他 pending 内容。
 
 ## 固定验收合同
 
-1. `RR-01 One declared acceptance`：`RuntimeAcceptanceSpec` 由同一 ContentPublicationIntent/SiteSnapshot 确定性派生并绑定其 identity；手工传入、跨 publication 混用或 hash 漂移必须 hard fail。新 publication 缺失 spec 必须 hard fail；唯一例外是 exact v0.28.3 事故适配，它只能从旧记录已经持久化的 approved `contentManifest` 派生，并把 spec/hash 写入新的 recovery attempt evidence。
-2. `RR-02 Two readiness states`：证据分别记录 `shellReadyAt` 与 `runtimeReadyAt`；仅 shell ready、fallback H1 或任意非空 H1 永远不能形成 verified 结果。
-3. `RR-03 Exact runtime observation`：`/` 的 `home:home` expectation 以 approved normalized value/hash 为准；browser evidence 保存 observed normalized value/hash、匹配结果和完成时间。
-4. `RR-04 Bounded convergence`：verifier 在统一 deadline、abort signal 和单 route budget 下条件等待；成功、timeout、读取失败与中止都有确定错误码、最终证据和 QA browser cleanup。
-5. `RR-05 Identity remains independent`：release/content/data manifests、immutable object、ProductArtifact、SiteSnapshot、active tuple 与固定 EdgeOne target 继续 exact 校验；DOM 成功不得覆盖任何 identity 失败。
-6. `RR-06 Delayed-runtime proof`：正式入口测试必须真实呈现 fallback shell，并让 data-plane object 延迟超过 1 秒；旧实现应在该场景失败，新实现只能在 approved 文案出现后 PASS。永不收敛、错误文案和 object failure 必须 FAIL。
-7. `RR-07 Same-deployment recovery`：正式测试必须复制现有 v0.28.3 publication/run/deployment 的真实持久化形状（包括 `state=failed`、`failure.phase=verified`、`runtimeAcceptanceSpec=null`），执行 recovery 后精确复用 `dpgr0trnxfcv`，`deploymentCount=1`、`transportCalls=0`，追加 verification attempt 而不改写历史失败证据。由 v0.28.4 新建 publication 再注入故障的测试只能作为一般回归，不能替代该验收。
-8. `RR-08 Coordinator-only finalize`：恢复成功后只由 Coordinator 以 `expectedPreviousTupleHash=null` 完成 active tuple CAS；验证前后旧 active 事实不变，CAS 冲突、证据缺失或重复 finalize 均保持原子与幂等。
-9. `RR-09 Phase ordering`：v0.28.4 local closure、v0.28.3 same-deployment recovery/finalize、v0.28.4 独立产品 publish 是三个可区分阶段；前一阶段未完成不得冒充后一阶段。
-10. `RR-10 One Engineering delivery`：Engineering 只回传一个覆盖 RR-01～RR-09 的未提交 exact CandidateIdentity；批准前不得 canonical commit/tag/final build/preflight/transport，测试不得写 canonical content/publication/active facts。
+1. `CA-01 Authority boundary`：active tuple 的 canonical identity 仅含 ContentSet、CDA、content-only manifest；新 tuple 不得含 ProductArtifact 字段。
+2. `CA-02 Legacy read-only adapter`：当前 v0.28.3 active tuple bytes/hash before/after exact；旧 product binding 只作 provenance，任一原始 hash/object/manifest 漂移 hard fail。
+3. `CA-03 Product reuse`：用 v0.28.5 ProductArtifact + 当前 legacy active content 生成合法 `site-snapshot-v1`；不生成 ContentSet/CDA/tuple，不写 active pointer。
+4. `CA-04 Content independence`：未来 content intent 生成 content-only candidate tuple；内容 publish 仍只在公网 exact verified 后 CAS，失败保持旧 authority。
+5. `CA-05 Manifest separation`：content authority manifest hash 不含产品字段；公网 content manifest 可引用当前 ProductArtifact，但必须与相同 ContentSet/CDA/object identity 交叉验证。
+6. `CA-06 Compatibility gate`：产品只通过 capability/slot/schema 合同判断内容兼容；incompatible/unknown、legacy 不可复算、cross-mix 均在 transport 前拒绝。
+7. `CA-07 Exact product publication chain`：隔离链使用 exact staged tree、真实 ProductArtifact build、当前 active content 只读副本、Coordinator、固定目标模拟、一次 deployment 和 public verifier；active content bytes 零变化。
+8. `CA-08 One authority`：正常运行只读 `content-data-active.json`；legacy adapter 不写、不迁移、不成为第二 active 判定，SiteSnapshot 仍为 v1。
+9. `BR-01 One browser per batch`：正式 runtime QA batch 的 `browserLaunchCount=1`，所有 browser 场景使用同一 browser process；不得逐场景启动 Chrome。
+10. `BR-02 Isolated contexts`：每个场景新建/关闭 BrowserContext，`peakContextCount=1`，cookie/storage/page/console 状态不串场。
+11. `BR-03 Global lease`：并行 batch 在启动 Chrome 前被 lease 串行或有界拒绝；stale lease 只有 owner 已死且 TTL 到期才可清理。
+12. `BR-04 Bounded cleanup`：成功、assert fail、timeout、abort 和 signal 后 `ownedProcessCount=0`、profile removed、lease released；禁止终止未知 Chrome。
+13. `BR-05 Machine receipt`：证据记录 browser PID、launch/context/peak、lease wait、deadline、cleanup、场景 outputHash；无计数或残留不能 PASS。
+14. `BR-06 Formal integration`：一次正式 candidate gate 证明 CA 与 BR 全部通过，完整 `test:sites` 继续按 A/B/C 分类，C 必须为0；Engineering 只回传一个新 CandidateIdentity。
+15. `FS-01 Runtime collections`：33 条 active observation records 能被集合页、首页和经营观察侧栏读取；任一 active observation slug 不得因构建时仓库为空而进入 NotFound。
+16. `FS-02 Approved media`：Robotaxi 运行时 practice 的 `mediaId` 必须投影到已批准公网 MP4，页面不得在资产 200 时显示“暂无可用媒体”。
+17. `FS-03 Honest loading`：CDA 未 ready 时显示明确 loading；不得把等待过程表述成没有已发布内容。
+18. `FS-04 Public access files`：五个 canonical 页面、简历、Robotaxi 外链、媒体、`robots.txt` 与 `sitemap.xml` 均需真实公网验证，crawler 文件 MIME/内容不得是 SPA HTML。

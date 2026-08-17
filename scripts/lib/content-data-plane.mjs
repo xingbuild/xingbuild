@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { cp, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { readActiveContentSet, validateContentSet } from "./content-set.mjs";
+import { contentAuthorityManifestFromContentSet, readActiveContentSet, validateContentSet } from "./content-set.mjs";
 import { createContentChangeSet, assertContentChangeSet } from "./content-lifecycle-governance.mjs";
 
 /**
@@ -14,6 +14,7 @@ import { createContentChangeSet, assertContentChangeSet } from "./content-lifecy
 export const CONTENT_DATA_ARTIFACT_SCHEMA_VERSION = "content-data-artifact-v1";
 export const CONTENT_DATA_OBJECT_SCHEMA_VERSION = "content-data-object-v1";
 export const CONTENT_DATA_ACTIVE_SCHEMA_VERSION = "content-data-active-v1";
+export const CONTENT_DATA_ACTIVE_SCHEMA_VERSION_V2 = "content-data-active-v2";
 export const CONTENT_ONLY_RECEIPT_SCHEMA_VERSION = "content-only-receipt-v1";
 export const CONTENT_DATA_MANIFEST_SCHEMA_VERSION = "content-data-manifest-v1";
 
@@ -355,6 +356,16 @@ export async function writeContentDataArtifact({ sourceRoot = process.cwd(), art
 }
 
 export function activeContentDataTupleIdentity(tuple) {
+  if (tuple.schemaVersion === CONTENT_DATA_ACTIVE_SCHEMA_VERSION_V2) {
+    return {
+      schemaVersion: CONTENT_DATA_ACTIVE_SCHEMA_VERSION_V2,
+      contentSetId: tuple.contentSetId,
+      contentSetHash: tuple.contentSetHash,
+      contentDataArtifactId: tuple.contentDataArtifactId,
+      contentDataHash: tuple.contentDataHash,
+      contentAuthorityManifestHash: tuple.contentAuthorityManifestHash,
+    };
+  }
   return {
     schemaVersion: CONTENT_DATA_ACTIVE_SCHEMA_VERSION,
     contentSetId: tuple.contentSetId,
@@ -369,31 +380,57 @@ export function activeContentDataTupleIdentity(tuple) {
 
 export function activeContentDataTupleHash(tuple) { return hash(activeContentDataTupleIdentity(tuple)); }
 
-export function createActiveContentDataTuple({ contentSet, artifact, productArtifact = null, manifest = null } = {}) {
+export function createActiveContentDataTuple({ contentSet, artifact, productArtifact = null, manifest = null, contentAuthorityManifest = null, legacy = false } = {}) {
   validateContentSet(contentSet);
   assertContentDataArtifact(artifact);
   if (artifact.contentSetId !== contentSet.contentSetId || artifact.contentSetHash !== contentSet.contentSetHash) throw new Error("ContentDataArtifact ContentSet identity mismatch");
+  if (legacy) {
+    const legacyTuple = {
+      ...activeContentDataTupleIdentity({
+        schemaVersion: CONTENT_DATA_ACTIVE_SCHEMA_VERSION,
+        contentSetId: contentSet.contentSetId,
+        contentSetHash: contentSet.contentSetHash,
+        contentDataArtifactId: artifact.contentDataArtifactId,
+        contentDataHash: artifact.contentDataHash,
+        productArtifactId: productArtifact?.productArtifactId || null,
+        productArtifactHash: productArtifact?.productArtifactHash || null,
+        manifestHash: manifest ? hash(manifest) : null,
+      }),
+      manifestUrl: `/content-data/${artifact.contentDataArtifactId}/content-data-manifest.json`,
+    };
+    return { ...legacyTuple, tupleHash: activeContentDataTupleHash(legacyTuple), updatedAt: new Date().toISOString() };
+  }
+  const authorityManifest = contentAuthorityManifest || contentAuthorityManifestFromContentSet(contentSet, { contentDataArtifact: artifact });
+  const authorityHash = contentDataManifestHash(authorityManifest);
   const tuple = {
     ...activeContentDataTupleIdentity({
+      schemaVersion: CONTENT_DATA_ACTIVE_SCHEMA_VERSION_V2,
       contentSetId: contentSet.contentSetId,
       contentSetHash: contentSet.contentSetHash,
       contentDataArtifactId: artifact.contentDataArtifactId,
       contentDataHash: artifact.contentDataHash,
-      productArtifactId: productArtifact?.productArtifactId || null,
-      productArtifactHash: productArtifact?.productArtifactHash || null,
-      manifestHash: manifest ? hash(manifest) : null,
+      contentAuthorityManifestHash: authorityHash,
     }),
+    // Deprecated read-only alias for v0.28.x callers. It is not in tuple
+    // identity and never carries ProductArtifact provenance.
+    manifestHash: authorityHash,
     manifestUrl: `/content-data/${artifact.contentDataArtifactId}/content-data-manifest.json`,
   };
   return { ...tuple, tupleHash: activeContentDataTupleHash(tuple), updatedAt: new Date().toISOString() };
 }
 
 export function assertActiveContentDataTuple(tuple = {}) {
-  if (tuple.schemaVersion !== CONTENT_DATA_ACTIVE_SCHEMA_VERSION) throw new Error("ContentData active tuple schemaVersion is invalid");
+  if (![CONTENT_DATA_ACTIVE_SCHEMA_VERSION, CONTENT_DATA_ACTIVE_SCHEMA_VERSION_V2].includes(tuple.schemaVersion)) throw new Error("ContentData active tuple schemaVersion is invalid");
   for (const field of ["contentSetId", "contentDataArtifactId"]) required(tuple[field], field);
   for (const field of ["contentSetHash", "contentDataHash"]) sha(tuple[field], field);
-  if (tuple.productArtifactHash != null) sha(tuple.productArtifactHash, "productArtifactHash");
-  if (tuple.manifestHash != null) sha(tuple.manifestHash, "manifestHash");
+  if (tuple.schemaVersion === CONTENT_DATA_ACTIVE_SCHEMA_VERSION_V2) {
+    sha(tuple.contentAuthorityManifestHash, "contentAuthorityManifestHash");
+    if (tuple.productArtifactId != null || tuple.productArtifactHash != null) throw new Error("content-only active tuple cannot carry ProductArtifact identity");
+    if (tuple.manifestHash != null && tuple.manifestHash !== tuple.contentAuthorityManifestHash) throw new Error("content-only active tuple manifestHash alias drift");
+  } else {
+    if (tuple.productArtifactHash != null) sha(tuple.productArtifactHash, "productArtifactHash");
+    if (tuple.manifestHash != null) sha(tuple.manifestHash, "manifestHash");
+  }
   sha(tuple.tupleHash, "tupleHash");
   if (activeContentDataTupleHash(tuple) !== tuple.tupleHash) throw new Error("ContentData active tuple hash drift");
   if (tuple.manifestUrl != null) required(tuple.manifestUrl, "manifestUrl");
@@ -613,7 +650,8 @@ export async function validateContentDataMaterialization({ root, artifact, activ
   const dataManifest = JSON.parse(await readFile(manifestFile, "utf8"));
   assertActiveContentDataTuple(active);
   if (active.tupleHash !== activeTuple.tupleHash || active.contentDataArtifactId !== artifact.contentDataArtifactId) throw new Error("prepared active tuple identity drift");
-  if (dataManifest.contentDataHash !== artifact.contentDataHash || dataManifest.manifestHash !== hash(manifest || artifact.records.map(normalizedRecord))) throw new Error("prepared content manifest identity drift");
+  const expectedManifestHash = activeTuple.contentAuthorityManifestHash || activeTuple.manifestHash || hash(manifest || artifact.records.map(normalizedRecord));
+  if (dataManifest.contentDataHash !== artifact.contentDataHash || dataManifest.manifestHash !== expectedManifestHash) throw new Error("prepared content manifest identity drift");
   const artifactFile = path.join(root, "content-data", artifact.contentDataArtifactId, "content-data-artifact.json");
   const artifactReadback = assertContentDataArtifact(JSON.parse(await readFile(artifactFile, "utf8")));
   const files = [await materializationFile(root, path.relative(root, activeFile)), await materializationFile(root, path.relative(root, manifestFile)), await materializationFile(root, path.relative(root, artifactFile))];
@@ -653,7 +691,7 @@ export async function activateContentDataMaterialization({ root, validation, fai
 }
 
 /** Materialization is explicitly temporary and never becomes a durable publication identity. */
-export async function prepareContentOnlyMaterialization({ productClient, sourceRoot = process.cwd(), artifact, activeTuple, contentSet, productArtifact = null, manifest = null, failPhase = null } = {}) {
+export async function prepareContentOnlyMaterialization({ productClient, sourceRoot = process.cwd(), artifact, activeTuple, contentSet, productArtifact = null, manifest = null, contentAuthorityManifest = null, failPhase = null } = {}) {
   assertContentDataArtifact(artifact);
   assertActiveContentDataTuple(activeTuple);
   const root = await mkdtemp(path.join(os.tmpdir(), "xingbuild-content-data-upload-"));
@@ -686,9 +724,13 @@ export async function prepareContentOnlyMaterialization({ productClient, sourceR
         await writeFile(path.join(objectRoot, `${record.objectHash}.json`), `${JSON.stringify({ schemaVersion: CONTENT_DATA_OBJECT_SCHEMA_VERSION, objectHash: record.objectHash, record }, null, 2)}\n`);
       }
     }
-    const manifestIdentity = manifest || artifact.records.map(normalizedRecord);
+    const manifestIdentity = contentAuthorityManifest
+      || (activeTuple.schemaVersion === CONTENT_DATA_ACTIVE_SCHEMA_VERSION_V2 ? contentAuthorityManifestFromContentSet(contentSet, { contentDataArtifact: artifact }) : null)
+      || manifest
+      || artifact.records.map(normalizedRecord);
     const manifestHash = contentDataManifestHash(manifestIdentity);
-    if (activeTuple.manifestHash != null && activeTuple.manifestHash !== manifestHash) throw new Error("ContentData active tuple manifest hash drift");
+    const expectedAuthorityHash = activeTuple.contentAuthorityManifestHash || activeTuple.manifestHash;
+    if (expectedAuthorityHash != null && expectedAuthorityHash !== manifestHash) throw new Error("ContentData active tuple manifest hash drift");
     const dataManifest = {
       schemaVersion: CONTENT_DATA_MANIFEST_SCHEMA_VERSION,
       contentDataArtifactId: artifact.contentDataArtifactId,
@@ -703,13 +745,13 @@ export async function prepareContentOnlyMaterialization({ productClient, sourceR
     const activePointer = {
       ...activeTuple,
       manifestUrl: dataManifest.immutableDataUrl,
-      schemaVersion: CONTENT_DATA_ACTIVE_SCHEMA_VERSION,
+      schemaVersion: activeTuple.schemaVersion,
     };
     await writeFile(path.join(root, "content-data", "active.json"), `${JSON.stringify(activePointer, null, 2)}\n`);
     if (failPhase === "prepare") throw new Error("injected content data prepare failure");
     const receipt = createContentOnlyReceipt({ productArtifact, contentSet, artifact, activeTuple, manifestHash: dataManifest.manifestHash });
     const prepared = { phase: "prepared", result: "verified", manifestUrl: dataManifest.immutableDataUrl, cacheControl: dataManifest.cacheControl, activeTupleHash: activeTuple.tupleHash, contentDataArtifactId: artifact.contentDataArtifactId, contentDataHash: artifact.contentDataHash };
-    const validate = async () => validateContentDataMaterialization({ root, artifact, activeTuple: activePointer, manifest });
+    const validate = async () => validateContentDataMaterialization({ root, artifact, activeTuple: activePointer, manifest: contentAuthorityManifest || manifest });
     const activate = async ({ failPhase: activationFailure = null } = {}) => activateContentDataMaterialization({ root, validation: await validate(), failPhase: activationFailure });
     return {
       root,
@@ -730,8 +772,11 @@ export async function prepareContentOnlyMaterialization({ productClient, sourceR
 
 export async function prepareContentOnlyPublication(options = {}) {
   const prepared = await createContentDataPreparation(options);
-  const tuple = options.activeTuple || createActiveContentDataTuple({ contentSet: prepared.contentSet, artifact: prepared.artifact, productArtifact: options.productArtifact, manifest: options.manifest });
-  if (!options.activeTuple) await activateContentDataTuple({ sourceRoot: options.sourceRoot, tuple });
+  const tuple = options.activeTuple || createActiveContentDataTuple({ contentSet: prepared.contentSet, artifact: prepared.artifact, productArtifact: options.productArtifact, manifest: options.manifest, contentAuthorityManifest: options.contentAuthorityManifest });
+  // Preparation is never authority mutation. The Coordinator performs the
+  // single CAS only after deployment and public verification; an explicit
+  // opt-in is retained solely for bounded migration fixtures.
+  if (options.activatePrepared === true && !options.activeTuple) await activateContentDataTuple({ sourceRoot: options.sourceRoot, tuple });
   const materialization = await prepareContentOnlyMaterialization({ ...options, ...prepared, activeTuple: tuple });
   return { ...prepared, tuple, materialization, receipt: materialization.receipt };
 }

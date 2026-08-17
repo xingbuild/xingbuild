@@ -226,7 +226,7 @@ async function verifyRoute({ browser, base, route, routeTimeoutMs, runtimeRouteS
 export async function verifyPublicBrowserRuntime({
   baseUrl, routes = PUBLICATION_ROUTES, taskId = "site-publication-public-verify", timeoutMs = 60000,
   routeTimeoutMs = Math.min(12000, timeoutMs), publicationIdentity = null, attemptId = null, onEvidence = null,
-  signal = null, runtimeAcceptanceSpec = null, runtimeAcceptanceExpected = null,
+  signal = null, runtimeAcceptanceSpec = null, runtimeAcceptanceExpected = null, browserSession = null,
 } = {}) {
   const base = new URL(baseUrl);
   const startedAt = iso();
@@ -251,13 +251,16 @@ export async function verifyPublicBrowserRuntime({
   });
   try {
     throwIfAborted(signal);
-    const result = await withDeadline(withQaBrowser({ puppeteer, taskId, timeoutMs }, async ({ browser, runtime }) => {
+    const runRoutes = async ({ browser, runtime }) => {
       for (const route of routes) {
         const runtimeRouteSpec = runtimeAcceptanceSpec?.routes?.find((entry) => entry.route === route) || null;
         await verifyRoute({ browser, base, route, routeTimeoutMs, runtimeRouteSpec, runtimeAcceptanceSpec, onEvidence, routeEvidence, publicationIdentity: resolvedIdentity, attemptId: resolvedAttemptId, signal });
       }
       return { runtime: { runtimeVersion: runtime.runtimeVersion, executablePath: runtime.executablePath, browserVersion: runtime.version, runId: runtime.runId, manifestPath: runtime.manifestPath } };
-    }), timeoutMs, "PUBLICATION_RUNTIME_TIMEOUT", signal);
+    };
+    const result = await withDeadline(browserSession
+      ? browserSession.run(runRoutes, { timeoutMs })
+      : withQaBrowser({ puppeteer, taskId, timeoutMs }, runRoutes), timeoutMs, "PUBLICATION_RUNTIME_TIMEOUT", signal);
     const cleanRoutes = { ...routeEvidence };
     const envelope = createPublicationPhaseEvidence({
       publicationIdentity: resolvedIdentity,
