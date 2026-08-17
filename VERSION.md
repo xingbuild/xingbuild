@@ -1,3 +1,11 @@
+## v0.28.6 — 旧站最终发布兼容收口
+
+父版本：`v0.28.5` / `9bab2673a4425acad4815b17e40a87bf37fee38b`
+
+- ProductArtifact capability contract 与真实 active ContentSet 六类 exact 对齐：`home`、`observation`、`article`、`practice`、`profile`、`businessObservation`。
+- 不改页面、内容、媒体或 active authority；只解除 v0.28.5 在 transport 前暴露的旧泛化 `content` kind 错误。
+- 公网逐页验收通过后旧站冻结，不再继续产品功能迭代。
+
 ## v0.28.5 — 内容 Authority 解耦、单会话 QA 与旧站最终稳定化
 
 父版本：`v0.28.4` / `b23d76a567645b222605a3944611825a7441db00`

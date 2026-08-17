@@ -1,18 +1,42 @@
 # 当前迭代
 
-## 当前唯一版本：`v0.28.5`
+## 当前唯一版本：`v0.28.6`
 
-父版本：v0.28.4 / `b23d76a567645b222605a3944611825a7441db00`
+父版本：v0.28.5 / `9bab2673a4425acad4815b17e40a87bf37fee38b`
 
 parentStatus: local-closure-complete-product-publish-blocked-pre-transport
-contentImpact: compatible-authority-boundary-correction
-contentImpactReason: product-upgrade-must-reuse-active-content-without-rebinding-or-mutating-content-authority
+contentImpact: compatible-metadata-correction
+contentImpactReason: ProductArtifact capability kinds omitted canonical home and observation kinds
 affectedTargets: []
-affectedRoutes: [/, /products, /business-observations, /observations, /observations/:slug, /about, /robots.txt, /sitemap.xml]
-affectedFields: [activeContentDataTuple, contentAuthorityManifest, siteSnapshotComposition, qaBrowserSession, runtimeObservationCollection, runtimePracticeMedia, runtimeLoadingState, publicCrawlerFiles]
-compatibilityEvidence: active-content-bytes-unchanged-current-product-exact-public-snapshot-one-browser-per-qa-batch
+affectedRoutes: []
+affectedFields: [ProductArtifact.capabilityContract.contentKinds]
+compatibilityEvidence: active-content-kind-set-exact-and-active-authority-bytes-unchanged
 
 ## 已确认事实
+
+v0.28.5 已完成 exact commit/tag/ProductArtifact/preflight，但正式 product publish 在任何 Git push 或 EdgeOne transport 前被 `baseSiteArtifact content slot kind contract is incompatible` 阻断。真实 active ContentSet kinds 为 `article`、`businessObservation`、`home`、`observation`、`practice`、`profile`；ProductArtifact contract 错误保留旧泛化 `content`，同时遗漏 `home` 与 `observation`。
+
+本版本只修这个 exact 枚举。v0.28.5 已完成的 Authority 解耦、单 Chrome batch 与旧站页面可用性实现全部原样继承，不重复设计、不改内容事实。
+
+## 正式方案
+
+[v0.28.6 旧站最终发布兼容收口方案](../design/v0.28.6%20%E6%97%A7%E7%AB%99%E6%9C%80%E7%BB%88%E5%8F%91%E5%B8%83%E5%85%BC%E5%AE%B9%E6%94%B6%E5%8F%A3%E6%96%B9%E6%A1%88.md)
+
+## 实施与验收
+
+- `CONTENT_SLOT_CAPABILITY_CONTRACT.contentKinds` 必须与真实 active ContentSet 六类 exact 相等，不使用泛化 alias。
+- 单元测试必须把六类同时传给 `assertContentSlotArtifactCompatible` 并通过；缺少任一类仍 hard fail。
+- `check`、`release:prepare`、current transaction、exact Candidate/Approval/commit/tag/build/preflight 全部复用既有流程。
+- 正式 publish 必须在 transport 前成功组装当前 ProductArtifact + 既有 active ContentAuthority；active tuple bytes 不变。
+- 公网必须证明 v0.28.6 release identity、五个页面、33 条 observation 集合、已发布 slug、Robotaxi 媒体、简历、robots/sitemap；完成后旧站 frozen。
+
+## 明确不做
+
+- 不改页面组件、文案、内容、媒体、ContentSet、CDA、active tuple、SitePublication 历史或旧 tag。
+- 不增加兼容 bypass、kind 映射表或第二 capability authority。
+- 不继续旧站功能迭代；只有真实宕机或安全事件可解除冻结。
+
+<!-- v0.28.5 archived implementation context below remains historical reference for the exact parent. -->
 
 v0.28.4 已完成 exact Candidate、ApprovalRecord、commit/tag、ProductArtifact 与 preflight；随后 v0.28.3 既有内容事故使用同一 deployment `dpgr0trnxfcv`、`transportCalls=0` 完成公网验证和 active tuple CAS。v0.28.4 产品 publish 在 transport 前被 Coordinator 正确阻断，没有创建 deployment。
 

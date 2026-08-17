@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "release-scope-v2",
+  "contractVersion": "classification-only-v1",
+  "phase": "pre-commit",
+  "version": "v0.28.6",
+  "baseHead": "9bab2673a4425acad4815b17e40a87bf37fee38b",
+  "scopeManifestPath": "docs/iterations/scopes/v0.28.6.json",
+  "paths": [
+    { "path": "VERSION.md", "classification": "record-only", "owner": "elon", "reason": "v0.28.6 final compatibility release record", "state": "modified" },
+    { "path": "docs/design/v0.28.6 旧站最终发布兼容收口方案.md", "classification": "record-only", "owner": "elon", "reason": "single-defect final release contract", "state": "added" },
+    { "path": "docs/iterations/current.md", "classification": "record-only", "owner": "elon", "reason": "current v0.28.6 contract", "state": "modified" },
+    { "path": "docs/iterations/history/v0.28.6.md", "classification": "record-only", "owner": "elon", "reason": "v0.28.6 implementation record", "state": "added" },
+    { "path": "docs/iterations/scopes/v0.28.6.json", "classification": "record-only", "owner": "elon", "reason": "v0.28.6 scope authority", "state": "added" },
+    { "path": "package-lock.json", "classification": "implementation", "owner": "elon", "reason": "v0.28.6 package lock identity", "state": "modified" },
+    { "path": "package.json", "classification": "implementation", "owner": "elon", "reason": "v0.28.6 product identity", "state": "modified" },
+    { "path": "scripts/lib/base-site-artifact.mjs", "classification": "implementation", "owner": "elon", "reason": "canonical active ContentSet kind capability", "state": "modified" },
+    { "path": "tests/content-slot-registry.test.mjs", "classification": "implementation", "owner": "elon", "reason": "six-kind compatibility regression", "state": "modified" }
+  ],
+  "scopeDigest": "e78ff65615727e011432db96990f31da18a74fd03532ac9bf73ffb67a4cc2455"
+}

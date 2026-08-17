@@ -7,7 +7,7 @@ const commitPattern = /^[a-f0-9]{7,64}$/;
 const versionPattern = /^v\d+\.\d+\.\d+$/;
 const artifactIdPattern = /^[a-z0-9][a-z0-9._-]+$/;
 export const CONTENT_SLOT_CAPABILITY_CONTRACT_VERSION = "content-slot-registry-v1";
-export const CONTENT_SLOT_CAPABILITY_CONTRACT = Object.freeze({ contentKinds: ["content", "article", "practice", "profile", "businessObservation"], registeredTargets: "ContentSlotRegistry", mediaContract: "approved-media-manifest-v1", routeContract: "content-target-path-v1", fieldContract: ["logicalContentId", "activeReceiptId", "predecessorReceiptId", "packageRevisionId", "receiptHash", "projectionHash", "snapshotHash"] });
+export const CONTENT_SLOT_CAPABILITY_CONTRACT = Object.freeze({ contentKinds: ["home", "observation", "article", "practice", "profile", "businessObservation"], registeredTargets: "ContentSlotRegistry", mediaContract: "approved-media-manifest-v1", routeContract: "content-target-path-v1", fieldContract: ["logicalContentId", "activeReceiptId", "predecessorReceiptId", "packageRevisionId", "receiptHash", "projectionHash", "snapshotHash"] });
 function hasText(value) { return typeof value === "string" && value.trim() !== ""; }
 function canonical(value) { return JSON.stringify(value); }
 export function hashArtifactValue(value) { return createHash("sha256").update(canonical(value)).digest("hex"); }

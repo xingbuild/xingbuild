@@ -16,7 +16,7 @@ import {
   scanLegacyContentSlotRegistry,
   writeContentSlotRegistry,
 } from "../scripts/lib/content-slot-registry.mjs";
-import { assertContentSlotArtifactCompatible } from "../scripts/lib/base-site-artifact.mjs";
+import { assertContentSlotArtifactCompatible, CONTENT_SLOT_CAPABILITY_CONTRACT } from "../scripts/lib/base-site-artifact.mjs";
 import { finalizeSitePublication } from "../scripts/lib/site-publication-coordinator.mjs";
 import { writeJsonAtomically } from "../scripts/lib/content-release-state.mjs";
 
@@ -218,6 +218,23 @@ test("legacy artifacts remain readable only during legacy migration; authoritati
   assert.equal(assertContentSlotArtifactCompatible(artifact, { registryMode: "legacy", requiredKinds: ["practice"] }).legacy, true);
   assert.throws(() => assertContentSlotArtifactCompatible(artifact, { registryMode: "authoritative", requiredKinds: ["practice"] }), /capability contract is unknown/);
   assert.throws(() => assertContentSlotArtifactCompatible({ ...artifact, capabilityContractVersion: "content-slot-registry-v1", capabilityContract: { registeredTargets: "ContentSlotRegistry", mediaContract: "approved-media-manifest-v1", routeContract: "content-target-path-v1", contentKinds: ["practice"], fieldContract: [] } }, { registryMode: "authoritative", requiredKinds: ["practice"] }), /field contract is incompatible/);
+});
+
+test("ProductArtifact capability contract covers every canonical active ContentSet kind", () => {
+  const canonicalKinds = ["article", "businessObservation", "home", "observation", "practice", "profile"];
+  assert.deepEqual([...CONTENT_SLOT_CAPABILITY_CONTRACT.contentKinds].sort(), canonicalKinds);
+  const artifact = {
+    releaseManifestHash: "a".repeat(64),
+    artifactContentHash: "b".repeat(64),
+    sourceDeploymentId: "prepared-dist",
+    materializationKind: "client",
+    clientPath: ".content-workspace/base-site-artifacts/v0.28.6-test/client",
+    clientHash: "c".repeat(64),
+    clientFiles: [{ path: "index.html", sha256: "d".repeat(64), bytes: 1 }],
+    capabilityContractVersion: "content-slot-registry-v1",
+    capabilityContract: CONTENT_SLOT_CAPABILITY_CONTRACT,
+  };
+  assert.doesNotThrow(() => assertContentSlotArtifactCompatible(artifact, { registryMode: "authoritative", requiredKinds: canonicalKinds }));
 });
 
 test("SitePublication finalize performs compare-and-swap once and reuses the transition on resume", async () => {
