@@ -104,7 +104,7 @@ async function writeContentFixture(root) {
 async function writeProductFixture(root) {
   const client = path.join(root, "product");
   await mkdir(path.join(client, "assets"), { recursive: true });
-  await writeFile(path.join(client, "index.html"), `<!doctype html><html><head><title>xingbuild</title><link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/app.css"></head><body><div id="root"><main><h1>new line one new line two new line three</h1></main></div><script type="module" src="/assets/app.js"></script></body></html>\n`);
+  await writeFile(path.join(client, "index.html"), `<!doctype html><html><head><title>xingbuild</title><link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/app.css"></head><body><div id="root"><main><h1>new line one new line twonew line three</h1></main></div><script type="module" src="/assets/app.js"></script></body></html>\n`);
   await writeFile(path.join(client, "assets", "app.js"), "document.documentElement.dataset.fixture = 'v0283';\n");
   await writeFile(path.join(client, "assets", "app.css"), "body{font-family:sans-serif}\n");
   await writeFile(path.join(client, "edgeone.json"), "{}\n");
@@ -700,6 +700,7 @@ test("FM-16 finalize crash rolls the active tuple back to its prior authority", 
       contentDataArtifactId: current.contentDataArtifactId,
       contentDataHash: current.contentDataHash,
       activeTupleHash: current.activeTupleHash,
+      runtimeAcceptanceSpecHash: current.runtimeAcceptanceSpecHash,
     };
     await assert.rejects(
       () => finalizeSitePublication({ publicationDirectory: fixture.publication.client, sourceRoot: root, publicVerify, failAfterActivate: "crash" }),

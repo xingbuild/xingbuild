@@ -34,6 +34,12 @@ test("content impact exposes one closed machine enum", () => {
   assert.deepEqual(ALLOWED_CONTENT_IMPACTS, ["none", "compatible", "compatible-metadata-correction", "compatible-joint-first-activation"]);
 });
 
+test("v0.28.4 descriptive compatible impact remains one existing gate class", () => {
+  const result = assertProductContentCompatibility({ currentText: currentWith({ contentImpact: "compatible-public-runtime-readiness-and-same-deployment-recovery" }) });
+  assert.equal(result.contentImpact, "compatible-public-runtime-readiness-and-same-deployment-recovery");
+  assert.equal(result.compatibilityClass, "compatible");
+});
+
 for (const contentImpact of CONTENT_IMPACT_VALUES) {
   test(`content impact ${contentImpact} has the same release-gate decision`, () => {
     const run = () => assertProductContentCompatibility({ currentText: currentWith({ contentImpact }) });

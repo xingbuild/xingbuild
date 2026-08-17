@@ -189,6 +189,8 @@ assert.equal(packageJson.scripts["qa:resume-artifact"], "node scripts/lib/resume
 assert.equal(packageJson.scripts["qa:content-preview:evidence"], "node scripts/qa-v02631-content-preview-evidence.mjs", "content preview evidence must use the exact-head evidence entry point");
 assert.equal(packageJson.scripts["qa:content-data-plane:v0280"], "node scripts/qa-v0280-content-data-plane.mjs", "v0.28.0 content data-plane QA must use the bounded evidence entry point");
 assert.equal(packageJson.scripts["qa:content-publication:v0283"], "node scripts/qa-v0283-content-publication.mjs", "v0.28.3 content publication QA must use the formal evidence entry point");
+assert.equal(packageJson.scripts["qa:runtime:v0284"], "node scripts/qa-v0284-runtime.mjs", "v0.28.4 runtime QA must use the formal evidence entry point");
+assert.equal(packageJson.scripts["qa:test-sites:v0284"], "node scripts/qa-v0284-test-sites.mjs", "v0.28.4 test-sites QA must use the fresh classification entry point");
 assert.match(packageJson.scripts["content:lifecycle"], /^node scripts\/content-lifecycle-governance\.mjs inventory --dry-run .*--output \.content-workspace\/qa\/v0279-lifecycle-evidence\.json$/, "content lifecycle governance must stay bounded and explicit");
 assert.match(packageJson.scripts["content:storage:check"], /^node scripts\/content-storage-governance\.mjs inventory --dry-run .*--output \.content-workspace\/qa\/v0279-storage-evidence\.json$/, "content storage governance must stay bounded and explicit");
 assert.equal(packageJson.scripts["content:storage:check:v0274"], "node scripts/content-storage-governance-v0274.mjs", "v0.27.4 storage evidence must use the sole reducer entry point");

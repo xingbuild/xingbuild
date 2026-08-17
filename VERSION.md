@@ -1,3 +1,11 @@
+## v0.28.4 — 公网内容 Runtime Ready 与同一 Deployment 恢复
+
+父版本：`v0.28.3` / `85e8c3d080f998449a4fefb0c8429b1e27beb36e`
+
+- 由同一 ContentPublicationIntent/SiteSnapshot 派生唯一 RuntimeAcceptanceSpec；浏览器验收区分 shellReady 与 runtimeReady，并在统一 deadline 内等待 approved normalized value/hash。
+- 为既有 v0.28.3 SitePublication 提供零 transport、零新 deployment 的同一 deployment recovery；失败证据保留，成功后仍由 Coordinator 执行 active tuple CAS。
+- 本版本只形成未提交 Candidate 与隔离 exact-tree/延迟 runtime/恢复故障矩阵证据；Engineering 不生成 ApprovalRecord，不 commit/tag/build/preflight/transport/content publish/EdgeOne。
+
 ## v0.28.3 — 内容数据发布事务与首次 Active Tuple 切换
 
 父版本：`v0.28.2` / `3a615ce0ff712be339cef0c4fc8387ae0d0bd779`

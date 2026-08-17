@@ -6,6 +6,12 @@
 
 canonical 内容发布的唯一输入是不可变 `ContentPublicationIntent`：它同时引用已批准 `ProductArtifact`、`ContentSet`、`ContentDataArtifact`、candidate active tuple、`SiteSnapshot` 与 `PublicationRun`。首次 cutover 前只能由 legacy `content-state/active.json` 只读重建 baseline；cutover 后所有 active 读取、Coordinator finalize 和 runtime proof 以 `content-data-active.json` 为唯一 authority，禁止双写或双判定。公网 release/content/data manifest、immutable object、目标页面和浏览器 runtime 证明完成前不得激活 tuple；失败、CAS 冲突、取消和恢复不得改写旧 authority。
 
+## v0.28.4 Runtime Ready 与同一 Deployment 恢复补充
+
+`RuntimeAcceptanceSpec` 只能由同一 `ContentPublicationIntent`/`SiteSnapshot` 的 approved 内容与 identity 确定性派生；它是只读验收投影，不是第二内容 authority。Data-plane SitePublication 缺少 spec、specHash/tuple/snapshot 交叉替换或 hash 漂移必须 hard fail。browser verifier 必须分别记录 `shellReady` 与 `runtimeReady`，只在公网身份 exact、应用无致命错误和声明 expectation 的 normalized value/hash exact match 后形成 verified；统一 route deadline/AbortSignal 是唯一等待预算，禁止 fixed sleep、networkidle-only、任意非空 H1 或 cache-buster。
+
+既有 SitePublication recovery 只读取 exact publication/PublicationRun/deployment/immutable identity，复用唯一成功 deployment，`transportCalls=0`、`deploymentCount=1`，追加新的 verification attempt 并保留旧失败 evidence；成功后仍由 Coordinator 以 expected tuple CAS finalize。Engineering Candidate 阶段不得改 canonical publication、run、deployment、active tuple 或内容事实。
+
 ## 一、当前工程边界
 
 ```mermaid

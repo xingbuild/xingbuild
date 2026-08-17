@@ -33,6 +33,8 @@ import {
   assertIntentReferences,
   readContentPublicationAuthority,
 } from "./content-publication-intent.mjs";
+import { deriveRuntimeAcceptanceSpec, assertRuntimeAcceptanceSpec } from "./runtime-acceptance.mjs";
+import { canonicalJson } from "./release-scope-classifier.mjs";
 
 export function sitePublicationId({ productVersion, productCommit, contentReleaseIds = [], contentSetId = null } = {}) {
   return [productVersion, productCommit, ...(contentSetId ? [contentSetId] : contentReleaseIds)].join("+");
@@ -471,6 +473,19 @@ async function createContentSetSitePublication({
     activeTupleHash: activeTuple.tupleHash,
     contentDataManifestHash: activeTuple.manifestHash || null,
   };
+  const runtimeAcceptanceSpec = deriveRuntimeAcceptanceSpec({
+    sitePublicationId: id,
+    snapshotHash: snapshot.snapshotHash,
+    activeTupleHash: activeTuple.tupleHash,
+    contentManifest,
+  });
+  assertRuntimeAcceptanceSpec(runtimeAcceptanceSpec, {
+    sitePublicationId: id,
+    snapshotHash: snapshot.snapshotHash,
+    activeTupleHash: activeTuple.tupleHash,
+    contentManifest,
+  });
+  contentManifest.runtimeAcceptanceSpecHash = runtimeAcceptanceSpec.specHash;
   const resolvedOutputRoot = contentSetPublicationOutput({
     publicationRoot,
     outputRoot,
@@ -520,8 +535,22 @@ async function createContentSetSitePublication({
     }
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
-    publicationRun = createPublicationRun({ siteSnapshot: snapshot });
+    publicationRun = createPublicationRun({ siteSnapshot: snapshot, runtimeAcceptanceSpec });
     await writePublicationRun({ sourceRoot, run: publicationRun });
+  }
+  if (publicationRun.runtimeAcceptanceSpec) {
+    assertRuntimeAcceptanceSpec(publicationRun.runtimeAcceptanceSpec, {
+      sitePublicationId: id,
+      snapshotHash: snapshot.snapshotHash,
+      activeTupleHash: activeTuple.tupleHash,
+      contentManifest,
+    });
+    if (publicationRun.runtimeAcceptanceSpecHash !== runtimeAcceptanceSpec.specHash
+      || canonicalJson(publicationRun.runtimeAcceptanceSpec) !== canonicalJson(runtimeAcceptanceSpec)) {
+      throw new Error("persisted PublicationRun RuntimeAcceptanceSpec identity drift");
+    }
+  } else {
+    throw new Error("canonical data-plane PublicationRun RuntimeAcceptanceSpec is required");
   }
   const persistedIdentityMatches = existingPublication?.sitePublicationId === id && existingPublication?.snapshotHash === snapshot.snapshotHash;
   const persisted = {
@@ -547,6 +576,8 @@ async function createContentSetSitePublication({
     publicationRunId: publicationRun.publicationRunId,
     publicationRun,
     contentManifest,
+    runtimeAcceptanceSpec,
+    runtimeAcceptanceSpecHash: runtimeAcceptanceSpec.specHash,
     ...(assetManifest ? { assetManifest } : {}),
     contentPackageRevisionIds: [],
     publicationIdempotencyKey: sitePublicationIdempotencyKey({ sitePublicationId: id, snapshotHash: snapshot.snapshotHash }),

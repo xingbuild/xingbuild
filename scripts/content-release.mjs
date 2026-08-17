@@ -22,7 +22,7 @@ import { assertPracticeContent, validatePublishablePracticeBundle } from "./lib/
 import { assertBaseSiteArtifactCompatible, readBaseSiteArtifact, validateBaseSiteArtifact } from "./lib/base-site-artifact.mjs";
 import { readProductArtifact } from "./lib/product-artifact.mjs";
 import { contentRootDirectory } from "./lib/content-root.mjs";
-import { createSitePublication, validateUploadQuota } from "./lib/site-publication.mjs";
+import { createSitePublication, sitePublicationId, validateUploadQuota } from "./lib/site-publication.mjs";
 import { prepareContentOnlyMaterialization } from "./lib/content-data-plane.mjs";
 import { verifyPublicBrowserRuntime } from "./lib/publication-runtime.mjs";
 import { planContentBatch } from "./lib/content-batch.mjs";
@@ -54,6 +54,7 @@ import { contentSetEntryFromCanonical, prepareContentSetCandidate as writeConten
 import { readActiveContentSet } from "./lib/content-set.mjs";
 import { readCanonicalHomeContent } from "./lib/home-content-adapter.mjs";
 import { prepareContentPublicationIntent as prepareDataPlaneIntent, readContentPublicationAuthority } from "./lib/content-publication-intent.mjs";
+import { deriveRuntimeAcceptanceSpec, assertRuntimeAcceptanceSpec } from "./lib/runtime-acceptance.mjs";
 
 export const root = projectRoot;
 const edgeone = path.join(root, "node_modules", ".bin", "edgeone");
@@ -62,6 +63,13 @@ const kinds = new Set(["home", "content", "article", "practice", "profile", "bus
 
 async function exists(file) {
   try { await access(file); return true; } catch { return false; }
+}
+
+async function currentProductVersion(sourceRoot = root) {
+  const text = await readFile(path.join(sourceRoot, "docs", "iterations", "current.md"), "utf8");
+  const match = text.match(/当前唯一版本：`(v\d+\.\d+\.\d+)`/);
+  if (!match) throw new Error("current iteration version is missing");
+  return match[1];
 }
 
 function run(command, args, cwd, env = process.env) {
@@ -894,11 +902,40 @@ export async function buildContentPublicationIntent({ prepared, sourceRoot = roo
     validation.mediaFiles = materialization.mediaFiles || [];
     await validateUploadQuota(materialization.root);
     server = await serveBuildMaterialization(materialization.root);
+    const publicationId = sitePublicationId({
+      productVersion: prepared.intent.productArtifact.productVersion,
+      productCommit: prepared.intent.productArtifact.productCommit,
+      contentSetId: prepared.contentSet.contentSetId,
+    });
+    const runtimeAcceptanceSpec = deriveRuntimeAcceptanceSpec({
+      sitePublicationId: publicationId,
+      snapshotHash: prepared.intent.siteSnapshot.snapshotHash,
+      activeTupleHash: prepared.activeTuple.tupleHash,
+      contentManifest: prepared.intent.siteSnapshot.contentManifest,
+    });
+    assertRuntimeAcceptanceSpec(runtimeAcceptanceSpec, {
+      sitePublicationId: publicationId,
+      snapshotHash: prepared.intent.siteSnapshot.snapshotHash,
+      activeTupleHash: prepared.activeTuple.tupleHash,
+      contentManifest: prepared.intent.siteSnapshot.contentManifest,
+    });
     const browser = await verifyPublicBrowserRuntime({
       baseUrl: server.baseUrl,
       routes: ["/"],
       taskId: "content-build-runtime-smoke",
       timeoutMs: 120000,
+      runtimeAcceptanceSpec,
+      publicationIdentity: {
+        sitePublicationId: publicationId,
+        snapshotHash: prepared.intent.siteSnapshot.snapshotHash,
+        activeTupleHash: prepared.activeTuple.tupleHash,
+      },
+      runtimeAcceptanceExpected: {
+        sitePublicationId: publicationId,
+        snapshotHash: prepared.intent.siteSnapshot.snapshotHash,
+        activeTupleHash: prepared.activeTuple.tupleHash,
+        contentManifest: prepared.intent.siteSnapshot.contentManifest,
+      },
     });
     const evidence = {
       schemaVersion: "content-build-evidence-v1",
@@ -917,6 +954,7 @@ export async function buildContentPublicationIntent({ prepared, sourceRoot = roo
       validation,
       quota: { result: "PASS", root: "temporary-upload-root" },
       browserRuntime: { result: "PASS", verified: browser.verified, evidence: browser },
+      runtimeAcceptanceSpec,
       transport: "not-run",
       activeTuple: "not-written",
       cleanup: "pending",
@@ -1014,7 +1052,7 @@ async function main(argv = process.argv.slice(2)) {
         sourceRoot: root,
         productClient: path.join(root, "dist", "client"),
       });
-      const evidencePath = path.join(root, ".content-workspace", "qa", "v0.28.3", "content-build-evidence", `${built.intent.intentId}.json`);
+      const evidencePath = path.join(root, ".content-workspace", "qa", await currentProductVersion(root), "content-build-evidence", `${built.intent.intentId}.json`);
       await mkdir(path.dirname(evidencePath), { recursive: true });
       await writeFile(evidencePath, `${JSON.stringify({ ...built.evidence, cleanup: "verified", evidencePath: path.relative(root, evidencePath) }, null, 2)}\n`);
       console.log(JSON.stringify({ mode: "built", contentSetId: result.contentSet.contentSetId, intentId: intent.intent.intentId, intentHash: intent.intent.intentHash, materialization: "validated-cleaned", evidencePath: path.relative(root, evidencePath) }));
@@ -1046,7 +1084,7 @@ async function main(argv = process.argv.slice(2)) {
   if (argv.includes("--build")) {
     const prepared = await prepareContentPublicationIntent({ kind, target, changeSetPath });
     const result = await buildContentPublicationIntent({ prepared });
-    const evidencePath = path.join(root, ".content-workspace", "qa", "v0.28.3", "content-build-evidence", `${result.intent.intentId}.json`);
+    const evidencePath = path.join(root, ".content-workspace", "qa", await currentProductVersion(root), "content-build-evidence", `${result.intent.intentId}.json`);
     await mkdir(path.dirname(evidencePath), { recursive: true });
     const evidence = { ...result.evidence, cleanup: "verified", evidencePath: path.relative(root, evidencePath) };
     await writeFile(evidencePath, `${JSON.stringify(evidence, null, 2)}\n`);

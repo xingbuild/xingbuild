@@ -6,6 +6,12 @@
 
 内容发布不是 ContentSet-only 的站点发布。正式 CLI、`SiteSnapshot`、`PublicationRun`、materializer、Coordinator 和 public verifier 必须消费同一 `ContentPublicationIntent`，并共同校验 `ProductArtifact + ContentSet + ContentDataArtifact + active tuple`。`content-data-active.json` 只在同一 `PublicationRun` 的公网证据完成后以 expected tuple hash 原子切换；legacy `active.json` 仅为首次 baseline 的只读输入。任何缺少 CDA/tuple、identity 交叉替换、public data object/hash 漂移或 active CAS 冲突都停止，不得 transport 或把 partial dist 当制品。
 
+## v0.28.4 Runtime Ready 与恢复门禁
+
+正式内容公网验收必须携带从同一 intent/SiteSnapshot 派生的 `RuntimeAcceptanceSpec`，按 `shellReady → runtimeReady → identity exact → Coordinator finalize` 顺序形成证据。fallback shell、非空 H1、只匹配 substring、固定 sleep 或单纯 network idle 均不能替代 approved normalized value/hash。timeout、abort、错误文案、active/manifest/object 失败与 spec identity drift 必须产生可复算的失败 attempt 并清理 QA browser。
+
+v0.28.3 已成功 transport 但 verifier 失败时，只能走正式 existing-publication recovery：读取 exact SitePublication/PublicationRun/deployment，确认固定 EdgeOne target、status=success、唯一 deployment，跳过 materialize/transport/create deployment，追加新的 verification attempt；成功后仍由 Coordinator 以 `expectedPreviousTupleHash=null` 完成 active tuple CAS。恢复不能覆盖旧失败 evidence、创建第二 deployment 或把 v0.28.4 ProductArtifact 与 v0.28.3 内容 publication 混为一条事实。
+
 ## 1. 产品工程闭环
 
 ```mermaid

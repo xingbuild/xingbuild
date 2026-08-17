@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { finalizeSitePublication, readSitePublicationRecord, rollbackSitePublication, transportSitePublication, verifyPublicSitePublication } from "./lib/site-publication-coordinator.mjs";
+import { finalizeSitePublication, readSitePublicationRecord, recoverExistingSitePublication, rollbackSitePublication, transportSitePublication, verifyPublicSitePublication } from "./lib/site-publication-coordinator.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -11,8 +11,8 @@ export async function main(argv = process.argv.slice(2)) {
     return index >= 0 ? argv[index + 1] || null : null;
   };
   const publicationDirectory = valueFor("--publication");
-  if (!publicationDirectory || !["--plan", "--deploy", "--resume", "--verify", "--finalize", "--rollback"].some((flag) => argv.includes(flag))) {
-    throw new Error("Usage: node scripts/site-publication.mjs --plan|--deploy|--resume|--verify|--finalize|--rollback --publication <directory>");
+  if (!publicationDirectory || !["--plan", "--deploy", "--resume", "--verify", "--finalize", "--rollback", "--recover-existing"].some((flag) => argv.includes(flag))) {
+    throw new Error("Usage: node scripts/site-publication.mjs --plan|--deploy|--resume|--verify|--finalize|--rollback|--recover-existing --publication <directory>");
   }
   const publication = await readSitePublicationRecord(path.resolve(root, publicationDirectory));
   if (argv.includes("--plan")) {
@@ -20,8 +20,18 @@ export async function main(argv = process.argv.slice(2)) {
     return;
   }
   if (argv.includes("--verify")) {
-    const verified = await verifyPublicSitePublication({ publication, baseUrl: process.env.XINGBUILD_PUBLIC_URL || undefined });
+    const verified = await verifyPublicSitePublication({ publication });
     console.log(JSON.stringify(verified));
+    return;
+  }
+  if (argv.includes("--recover-existing")) {
+    const recovered = await recoverExistingSitePublication({
+      publicationDirectory: path.resolve(root, publicationDirectory),
+      sourceRoot: root,
+      argv,
+      env: process.env,
+    });
+    console.log(JSON.stringify({ sitePublicationId: recovered.sitePublicationId, state: recovered.state, deploymentId: recovered.deploymentId || null, deploymentCount: recovered.recovery?.deploymentCount || 1, transportCalls: recovered.recovery?.transportCalls || 0 }));
     return;
   }
   if (argv.includes("--finalize")) {

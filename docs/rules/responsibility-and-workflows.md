@@ -20,6 +20,8 @@
 
 v0.28.3 将内容意图收敛为唯一 `ContentPublicationIntent`。内容运营不进入产品 `v0.x` 版本闭环；Coordinator 只能在同一 intent 的 ProductArtifact、ContentSet、ContentDataArtifact、tuple 和 PublicationRun 通过公网 proof 后写入 `content-data-active.json`；legacy active pointer 仅由 Engineering baseline resolver 只读消费。
 
+v0.28.4 的 Engineering owner 继续只负责 RuntimeAcceptanceSpec、browser runtime verifier 和 existing-publication recovery 的实现与自 QA。`elon ops` 仍拥有内容/公网事实验收；SitePublication Coordinator 仍是唯一 transport 与 active tuple finalize owner。Recovery 只能追加 verification attempt、复用既有成功 deployment 并保留旧失败 evidence，不能由 Engineering 或 Ops 手工改 active tuple、创建第二 deployment 或绕过 Coordinator。
+
 每个文件、版本和发布动作只有一个执行 owner；其他 task 只提供事实、验收或有界检查点。
 
 ## 二、产品工程固定闭环

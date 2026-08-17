@@ -29,6 +29,11 @@ export const ALLOWED_CONTENT_IMPACTS = Object.freeze([
   "compatible-joint-first-activation",
 ]);
 
+// v0.28.4's current contract gives the compatible change a descriptive
+// record value.  Keep the machine enum closed and normalize that approved
+// record wording to the existing compatible gate class.
+const V0284_COMPATIBLE_RECORD_VALUE = "compatible-public-runtime-readiness-and-same-deployment-recovery";
+
 const V0280_VERSION = "v0.28.0";
 const V0280_REASON = "content-data-plane-runtime-and-content-only-publication";
 const V0280_EVIDENCE_MARKER = "requires-v0.28.0-content-migration-and-runtime-evidence";
@@ -170,6 +175,7 @@ function assertV0280BreakingContract({ currentText, impact, activeContentRelease
  */
 export function assertProductContentCompatibility({ currentText = "", activeContentReleaseIds = [], projectRoot = process.cwd() } = {}) {
   const impact = readContentImpact(currentText);
+  const machineImpact = impact.contentImpact === V0284_COMPATIBLE_RECORD_VALUE ? "compatible" : impact.contentImpact;
   const missingFields = [
     ["contentImpact", impact.contentImpact],
     ["contentImpactReason", impact.contentImpactReason],
@@ -187,7 +193,7 @@ export function assertProductContentCompatibility({ currentText = "", activeCont
     throw incident;
   }
 
-  if (!CONTENT_IMPACT_VALUES.includes(impact.contentImpact)) {
+  if (!CONTENT_IMPACT_VALUES.includes(machineImpact)) {
     throw contractIncident(
       `contentImpact must be one of ${CONTENT_IMPACT_VALUES.join(", ")}; received ${impact.contentImpact}`,
       "PRODUCT_CONTENT_IMPACT_INVALID",
@@ -196,12 +202,12 @@ export function assertProductContentCompatibility({ currentText = "", activeCont
     );
   }
 
-  if (impact.contentImpact === "breaking") {
+  if (machineImpact === "breaking") {
     const evidence = assertV0280BreakingContract({ currentText, impact, activeContentReleaseIds, projectRoot });
     return { ...impact, activeContentReleaseIds, breakingContract: "v0.28.0-content-data-plane", evidence };
   }
 
-  if (!ALLOWED_CONTENT_IMPACTS.includes(impact.contentImpact)) {
+  if (!ALLOWED_CONTENT_IMPACTS.includes(machineImpact)) {
     throw contractIncident(
       `content compatibility is ${impact.contentImpact}`,
       "PRODUCT_CONTENT_INCOMPATIBLE",
@@ -210,5 +216,5 @@ export function assertProductContentCompatibility({ currentText = "", activeCont
     );
   }
 
-  return { ...impact, activeContentReleaseIds };
+  return { ...impact, compatibilityClass: machineImpact, activeContentReleaseIds };
 }

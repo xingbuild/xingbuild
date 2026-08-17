@@ -12,11 +12,13 @@ import { activateContentSet, readActiveContentSet, restoreActiveContentSet } fro
 import { markPublicationRecoverable, markPublicationReleased, markPublicationRolledBack, readPublicationRun, writePublicationRun } from "./publication-run.mjs";
 import { readPublicationAssetManifest, preparePortableUploadRoot, verifyPublicPublicationAssets } from "./publication-assets.mjs";
 import { verifyPublicBrowserRuntime } from "./publication-runtime.mjs";
+import { deriveRuntimeAcceptanceSpec, readOrDeriveRuntimeAcceptanceSpec, assertRuntimeAcceptanceSpec } from "./runtime-acceptance.mjs";
 import {
   assertPublicationPhaseAggregate,
   createPublicationEvidenceReducer,
   createPublicationPhaseEvidence,
 } from "./publication-evidence.mjs";
+import { canonicalJson } from "./release-scope-classifier.mjs";
 import { assertProductArtifactIdentityShape } from "./product-artifact.mjs";
 import { assertActiveContentDataTuple, assertContentDataArtifact, activateContentDataTuple, contentDataObjectHash, contentDataPaths, readActiveContentDataTuple } from "./content-data-plane.mjs";
 import { assertSiteSnapshotDataPlane } from "./site-snapshot.mjs";
@@ -80,13 +82,16 @@ function publicationProductArtifactIdentity(publication = {}) {
 }
 
 export function sitePublicationIdentity(publication = {}) {
-  return {
+  const identity = {
     sitePublicationId: publication.sitePublicationId || null,
     snapshotHash: publication.snapshotHash || null,
     ...publicationProductArtifactIdentity(publication),
     version: publication.productVersion || publication.productArtifact?.productVersion || null,
     commit: publication.productCommit || publication.productArtifact?.productCommit || null,
   };
+  const activeTupleHash = publication.activeTupleHash || publication.activeTuple?.tupleHash || null;
+  if (activeTupleHash) identity.activeTupleHash = activeTupleHash;
+  return identity;
 }
 
 function propagationError(message, observedIdentity = {}) {
@@ -172,6 +177,132 @@ function isDataPlanePublication(publication = {}) {
   return Boolean(publication.contentSetId && publication.contentSetHash && publication.contentDataArtifactId && publication.contentDataHash && publication.activeTupleHash && publication.siteSnapshotId && publication.snapshotHash && publication.publicationRunId);
 }
 
+// The v0.28.3 incident is the only historical record that predates
+// RuntimeAcceptanceSpec and may be adapted.  This is an immutable compatibility
+// boundary, not a version-wide fallback: every product, snapshot, tuple,
+// publication, deployment and approval identity must match before derivation.
+const V0283_RUNTIME_INCIDENT = Object.freeze({
+  version: "v0.28.3",
+  productCommit: "85e8c3d080f998449a4fefb0c8429b1e27beb36e",
+  productArtifactId: "v0.28.3-85e8c3d080f9",
+  baseSiteArtifactId: "v0.28.3-85e8c3d080f9",
+  productArtifactHash: "368ac357a619f123d1108b9475b2b0aaf412141e2e891ac02ab68ce2734226af",
+  contentManifestHash: "1679001b1b54d19b196b025fbff588ba63e432cea675fa19915128547150bc00",
+  baseSiteArtifactManifestHash: "08bb0e4ff16f14002c69963e528fd75ac34f59cb4a5afb7963142cd245033f99",
+  approvalHash: "510998daf2e91efbdc2c915efa93ce9a6e789fde187e80d1d7190fe708500e08",
+  candidateHash: "548bdb4b6b354b1d7cf530e67de995860e57a7937ead3c8aa355b7d5399088f3",
+  approvedTreeOid: "923edf4f9427e7d7e3b6a509681bc9ded9b5c2f6",
+  contentSetId: "content-set-c0377df3307713df1725102c8053797bd8c0b46e1ae9895d5186c904a6f6983a",
+  contentSetHash: "c0377df3307713df1725102c8053797bd8c0b46e1ae9895d5186c904a6f6983a",
+  siteSnapshotId: "site-snapshot-0f0dd6c9be883e840fa0e5385ad35317bd9c1dd3e0f6d7f52acbc91ba0dbf8f2",
+  snapshotHash: "0f0dd6c9be883e840fa0e5385ad35317bd9c1dd3e0f6d7f52acbc91ba0dbf8f2",
+  contentDataArtifactId: "content-data-artifact-fa32e7d1fccc9ff492a9139e",
+  contentDataHash: "fa32e7d1fccc9ff492a9139e3adba21fed7674d86bedf8c5901089fa2e35361b",
+  activeTupleHash: "5acaf2ff4e0d531478d7a20ea781662bca536342ea4065a654195eb0d5bb74e2",
+  sitePublicationId: "v0.28.3+85e8c3d080f998449a4fefb0c8429b1e27beb36e+content-set-c0377df3307713df1725102c8053797bd8c0b46e1ae9895d5186c904a6f6983a",
+  publicationRunId: "publication-run-site-snapshot-0f0dd6c9be883e840fa0e5385ad35317bd9c1dd3e0f6d7f52acbc91ba0dbf8f2",
+  deploymentId: "dpgr0trnxfcv",
+});
+
+const V0283_RUNTIME_INCIDENT_FIELDS = Object.freeze([
+  "version",
+  "productCommit",
+  "productArtifactId",
+  "productArtifactHash",
+  "contentManifestHash",
+  "contentSetId",
+  "contentSetHash",
+  "siteSnapshotId",
+  "snapshotHash",
+  "contentDataArtifactId",
+  "contentDataHash",
+  "activeTupleHash",
+  "sitePublicationId",
+  "publicationRunId",
+  "deploymentId",
+]);
+
+function assertExactV0283IncidentIdentity(current, run, deployment) {
+  const observed = {
+    version: current.productVersion,
+    productCommit: current.productCommit,
+    productArtifactId: current.productArtifactId,
+    productArtifactHash: current.productArtifactHash,
+    contentManifestHash: current.contentManifest?.contentManifestHash,
+    contentSetId: current.contentSetId,
+    contentSetHash: current.contentSetHash,
+    siteSnapshotId: current.siteSnapshotId,
+    snapshotHash: current.snapshotHash,
+    contentDataArtifactId: current.contentDataArtifactId,
+    contentDataHash: current.contentDataHash,
+    activeTupleHash: current.activeTupleHash,
+    sitePublicationId: current.sitePublicationId,
+    publicationRunId: current.publicationRunId,
+    deploymentId: current.deploymentId,
+  };
+  for (const field of V0283_RUNTIME_INCIDENT_FIELDS) {
+    if (observed[field] !== V0283_RUNTIME_INCIDENT[field]) {
+      throw new Error(`v0.28.3 recovery compatibility identity mismatch: ${field}`);
+    }
+  }
+  const productArtifact = current.productArtifact || {};
+  for (const field of ["productArtifactId", "productArtifactHash", "approvalHash", "candidateHash", "approvedTreeOid", "baseSiteArtifactManifestHash", "contentManifestHash"]) {
+    if (productArtifact[field] !== V0283_RUNTIME_INCIDENT[field]) {
+      throw new Error(`v0.28.3 recovery compatibility ProductArtifact mismatch: ${field}`);
+    }
+  }
+  if (!["failed", "recoverable"].includes(current.state) || current.publicVerify != null || current.runtimeAcceptanceSpec != null || !current.failure) {
+    throw new Error("v0.28.3 recovery compatibility requires the persisted failed/recoverable/null-spec incident");
+  }
+  const incidentFailure = (current.failureHistory || []).find((failure) => failure?.phase === "verified" && failure?.code === "SITE_PUBLICATION_TRANSPORT" && failure?.lastEvidence) || current.failure;
+  if (incidentFailure.phase !== "verified" || incidentFailure.code !== "SITE_PUBLICATION_TRANSPORT" || !incidentFailure.lastEvidence) {
+    throw new Error("v0.28.3 recovery compatibility requires the persisted post-transport failure evidence");
+  }
+  const evidenceIdentity = incidentFailure.lastEvidence.publicationIdentity || {};
+  for (const field of ["sitePublicationId", "snapshotHash", "productArtifactId", "productArtifactHash", "contentManifestHash", "approvalHash", "candidateHash", "approvedTreeOid", "version", "commit"]) {
+    const expected = field === "commit" ? V0283_RUNTIME_INCIDENT.productCommit : field === "version" ? V0283_RUNTIME_INCIDENT.version : V0283_RUNTIME_INCIDENT[field];
+    if (evidenceIdentity[field] !== expected) throw new Error(`v0.28.3 recovery compatibility failure evidence mismatch: ${field}`);
+  }
+  if (!run || run.publicationRunId !== V0283_RUNTIME_INCIDENT.publicationRunId || !["failed", "recoverable"].includes(run.state) || run.publicVerify != null || run.deploymentId !== V0283_RUNTIME_INCIDENT.deploymentId || run.deploymentCount !== 1 || run.runtimeAcceptanceSpec != null) {
+    throw new Error("v0.28.3 recovery compatibility requires the persisted failed PublicationRun with one deployment");
+  }
+  if (!deployment || deployment.status !== "success" || deployment.deploymentId !== V0283_RUNTIME_INCIDENT.deploymentId || deployment.projectId !== edgeoneProjectId) {
+    throw new Error("v0.28.3 recovery compatibility requires the exact successful fixed-target deployment");
+  }
+}
+
+async function deriveV0283IncidentRuntimeAcceptanceSpec({ current, run, deployment, directory, sourceRoot } = {}) {
+  assertExactV0283IncidentIdentity(current, run, deployment);
+  const persistedManifest = await readJson(path.join(directory, "content-manifest.json"));
+  if (!current.contentManifest || canonicalJson(persistedManifest) !== canonicalJson(current.contentManifest)) {
+    throw new Error("v0.28.3 recovery compatibility contentManifest bytes drift");
+  }
+  for (const field of ["version", "commit", "baseSiteArtifactId", "productArtifactId", "productArtifactHash", "contentManifestHash", "contentSetId", "contentSetHash", "sitePublicationId", "siteSnapshotId", "snapshotHash", "contentDataArtifactId", "contentDataHash", "activeTupleHash"]) {
+    const expected = field === "commit" ? V0283_RUNTIME_INCIDENT.productCommit : field === "version" ? V0283_RUNTIME_INCIDENT.version : V0283_RUNTIME_INCIDENT[field];
+    if (persistedManifest[field] !== expected) throw new Error(`v0.28.3 recovery compatibility contentManifest mismatch: ${field}`);
+  }
+  let activeTuple = null;
+  try {
+    activeTuple = await readActiveContentDataTuple({ sourceRoot });
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  if (activeTuple) throw new Error("v0.28.3 recovery compatibility requires the active ContentData tuple to be absent");
+  const runtimeAcceptanceSpec = deriveRuntimeAcceptanceSpec({
+    sitePublicationId: current.sitePublicationId,
+    snapshotHash: current.snapshotHash,
+    activeTupleHash: current.activeTupleHash,
+    contentManifest: persistedManifest,
+  });
+  assertRuntimeAcceptanceSpec(runtimeAcceptanceSpec, {
+    sitePublicationId: current.sitePublicationId,
+    snapshotHash: current.snapshotHash,
+    activeTupleHash: current.activeTupleHash,
+    contentManifest: persistedManifest,
+  });
+  return runtimeAcceptanceSpec;
+}
+
 async function finalizeDataPlanePublication({ current, publicationDirectory, publicVerify, sourceRoot, failAfterActivate = null }) {
   if (publicVerify.contentSetId !== current.contentSetId
     || publicVerify.contentSetHash !== current.contentSetHash
@@ -197,6 +328,14 @@ async function finalizeDataPlanePublication({ current, publicationDirectory, pub
   if (run.siteSnapshotId !== current.siteSnapshotId || run.snapshotHash !== current.snapshotHash || run.contentSetId !== current.contentSetId || run.contentDataArtifactId !== current.contentDataArtifactId || run.contentDataHash !== current.contentDataHash || run.activeTupleHash !== current.activeTupleHash) {
     throw new Error("PublicationRun ContentData identity drift during finalize");
   }
+  const runtimeAcceptanceSpec = readOrDeriveRuntimeAcceptanceSpec(current, { allowDerived: false });
+  assertRuntimeAcceptanceSpec(runtimeAcceptanceSpec, current);
+  if (!run.runtimeAcceptanceSpec
+    || run.runtimeAcceptanceSpecHash !== runtimeAcceptanceSpec.specHash
+    || canonicalJson(run.runtimeAcceptanceSpec) !== canonicalJson(runtimeAcceptanceSpec)
+    || publicVerify.runtimeAcceptanceSpecHash !== runtimeAcceptanceSpec.specHash) {
+    throw new Error("PublicationRun RuntimeAcceptanceSpec identity drift during finalize");
+  }
   let previous = null;
   try { previous = await readActiveContentDataTuple({ sourceRoot }); } catch (error) {
     if (error.code !== "ENOENT") throw error;
@@ -208,6 +347,7 @@ async function finalizeDataPlanePublication({ current, publicationDirectory, pub
     throw error;
   }
   let activated = false;
+  const previousFailure = current.failure || null;
   try {
     if (previous?.tupleHash === current.activeTupleHash) {
       // Idempotent finalize: the same tuple is already authoritative.
@@ -218,6 +358,9 @@ async function finalizeDataPlanePublication({ current, publicationDirectory, pub
     if (failAfterActivate === "crash") throw new Error("injected finalize crash after active tuple activation");
     const releasedRun = run.state === "released" ? run : markPublicationReleased(run, publicVerify);
     await writePublicationRun({ sourceRoot, run: releasedRun });
+    const failureHistory = previousFailure
+      ? [...(current.failureHistory || []), { ...previousFailure, preservedAt: new Date().toISOString(), recoveryAttemptId: publicVerify.attemptId || null }]
+      : (current.failureHistory || []);
     return await writePublicationRecord(publicationDirectory, {
       ...current,
       publicationRun: releasedRun,
@@ -225,6 +368,7 @@ async function finalizeDataPlanePublication({ current, publicationDirectory, pub
       publicVerify,
       releasedAt: current.releasedAt || new Date().toISOString(),
       failure: null,
+      failureHistory,
     });
   } catch (error) {
     if (activated) {
@@ -371,7 +515,7 @@ export async function finalizeSitePublication({ publicationDirectory, publicVeri
     }
   }
   try {
-    return await writePublicationRecord(publicationDirectory, {
+  return await writePublicationRecord(publicationDirectory, {
       ...current,
       contentSlotTransition,
       lineageBindingId: lineageBinding?.lineageBindingId || current.lineageBindingId || null,
@@ -550,6 +694,279 @@ function phaseEnvelope(publication, attemptId, phase, extra = {}) {
   });
 }
 
+/**
+ * Recover a previously transported data-plane SitePublication without
+ * materializing, transporting, or creating another deployment.  The existing
+ * durable publication, PublicationRun and deployment are the only authorities;
+ * this function appends a verification attempt and then delegates the one
+ * active-tuple mutation to finalizeSitePublication.
+ */
+export async function recoverExistingSitePublication({
+  publicationDirectory,
+  sourceRoot = null,
+  baseUrl = publicUrl,
+  fetchImpl = fetch,
+  browserRuntimeVerify = verifyPublicBrowserRuntime,
+  maxAttempts = 1,
+  initialDelayMs = 0,
+  maxDelayMs = 0,
+  sleepImpl = async () => {},
+  onEvidence = null,
+  signal = null,
+  argv = [],
+  env = process.env,
+} = {}) {
+  if (!publicationDirectory) throw new Error("existing SitePublication recovery requires publicationDirectory");
+  assertFixedPublishTarget(env);
+  assertPublishAuthorization({ argv, env });
+  const directory = path.resolve(publicationDirectory);
+  const resolvedSourceRoot = sourceRoot || path.resolve(directory, "..", "..", "..");
+  let current = await readSitePublicationRecord(directory);
+  if (!isDataPlanePublication(current)) throw new Error("existing SitePublication recovery requires a canonical ContentData SitePublication");
+  if (!current.deploymentId) throw new Error("existing SitePublication recovery requires an existing deployment");
+  const finalizedRecovery = current.state === "released" && current.publicVerify && current.recovery?.result === "finalized";
+  if (!finalizedRecovery && (!['recoverable', 'failed'].includes(current.state) || !current.failure || current.publicVerify)) {
+    throw new Error("existing SitePublication recovery requires a failed or recoverable post-transport verifier failure");
+  }
+  await readFixedEdgeoneTarget(resolvedSourceRoot);
+  const deployment = current.deployment || await readJson(path.join(directory, "deployment.json"));
+  if (!deployment || deployment.deploymentId !== current.deploymentId || deployment.projectId !== edgeoneProjectId || deployment.status !== "success") {
+    throw new Error("existing SitePublication recovery requires the exact successful fixed-target deployment");
+  }
+  const run = await readPublicationRun({ sourceRoot: resolvedSourceRoot, publicationRunId: current.publicationRunId });
+  if (run.deploymentId !== current.deploymentId || run.deploymentCount !== 1 || run.deployment?.deploymentId !== current.deploymentId || run.deployment?.projectId !== edgeoneProjectId) {
+    throw new Error("existing SitePublication recovery deployment identity/count drift");
+  }
+  if (!finalizedRecovery && (!['recoverable', 'failed'].includes(run.state) || run.publicVerify)) {
+    throw new Error("existing SitePublication recovery requires a failed or recoverable PublicationRun without public verification");
+  }
+  if (finalizedRecovery) {
+    if (run.state !== "released" || !run.publicVerify || run.recovery?.result !== "finalized") throw new Error("finalized SitePublication recovery state drift");
+    if (!current.runtimeAcceptanceSpec || !run.runtimeAcceptanceSpec
+      || current.runtimeAcceptanceSpecHash !== current.runtimeAcceptanceSpec.specHash
+      || run.runtimeAcceptanceSpecHash !== current.runtimeAcceptanceSpecHash
+      || canonicalJson(run.runtimeAcceptanceSpec) !== canonicalJson(current.runtimeAcceptanceSpec)) {
+      throw new Error("finalized SitePublication recovery RuntimeAcceptanceSpec drift");
+    }
+    assertRuntimeAcceptanceSpec(current.runtimeAcceptanceSpec, current);
+    let activeTuple = null;
+    try { activeTuple = await readActiveContentDataTuple({ sourceRoot: resolvedSourceRoot }); } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+    if (activeTuple?.tupleHash !== current.activeTupleHash) throw new Error("finalized SitePublication recovery active tuple drift");
+    return current;
+  }
+  let runtimeAcceptanceSpec;
+  let runtimeAcceptanceSpecSource = "persisted-publication";
+  if (current.runtimeAcceptanceSpec) {
+    runtimeAcceptanceSpec = readOrDeriveRuntimeAcceptanceSpec(current, { allowDerived: false });
+  } else {
+    runtimeAcceptanceSpec = await deriveV0283IncidentRuntimeAcceptanceSpec({
+      current,
+      run,
+      deployment,
+      directory,
+      sourceRoot: resolvedSourceRoot,
+    });
+    runtimeAcceptanceSpecSource = "v0.28.3-approved-content-manifest";
+  }
+  assertRuntimeAcceptanceSpec(runtimeAcceptanceSpec, {
+    ...current,
+    runtimeAcceptanceSpec,
+  });
+  if (run.runtimeAcceptanceSpec) {
+    if (run.runtimeAcceptanceSpecHash !== runtimeAcceptanceSpec.specHash
+      || canonicalJson(run.runtimeAcceptanceSpec) !== canonicalJson(runtimeAcceptanceSpec)) {
+      throw new Error("existing SitePublication recovery PublicationRun RuntimeAcceptanceSpec drift");
+    }
+  } else if (current.runtimeAcceptanceSpec) {
+    throw new Error("existing SitePublication recovery PublicationRun RuntimeAcceptanceSpec is missing");
+  }
+  if (current.runtimeAcceptanceSpec) {
+    let activeTuple = null;
+    try {
+      activeTuple = await readActiveContentDataTuple({ sourceRoot: resolvedSourceRoot });
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+    if (activeTuple) throw new Error("existing SitePublication recovery requires the active ContentData tuple to be absent");
+  }
+  const leaseDirectory = path.join(resolvedSourceRoot, ".content-workspace", "site-publications", ".site-lease");
+  const lease = await acquireSitePublicationLease({
+    publicationDirectory: directory,
+    leaseDirectory,
+    sitePublicationId: current.sitePublicationId,
+    snapshotHash: current.snapshotHash,
+    ttlMs: 900000,
+  });
+  const attemptId = `recovery-${Date.now()}-${current.deploymentId}`;
+  const startedAt = new Date().toISOString();
+  const priorFailure = current.failure || null;
+  const initialAttempt = {
+    attemptId,
+    kind: "same-deployment-recovery",
+    startedAt,
+    deploymentId: current.deploymentId,
+    deploymentCount: run.deploymentCount,
+    runtimeAcceptanceSpecHash: runtimeAcceptanceSpec.specHash,
+    runtimeAcceptanceSpec,
+    runtimeAcceptanceSpecSource,
+    transportCalls: 0,
+    result: "running",
+  };
+  const appendAttempt = (attempts, next) => [...(attempts || []).filter((item) => item.attemptId !== next.attemptId), next];
+  const priorHistory = priorFailure
+    ? [...(current.failureHistory || []), { ...priorFailure, preservedAt: startedAt, recoveryAttemptId: attemptId }]
+    : (current.failureHistory || []);
+  let recoveryRun = run;
+  try {
+    current = await transitionSitePublication({
+      publicationDirectory: directory,
+      current,
+      state: "verifying",
+      phase: "verifying-assets",
+      failure: null,
+      patch: {
+        runtimeAcceptanceSpec,
+        runtimeAcceptanceSpecHash: runtimeAcceptanceSpec.specHash,
+        runtimeAcceptanceSpecSource,
+        verificationAttemptId: attemptId,
+        failureHistory: priorHistory,
+        recovery: {
+          type: "same-deployment",
+          deploymentId: current.deploymentId,
+          deploymentCount: run.deploymentCount,
+          transportCalls: 0,
+        startedAt,
+        priorFailure,
+        runtimeAcceptanceSpecHash: runtimeAcceptanceSpec.specHash,
+        runtimeAcceptanceSpec,
+        runtimeAcceptanceSpecSource,
+        result: "running",
+        },
+        verificationAttempts: [...(current.verificationAttempts || []), initialAttempt],
+      },
+    });
+    recoveryRun = await writePublicationRun({
+      sourceRoot: resolvedSourceRoot,
+      run: {
+        ...run,
+        state: "verifying",
+        publicVerify: null,
+        runtimeAcceptanceSpec,
+        runtimeAcceptanceSpecHash: runtimeAcceptanceSpec.specHash,
+        runtimeAcceptanceSpecSource,
+        recovery: {
+          type: "same-deployment",
+          deploymentId: current.deploymentId,
+          deploymentCount: run.deploymentCount,
+          transportCalls: 0,
+          startedAt,
+          priorFailure,
+          runtimeAcceptanceSpecHash: runtimeAcceptanceSpec.specHash,
+          runtimeAcceptanceSpec,
+          runtimeAcceptanceSpecSource,
+          result: "running",
+        },
+        recoveryAttempts: appendAttempt(run.recoveryAttempts, initialAttempt),
+        updatedAt: new Date().toISOString(),
+      },
+    }).then(({ run: written }) => written);
+    const publicVerify = await waitForPublicSitePublication({
+      publication: { ...current, client: directory, deployment, runtimeAcceptanceSpec },
+      baseUrl,
+      fetchImpl,
+      browserRuntimeVerify,
+      maxAttempts,
+      initialDelayMs,
+      maxDelayMs,
+      sleepImpl,
+      attemptId,
+      signal,
+      allowDerivedRuntimeAcceptanceSpec: false,
+      onEvidence: async ({ phase, result }) => {
+        current = await transitionSitePublication({
+          publicationDirectory: directory,
+          current,
+          phase,
+          patch: { verificationAttemptId: attemptId, runtimeEvidence: result, lastEvidence: result },
+        });
+        await onEvidence?.({ phase, result });
+      },
+    });
+    const productVerify = { version: current.productVersion, commit: current.productCommit, verifiedAt: publicVerify.verifiedAt };
+    const contentVerify = { activeContentReleaseIds: publicVerify.activeContentReleaseIds || [], snapshotHash: publicVerify.snapshotHash, contentManifest: publicVerify.contentManifest, verifiedAt: publicVerify.verifiedAt };
+    assertSitePublicationEvidence({ deployment, publicVerify, productVerify, contentVerify });
+    const completedAttempt = {
+      ...initialAttempt,
+      result: "verified",
+      finishedAt: new Date().toISOString(),
+      observed: {
+        runtimeAcceptanceSpecHash: publicVerify.runtimeAcceptanceSpecHash || runtimeAcceptanceSpec.specHash,
+        deploymentId: current.deploymentId,
+        deploymentCount: run.deploymentCount,
+        transportCalls: 0,
+      },
+    };
+    current = await transitionSitePublication({
+      publicationDirectory: directory,
+      current,
+      patch: { verificationAttempts: appendAttempt(current.verificationAttempts, completedAttempt), recovery: { ...current.recovery, result: "verified", finishedAt: completedAttempt.finishedAt, transportCalls: 0 } },
+    });
+    recoveryRun = await writePublicationRun({
+      sourceRoot: resolvedSourceRoot,
+      run: {
+        ...await readPublicationRun({ sourceRoot: resolvedSourceRoot, publicationRunId: current.publicationRunId }),
+        state: "verifying",
+        publicVerify,
+        recovery: { ...recoveryRun.recovery, result: "verified", finishedAt: completedAttempt.finishedAt, transportCalls: 0 },
+        recoveryAttempts: appendAttempt(recoveryRun.recoveryAttempts, completedAttempt),
+        updatedAt: new Date().toISOString(),
+      },
+    }).then(({ run: written }) => written);
+    const finalized = await finalizeSitePublication({ publicationDirectory: directory, publicVerify, sourceRoot: resolvedSourceRoot });
+    const finishedAt = new Date().toISOString();
+    const finalRecovery = { ...finalized.recovery, type: "same-deployment", deploymentId: current.deploymentId, deploymentCount: 1, transportCalls: 0, result: "finalized", finishedAt };
+    const finalizedRun = await readPublicationRun({ sourceRoot: resolvedSourceRoot, publicationRunId: current.publicationRunId });
+    await writePublicationRun({ sourceRoot: resolvedSourceRoot, run: { ...finalizedRun, recovery: finalRecovery, recoveryAttempts: appendAttempt(finalizedRun.recoveryAttempts, completedAttempt), updatedAt: finishedAt } });
+    return writePublicationRecord(directory, { ...finalized, productVerify, contentVerify, recovery: finalRecovery });
+  } catch (error) {
+    const finishedAt = new Date().toISOString();
+    const failedAttempt = {
+      ...initialAttempt,
+      result: "recoverable",
+      finishedAt,
+      failure: { code: error.code || "SITE_PUBLICATION_RECOVERY", message: error.message },
+    };
+    const failureState = error.recoverable === false ? "failed" : "recoverable";
+    const failure = { code: error.code || "SITE_PUBLICATION_RECOVERY", phase: error.phase || "verifying-app", message: error.message, at: finishedAt, lastEvidence: error.runtimeEvidence || error.lastEvidence || current.lastEvidence || null };
+    const failureHistory = current.failureHistory?.length ? current.failureHistory : priorHistory;
+    const currentRun = await readPublicationRun({ sourceRoot: resolvedSourceRoot, publicationRunId: current.publicationRunId }).catch(() => recoveryRun);
+    await writePublicationRun({
+      sourceRoot: resolvedSourceRoot,
+      run: {
+        ...currentRun,
+        state: failureState,
+        publicVerify: null,
+        recovery: { ...(currentRun.recovery || recoveryRun.recovery || {}), result: failureState, finishedAt, transportCalls: 0, failure },
+        recoveryAttempts: appendAttempt(currentRun.recoveryAttempts, failedAttempt),
+        updatedAt: finishedAt,
+      },
+    });
+    await transitionSitePublication({
+      publicationDirectory: directory,
+      current,
+      state: failureState,
+      phase: "recoverable",
+      failure,
+      patch: { failureHistory, recovery: { ...current.recovery, result: failureState, finishedAt, transportCalls: 0, failure }, verificationAttempts: appendAttempt(current.verificationAttempts, failedAttempt) },
+    });
+    throw error;
+  } finally {
+    await releaseSitePublicationLease(lease);
+  }
+}
+
 function recoverablePhaseError(code, message, details = {}) {
   const error = new Error(message);
   error.code = code;
@@ -665,7 +1082,7 @@ async function verifyMediaPhase({ publication, base, indexHtml, assetManifest, m
   });
 }
 
-async function verifyPublicationPhaseSet({ publication, base, indexHtml, assetManifest, routes, mediaPaths, fetchImpl, browserRuntimeVerify, onEvidence, signal, attemptId } = {}) {
+async function verifyPublicationPhaseSet({ publication, base, indexHtml, assetManifest, routes, mediaPaths, fetchImpl, browserRuntimeVerify, runtimeAcceptanceSpec = null, onEvidence, signal, attemptId } = {}) {
   const identity = sitePublicationIdentity(publication);
   let assetsPhase;
   try {
@@ -685,9 +1102,20 @@ async function verifyPublicationPhaseSet({ publication, base, indexHtml, assetMa
   }
   if (!assetsPhase.skipped) await onEvidence?.({ phase: "verifying-assets", result: assetsPhase });
   let appPhase = null;
+  if (runtimeAcceptanceSpec) assertRuntimeAcceptanceSpec(runtimeAcceptanceSpec, publication);
   if (browserRuntimeVerify) {
     try {
-      appPhase = await browserRuntimeVerify({ baseUrl: base, routes: [...routes], taskId: "site-publication-public-verify", publicationIdentity: identity, attemptId, onEvidence, signal });
+      appPhase = await browserRuntimeVerify({
+        baseUrl: base,
+        routes: [...routes],
+        taskId: "site-publication-public-verify",
+        publicationIdentity: identity,
+        runtimeAcceptanceSpec,
+        runtimeAcceptanceExpected: publication,
+        attemptId,
+        onEvidence,
+        signal,
+      });
     } catch (error) {
       await recordPhaseFailure({ publication, attemptId, phase: "verifying-app", error, onEvidence });
       throw error;
@@ -767,7 +1195,7 @@ async function verifyPublicContentDataPlane({ publication, base, fetchImpl, sign
   return { active, artifact, manifest, objects, verified: true, manifestUrl };
 }
 
-export async function verifyPublicSitePublication({ publication, baseUrl = publicUrl, fetchImpl = fetch, browserRuntimeVerify = null, attemptId = null, onEvidence = null, signal = null } = {}) {
+export async function verifyPublicSitePublication({ publication, baseUrl = publicUrl, fetchImpl = fetch, browserRuntimeVerify = null, attemptId = null, onEvidence = null, signal = null, allowDerivedRuntimeAcceptanceSpec = false } = {}) {
   const resolvedAttemptId = attemptId || `attempt-${Date.now()}`;
   await onEvidence?.({ phase: "verifying-assets", result: phaseEnvelope(publication, resolvedAttemptId, "verifying-assets", { result: "running" }) });
   const base = new URL(baseUrl);
@@ -809,6 +1237,8 @@ export async function verifyPublicSitePublication({ publication, baseUrl = publi
     });
   }
   if (isDataPlanePublication(publication)) {
+    const runtimeAcceptanceSpec = readOrDeriveRuntimeAcceptanceSpec(publication, { allowDerived: allowDerivedRuntimeAcceptanceSpec });
+    assertRuntimeAcceptanceSpec(runtimeAcceptanceSpec, publication);
     if (release.productArtifactId !== publication.productArtifactId
       || release.baseSiteArtifactId !== publication.baseSiteArtifactId
       || release.productArtifactHash !== publication.productArtifactHash) {
@@ -837,6 +1267,13 @@ export async function verifyPublicSitePublication({ publication, baseUrl = publi
         activeTupleHash: contentManifest.activeTupleHash || null,
       });
     }
+    if (contentManifest.runtimeAcceptanceSpecHash
+      && contentManifest.runtimeAcceptanceSpecHash !== runtimeAcceptanceSpec.specHash) {
+      throw identityDriftError("public runtime acceptance specification identity does not match SitePublication", {
+        expectedRuntimeAcceptanceSpecHash: runtimeAcceptanceSpec.specHash,
+        observedRuntimeAcceptanceSpecHash: contentManifest.runtimeAcceptanceSpecHash,
+      });
+    }
     const dataProof = await verifyPublicContentDataPlane({ publication, base, fetchImpl, signal });
     const routes = new Set(["/", "/products", "/business-observations", "/observations", "/about"]);
     const pages = {};
@@ -849,7 +1286,6 @@ export async function verifyPublicSitePublication({ publication, baseUrl = publi
       if (route === "/") indexHtml = text;
       pages[route] = { status: response.status, verified: true };
     }
-    const expectedParts = publication.contentManifest?.homeContent?.homeTitle?.parts || [];
     const assetManifest = await loadPublicationAssetManifest(publication);
     assertIndexIdentity(indexHtml, assetManifest);
     const { assetsPhase, appPhase: browserRuntime, mediaPhase, verificationEvidence } = await verifyPublicationPhaseSet({
@@ -861,6 +1297,7 @@ export async function verifyPublicSitePublication({ publication, baseUrl = publi
       mediaPaths: publication.contentManifest?.mediaPaths || [],
       fetchImpl,
       browserRuntimeVerify,
+      runtimeAcceptanceSpec,
       onEvidence,
       signal,
       attemptId: resolvedAttemptId,
@@ -869,11 +1306,22 @@ export async function verifyPublicSitePublication({ publication, baseUrl = publi
     // serialized into the SPA shell's index.html. Require the actual browser
     // evidence when available; only legacy/audit adapters may fall back to a
     // static shell assertion.
-    const homeRuntimeText = browserRuntime?.routes?.["/"]?.h1Text || browserRuntime?.routes?.["/"]?.bodyText || "";
-    for (const part of expectedParts) {
-      if (typeof part?.text === "string" && part.text && (browserRuntime ? !homeRuntimeText.includes(part.text) : !indexHtml.includes(part.text))) {
-        throw new Error(`public home runtime content is missing: ${part.id || "part"}`);
-      }
+    const homeRuntime = browserRuntime?.routes?.["/"] || null;
+    const expectedHome = runtimeAcceptanceSpec.routes[0].expectations[0];
+    if (!homeRuntime || homeRuntime.shellReady !== true || homeRuntime.runtimeReady !== true
+      || homeRuntime.runtimeObserved?.normalizedValue !== expectedHome.normalizedValue
+      || homeRuntime.runtimeObserved?.valueHash !== expectedHome.valueHash) {
+      const error = new Error("public home runtime did not converge to the approved RuntimeAcceptanceSpec");
+      error.code = "PUBLICATION_RUNTIME_ACCEPTANCE_FAILED";
+      error.recoverable = true;
+      error.propagation = true;
+      error.observedIdentity = {
+        runtimeAcceptanceSpecHash: runtimeAcceptanceSpec.specHash,
+        observedNormalizedValue: homeRuntime?.runtimeObserved?.normalizedValue || null,
+        observedValueHash: homeRuntime?.runtimeObserved?.valueHash || null,
+        runtimeReady: homeRuntime?.runtimeReady || false,
+      };
+      throw error;
     }
     return {
       sitePublicationId: publication.sitePublicationId,
@@ -884,6 +1332,7 @@ export async function verifyPublicSitePublication({ publication, baseUrl = publi
       contentDataArtifactId: publication.contentDataArtifactId,
       contentDataHash: publication.contentDataHash,
       activeTupleHash: publication.activeTupleHash,
+      attemptId: resolvedAttemptId,
       baseSiteArtifactId: contentManifest.baseSiteArtifactId,
       productArtifactId: contentManifest.productArtifactId || publication.productArtifactId,
       productArtifactHash: contentManifest.productArtifactHash || publication.productArtifactHash || null,
@@ -893,6 +1342,8 @@ export async function verifyPublicSitePublication({ publication, baseUrl = publi
       release: { version: release.version, commit: release.commit, baseSiteArtifactId: release.baseSiteArtifactId || null },
       contentData: dataProof,
       contentManifest,
+      runtimeAcceptanceSpec,
+      runtimeAcceptanceSpecHash: runtimeAcceptanceSpec.specHash,
       pages,
       assets: assetsPhase,
       browserRuntime,
@@ -1093,12 +1544,12 @@ export async function verifyPublicSitePublication({ publication, baseUrl = publi
   };
 }
 
-export async function waitForPublicSitePublication({ publication, baseUrl = publicUrl, fetchImpl = fetch, browserRuntimeVerify = null, maxAttempts = 30, initialDelayMs = 1000, maxDelayMs = 10000, sleepImpl = (ms) => new Promise((resolve) => setTimeout(resolve, ms)), onObservation = async () => {}, onEvidence = null, attemptId = null, signal = null } = {}) {
+export async function waitForPublicSitePublication({ publication, baseUrl = publicUrl, fetchImpl = fetch, browserRuntimeVerify = null, maxAttempts = 30, initialDelayMs = 1000, maxDelayMs = 10000, sleepImpl = (ms) => new Promise((resolve) => setTimeout(resolve, ms)), onObservation = async () => {}, onEvidence = null, attemptId = null, signal = null, allowDerivedRuntimeAcceptanceSpec = false } = {}) {
   let lastError;
   const observations = [];
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
-      return { ...(await verifyPublicSitePublication({ publication, baseUrl, fetchImpl, browserRuntimeVerify, onEvidence, attemptId: attemptId || `attempt-${attempt}`, signal })), attempts: attempt, propagationObservations: observations };
+      return { ...(await verifyPublicSitePublication({ publication, baseUrl, fetchImpl, browserRuntimeVerify, onEvidence, attemptId: attemptId || `attempt-${attempt}`, signal, allowDerivedRuntimeAcceptanceSpec })), attempts: attempt, propagationObservations: observations };
     } catch (error) {
       lastError = error;
       if (signal?.aborted) {
@@ -1141,7 +1592,7 @@ export async function waitForPublicSitePublication({ publication, baseUrl = publ
   throw error;
 }
 
-export async function transportSitePublication({ publication, sourceRoot, argv = [], env = process.env, edgeonePath, baseUrl = publicUrl, fetchImpl = fetch, runCaptureImpl = runCapture, maxAttempts = 30, initialDelayMs = 1000, maxDelayMs = 10000, sleepImpl } = {}) {
+export async function transportSitePublication({ publication, sourceRoot, argv = [], env = process.env, edgeonePath, baseUrl = publicUrl, fetchImpl = fetch, browserRuntimeVerify = null, runCaptureImpl = runCapture, maxAttempts = 30, initialDelayMs = 1000, maxDelayMs = 10000, sleepImpl } = {}) {
   assertFixedPublishTarget(env);
   assertPublishAuthorization({ argv, env });
   const productArtifact = publicationProductArtifactIdentity(publication);
@@ -1276,7 +1727,7 @@ export async function transportSitePublication({ publication, sourceRoot, argv =
           patch: { verificationAttemptId: attemptId, runtimeEvidence: result, lastEvidence: result },
         });
       },
-      browserRuntimeVerify: fetchImpl === fetch
+      browserRuntimeVerify: browserRuntimeVerify || (fetchImpl === fetch
         ? async (options) => {
           try {
             return await verifyPublicBrowserRuntime(options);
@@ -1286,7 +1737,7 @@ export async function transportSitePublication({ publication, sourceRoot, argv =
             throw error;
           }
         }
-        : null,
+        : null),
       onObservation: async (observation) => {
         propagationObservations = [...propagationObservations, observation];
         current = await transitionSitePublication({ publicationDirectory: publication.client, current, patch: {

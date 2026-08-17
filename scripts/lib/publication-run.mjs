@@ -2,6 +2,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { assertProductArtifactIdentityShape } from "./product-artifact.mjs";
 import { assertSiteSnapshotIdentity } from "./site-snapshot.mjs";
+import { assertRuntimeAcceptanceSpec, assertRuntimeAcceptanceSpecShape } from "./runtime-acceptance.mjs";
 
 export const PUBLICATION_RUN_SCHEMA_VERSION = "publication-run-v1";
 export const PUBLICATION_RUN_STATES = Object.freeze([
@@ -37,7 +38,7 @@ export function publicationRunIdForSnapshot(siteSnapshotId) {
   return `publication-run-${text(siteSnapshotId, "siteSnapshotId")}`;
 }
 
-export function createPublicationRun({ siteSnapshot, previousRunId = null, createdAt = new Date().toISOString() } = {}) {
+export function createPublicationRun({ siteSnapshot, runtimeAcceptanceSpec = null, previousRunId = null, createdAt = new Date().toISOString() } = {}) {
   assertSiteSnapshotIdentity(siteSnapshot);
   const productArtifact = assertProductArtifactIdentityShape(siteSnapshot.productArtifact);
   const publicationRunId = publicationRunIdForSnapshot(siteSnapshot.siteSnapshotId);
@@ -59,6 +60,15 @@ export function createPublicationRun({ siteSnapshot, previousRunId = null, creat
       contentDataHash: siteSnapshot.contentDataArtifact.contentDataHash,
     } : {}),
     ...(siteSnapshot.activeTupleHash ? { activeTupleHash: siteSnapshot.activeTupleHash } : {}),
+    ...(runtimeAcceptanceSpec ? {
+      runtimeAcceptanceSpec: assertRuntimeAcceptanceSpec(runtimeAcceptanceSpec, {
+        sitePublicationId: runtimeAcceptanceSpec.sitePublicationId,
+        snapshotHash: siteSnapshot.snapshotHash,
+        activeTupleHash: siteSnapshot.activeTupleHash,
+        contentManifest: siteSnapshot.contentManifest,
+      }),
+      runtimeAcceptanceSpecHash: runtimeAcceptanceSpec.specHash,
+    } : {}),
     previousRunId: previousRunId || null,
     state: "assembled",
     deploymentId: null,
@@ -66,6 +76,7 @@ export function createPublicationRun({ siteSnapshot, previousRunId = null, creat
     deploymentCount: 0,
     publicVerify: null,
     recovery: null,
+    recoveryAttempts: [],
     rollback: null,
     createdAt,
     updatedAt: createdAt,
@@ -103,6 +114,16 @@ export function validatePublicationRun(run = {}) {
     throw new Error("PublicationRun contentDataArtifactId is required with contentDataHash");
   }
   if (run.activeTupleHash != null && !/^[a-f0-9]{64}$/.test(run.activeTupleHash)) throw new Error("PublicationRun activeTupleHash must be SHA-256");
+  if (run.runtimeAcceptanceSpec != null) {
+    assertRuntimeAcceptanceSpecShape(run.runtimeAcceptanceSpec);
+    if (run.runtimeAcceptanceSpec.snapshotHash !== run.snapshotHash || run.runtimeAcceptanceSpec.activeTupleHash !== run.activeTupleHash) throw new Error("PublicationRun RuntimeAcceptanceSpec identity mismatch");
+    if (run.runtimeAcceptanceSpecHash !== run.runtimeAcceptanceSpec.specHash) throw new Error("PublicationRun RuntimeAcceptanceSpec hash mismatch");
+  } else if (run.runtimeAcceptanceSpecHash != null) {
+    throw new Error("PublicationRun RuntimeAcceptanceSpec is required with its hash");
+  }
+  if (run.recoveryAttempts != null && (!Array.isArray(run.recoveryAttempts) || run.recoveryAttempts.some((attempt) => !attempt || typeof attempt !== "object" || typeof attempt.attemptId !== "string" || !attempt.attemptId))) {
+    throw new Error("PublicationRun recoveryAttempts must contain identified attempts");
+  }
   if (!PUBLICATION_RUN_STATES.includes(run.state)) throw new Error(`PublicationRun state is invalid: ${run.state}`);
   if (!Number.isInteger(run.deploymentCount) || run.deploymentCount < 0 || run.deploymentCount > 1) throw new Error("PublicationRun deploymentCount must be 0 or 1");
   if (run.deploymentCount === 1 && !run.deploymentId) throw new Error("PublicationRun deploymentId is required after deployment");
